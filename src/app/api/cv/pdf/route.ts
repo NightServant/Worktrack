@@ -43,13 +43,13 @@ export async function POST(request: Request) {
     })
   }
 
-  let body: { title?: unknown; content?: unknown }
+  let body: { title?: unknown; content?: unknown; naturalLineHeight?: unknown }
   try {
     const raw = await request.text()
     if (raw.length > MAX_BYTES) {
       return NextResponse.json({ error: 'That document is too large.' }, { status: 413 })
     }
-    body = JSON.parse(raw) as { title?: unknown; content?: unknown }
+    body = JSON.parse(raw) as { title?: unknown; content?: unknown; naturalLineHeight?: unknown }
   } catch {
     return NextResponse.json({ error: 'Invalid JSON.' }, { status: 400 })
   }
@@ -59,8 +59,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'There is nothing to export.' }, { status: 400 })
   }
 
+  /**
+   * What `line-height: normal` measured as in the browser, for the face the
+   * editor drew. Optional, and range-checked rather than trusted: it is a
+   * number from a client, it multiplies every line of the document, and a
+   * nonsense value would silently produce a CV at the wrong density rather
+   * than an error anybody could see. Out of range, or absent, and the exporter
+   * falls back to the drawn font's own metric.
+   */
+  const natural =
+    typeof body.naturalLineHeight === 'number' &&
+    Number.isFinite(body.naturalLineHeight) &&
+    body.naturalLineHeight > 0.5 &&
+    body.naturalLineHeight < 4
+      ? body.naturalLineHeight
+      : undefined
+
   try {
-    const pdf = await buildPdf(body.content, title)
+    const pdf = await buildPdf(body.content, title, natural)
     return new NextResponse(new Uint8Array(pdf), {
       status: 200,
       headers: {

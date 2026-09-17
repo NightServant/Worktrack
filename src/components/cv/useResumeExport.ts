@@ -53,6 +53,17 @@ export interface ResumeExportOptions {
   saveDraft: (notify?: boolean) => Promise<boolean>
   /** Adds the bearer token; `/api/cv/docx` and `/api/cv/latex` both authenticate. */
   authedFetch: (input: string, init?: RequestInit) => Promise<Response>
+  /**
+   * `line-height: normal` for the face on screen, measured by the editor.
+   *
+   * PDF ONLY, and only because that export has no browser. Word stores line
+   * spacing as a multiple of SINGLE -- the font's own line box -- and that box
+   * is 1.15 of the size for Times and 1.31 for Garamond, so converting it
+   * without knowing the face puts the exported page at a different density
+   * from the preview. .docx and .tex both carry the multiple itself and let
+   * Word and TeX resolve it, which is why neither needs this.
+   */
+  naturalLineHeight?: number
 }
 
 /** `my CV (final)` -> `my-cv-final`, so the download has a sane filename. */
@@ -70,6 +81,7 @@ export function useResumeExport({
   title,
   saveDraft,
   authedFetch,
+  naturalLineHeight,
 }: ResumeExportOptions): ResumeExport {
   const { success, error: showError } = useToast()
   const [isExportingPdf, setIsExportingPdf] = useState(false)
@@ -92,7 +104,11 @@ export function useResumeExport({
       const response = await authedFetch('/api/cv/pdf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: title.trim() || 'CV', content: editor.getJSON() }),
+        body: JSON.stringify({
+          title: title.trim() || 'CV',
+          content: editor.getJSON(),
+          naturalLineHeight,
+        }),
       })
       if (!response.ok) {
         const body = (await response.json().catch(() => null)) as { error?: string } | null

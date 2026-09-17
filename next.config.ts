@@ -51,7 +51,17 @@ const nextConfig: NextConfig = {
    * them rather than the whole app, so nothing else carries the weight.
    */
   outputFileTracingIncludes: {
-    '/api/cv/pdf': ['./node_modules/pdfkit/js/standard-fonts/**', './node_modules/pdfkit/js/data/**'],
+    '/api/cv/pdf': [
+      './node_modules/pdfkit/js/standard-fonts/**',
+      './node_modules/pdfkit/js/data/**',
+      // THE FOUR BUNDLED FAMILIES, for the same reason as the two lines above:
+      // nothing can discover them statically. `pdfExport` reads them by path
+      // at `process.cwd()`, which is a string no tracer follows, and a CV set
+      // in Garamond silently prints in Times when they are missing. See
+      // `services/integrations/pdfExport` for why that is a fallback rather
+      // than a failure, and `__tests__/pdfFontTracing` for the guard.
+      './src/services/integrations/fonts/**',
+    ],
   },
   /**
    * THE MIDDLEWARE RUNS ON NODE, AND THIS FLAG IS WHAT MAKES THAT REAL.

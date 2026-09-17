@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { buildDocument, buildPdf, faceFor, familyFor, styleForMarks, toPoints } from '../pdfExport'
+import { buildDocument, buildPdf, faceFor, familyFor, sheetFor, styleForMarks, toPoints } from '../pdfExport'
+import { DEFAULT_GEOMETRY, NO_TYPOGRAPHY } from '@/lib/pageGeometry'
 
 /**
  * The mapping, not the bytes.
@@ -39,7 +40,7 @@ describe('faceFor', () => {
     [false, true, 'Times-Italic'],
     [true, true, 'Times-BoldItalic'],
   ])('bold=%s italic=%s -> %s', (bold, italic, expected) => {
-    expect(faceFor(bold, italic)).toBe(expected)
+    expect(faceFor(bold, italic).fontFamily).toBe(expected)
   })
 
   /**
@@ -49,9 +50,29 @@ describe('faceFor', () => {
    * in the wrong face.
    */
   it('names the faces of the other two standard families', () => {
-    expect(faceFor(false, false, 'Helvetica')).toBe('Helvetica')
-    expect(faceFor(true, true, 'Helvetica')).toBe('Helvetica-BoldOblique')
-    expect(faceFor(false, true, 'Courier')).toBe('Courier-Oblique')
+    expect(faceFor(false, false, 'Helvetica').fontFamily).toBe('Helvetica')
+    expect(faceFor(true, true, 'Helvetica').fontFamily).toBe('Helvetica-BoldOblique')
+    expect(faceFor(false, true, 'Courier').fontFamily).toBe('Courier-Oblique')
+  })
+
+  /**
+   * A BUNDLED FAMILY IS ONE NAME AND A VARIANT, not four names: react-pdf
+   * resolves a registered family through `fontWeight`/`fontStyle`. Both are
+   * always spelled out, including the `normal` ones -- a nested `<Text>` that
+   * omits the weight RESETS it rather than inheriting, which is how every
+   * heading in this exporter once lost its bold.
+   */
+  it('asks a bundled family for a weight and a style instead', () => {
+    expect(faceFor(false, false, 'EB Garamond')).toEqual({
+      fontFamily: 'EB Garamond',
+      fontWeight: 'normal',
+      fontStyle: 'normal',
+    })
+    expect(faceFor(true, true, 'Carlito')).toEqual({
+      fontFamily: 'Carlito',
+      fontWeight: 'bold',
+      fontStyle: 'italic',
+    })
   })
 })
 
@@ -62,14 +83,35 @@ describe('faceFor', () => {
  */
 describe('familyFor', () => {
   it.each([
+    // Times and Helvetica ARE Times New Roman's and Arial's metrics, so these
+    // are not substitutions and there is nothing to bundle for them.
     ["'Helvetica Neue', Helvetica, Arial, sans-serif", 'Helvetica'],
-    ['Aptos, Calibri, system-ui, sans-serif', 'Helvetica'],
     ['"Times New Roman", Times, serif', 'Times'],
-    ['Garamond, Georgia, serif', 'Times'],
     ['"Courier New", monospace', 'Courier'],
+    // These four have real files behind them now. Before 2026-09-17 every one
+    // of them answered Times or Helvetica, which is the whole report.
+    ['Aptos, Calibri, system-ui, sans-serif', 'Carlito'],
+    ["'Cambria', 'Georgia', serif", 'Caladea'],
+    ["'Georgia', 'Times New Roman', serif", 'Gelasio'],
+    ['Garamond, Georgia, serif', 'EB Garamond'],
     [null, 'Times'],
   ])('reads %s as %s', (stack, expected) => {
     expect(familyFor(stack)).toBe(expected)
+  })
+
+  /**
+   * THE STACK IS A PREFERENCE ORDER, and reading it as one string was the bug:
+   * `"Garamond", Georgia, serif` contains the word "serif", so a pattern match
+   * over the whole value answered Times while naming two real faces it could
+   * have drawn. Each name is tried in turn now, and the generic keyword only
+   * decides it when nothing before it matched.
+   */
+  it('takes the first family it can draw, not the last word in the stack', () => {
+    expect(familyFor('Garamond, Georgia, serif')).toBe('EB Garamond')
+    expect(familyFor('Georgia, Garamond, serif')).toBe('Gelasio')
+    expect(familyFor('Papyrus, Georgia, serif')).toBe('Gelasio')
+    expect(familyFor('Papyrus, Zapfino, serif')).toBe('Times')
+    expect(familyFor('Papyrus, sans-serif')).toBe('Helvetica')
   })
 })
 
@@ -206,7 +248,14 @@ describe('buildDocument', () => {
     const page = pageOf(imported)
     expect(page.props.size).toEqual([612, 792])
     const style = styleOf(page)
-    expect(style).toMatchObject({ paddingTop: 25.2, paddingBottom: 28.8, fontSize: 10, fontFamily: 'Helvetica' })
+    expect(style).toMatchObject({
+      paddingTop: 25.2,
+      paddingBottom: 28.8,
+      fontSize: 10,
+      // Calibri, drawn as Calibri's metrics rather than flattened to Helvetica.
+      fontFamily: 'Carlito',
+      fontWeight: 'normal',
+    })
     expect(style.paddingLeft).toBeCloseTo(46.8)
     expect(style.paddingRight).toBeCloseTo(46.8)
   })
@@ -221,7 +270,12 @@ describe('buildDocument', () => {
   it('takes the heading sizes the document states rather than a fixed scale', () => {
     const [title, section] = blocksOf(imported)
     // This used to be 24pt and 14pt for every CV ever exported.
-    expect(styleOf(title)).toMatchObject({ fontSize: 16, fontFamily: 'Helvetica-Bold', marginTop: 0 })
+    expect(styleOf(title)).toMatchObject({
+      fontSize: 16,
+      fontFamily: 'Carlito',
+      fontWeight: 'bold',
+      marginTop: 0,
+    })
     expect(styleOf(section)).toMatchObject({ fontSize: 11, marginTop: 6.5, marginBottom: 2.5 })
   })
 
@@ -238,11 +292,82 @@ describe('buildDocument', () => {
     expect(styleOf(paragraph)).toMatchObject({ marginTop: 1, marginBottom: 8 })
   })
 
+  /**
+   * A `hardBreak` IS A LINE, and it was thrown away with every other node this
+   * exporter did not model. Shift+enter builds the sender block of all five
+   * cover letters and every entry generated from a LinkedIn profile -- job
+   * title over employer, degree over school -- so the PDF ran each pair
+   * together on one line while the editor, the .docx and the .tex all showed
+   * two.
+   */
+  it('keeps a hard break as a line break inside the paragraph', () => {
+    const [paragraph] = blocksOf({
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'text', marks: [{ type: 'bold' }], text: 'Front-End Developer' },
+            { type: 'hardBreak' },
+            { type: 'text', text: 'Acme Corp' },
+          ],
+        },
+      ],
+    })
+    const runs = (paragraph.props.children ?? []) as { props: { children?: unknown } }[]
+    expect(runs).toHaveLength(3)
+    expect(runs[1].props.children).toBe('\n')
+    // And the two halves keep their own formatting across it.
+    expect(runs[0].props.children).toBe('Front-End Developer')
+    expect(runs[2].props.children).toBe('Acme Corp')
+  })
+
   it('lets the sheet’s spacing stand where the block states none', () => {
     const paragraph = blocksOf({
       ...imported,
       content: [{ type: 'paragraph', content: [{ type: 'text', text: 'A line.' }] }],
     })[0]
     expect(styleOf(paragraph).marginBottom).toBe(2)
+  })
+})
+
+/**
+ * THE LEADING IS THE FACE'S, AND THE FACE IS NOT THE SAME EVERYWHERE.
+ *
+ * Word stores line spacing as a multiple of SINGLE -- the font's own line box
+ * -- and that box is 1.15 of the size for Times, 1.22 for Calibri and 1.31 for
+ * EB Garamond. Converting it through one constant, which this file did until
+ * 2026-09-17, sets a Garamond CV about 13% tighter than the preview and moves
+ * every page break.
+ */
+describe('sheetFor line spacing', () => {
+  const typography = { ...NO_TYPOGRAPHY, fontSize: 10, lineHeight: 0.98 }
+
+  it('converts the multiple through the drawn family’s own metric', () => {
+    const garamond = sheetFor(DEFAULT_GEOMETRY, { ...typography, fontFamily: 'Garamond, serif' })
+    const calibri = sheetFor(DEFAULT_GEOMETRY, { ...typography, fontFamily: 'Calibri, sans-serif' })
+    expect(garamond.page.lineHeight).toBeCloseTo(0.98 * 1.305, 3)
+    expect(calibri.page.lineHeight).toBeCloseTo(0.98 * 1.2207, 3)
+  })
+
+  it('prefers what the browser measured, since that is what the preview used', () => {
+    // The editor sends `line-height: normal` for the face IT resolved -- real
+    // Georgia, say, where the server can only draw Gelasio. Matching the
+    // preview beats matching the substitute.
+    const sheet = sheetFor(DEFAULT_GEOMETRY, { ...typography, fontFamily: 'Garamond, serif' }, 1.137)
+    expect(sheet.page.lineHeight).toBeCloseTo(0.98 * 1.137, 3)
+  })
+
+  it('ignores a measurement that cannot be one', () => {
+    for (const nonsense of [0, -2, 12, Number.NaN]) {
+      const sheet = sheetFor(DEFAULT_GEOMETRY, { ...typography, fontFamily: 'Garamond, serif' }, nonsense)
+      expect(sheet.page.lineHeight, String(nonsense)).toBeCloseTo(0.98 * 1.305, 3)
+    }
+  })
+
+  it('states no line height at all when the document states none', () => {
+    // react-pdf then uses the font's own metrics, which is what a document with
+    // no line rule should get.
+    expect(sheetFor(DEFAULT_GEOMETRY, NO_TYPOGRAPHY).page.lineHeight).toBeUndefined()
   })
 })

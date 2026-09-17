@@ -1,5 +1,7 @@
 import { createElement as h, type ReactElement } from 'react'
 import type { DocumentProps } from '@react-pdf/renderer'
+import { statSync } from 'node:fs'
+import { join } from 'node:path'
 import { Document, Font, Page, Text, View, renderToBuffer } from '@react-pdf/renderer'
 import type { Style } from '@react-pdf/types'
 import {
@@ -123,48 +125,232 @@ export function toPoints(value: unknown): number | undefined {
 }
 
 /**
- * The three families a PDF can rely on, and which one a CSS stack means.
+ * THE FACES THIS CAN ACTUALLY DRAW, AND WHY FOUR OF THEM ARE FILES IN THE REPO.
  *
- * `@react-pdf/renderer` ships the PDF standard fonts and nothing else; a real
- * face would have to be fetched and registered, which is a network call inside
- * a Lambda and exactly the class of failure this file was moved here to stop
- * having. So the document's family resolves to the closest of the three the
- * format guarantees -- which is a ceiling, and still the difference between a
- * CV set in Calibri exporting as a sans-serif and exporting as Times.
+ * `@react-pdf/renderer` ships the PDF standard 14 and nothing else, so until
+ * 2026-09-17 every document collapsed onto Times, Helvetica or Courier --
+ * which is correct for Times New Roman and Arial (the standard faces ARE those
+ * metrics) and wrong for everything else. A CV set in Garamond printed in
+ * Times: different shapes, different widths, different line breaks, a
+ * different number of pages. That is the "font is not rendering the original"
+ * report, and there is no way to answer it without the actual outlines.
  *
- * THE SAME TEST AS THE LATEX EXPORT uses, deliberately: two exports that
- * disagree about whether Aptos is a sans-serif produce two different documents
- * from one source.
+ * METRIC-COMPATIBLE CLONES, WHICH IS THE SAME TRADE THE UI ALREADY MAKES.
+ * Calibri, Cambria and Georgia cannot be redistributed, and `src/app/layout`
+ * already answers that for the interface: it serves Arimo because it is
+ * metric-compatible with Arial "so it holds the same line breaks". Same
+ * reasoning, same licence:
+ *
+ *   Carlito      Calibri           advance widths match, so lines wrap where
+ *   Caladea      Cambria           Word wraps them and the page count holds
+ *   Gelasio      Georgia
+ *   EB Garamond  Garamond          a redrawing rather than a metric clone --
+ *                                  the closest free thing to the face, which
+ *                                  is what an imported CV most often asks for
+ *
+ * All four are SIL OFL 1.1; the licences sit beside the files in `fonts/`.
+ *
+ * REGISTRATION IS FAIL-SOFT, ON PURPOSE. These files reach production through
+ * `outputFileTracingIncludes` (see next.config, and `pdfFontTracing.test`),
+ * which is a Lambda-only path -- exactly the class of failure that cost three
+ * deploys when this export ran Chromium. So every file is STATTED here, up
+ * front: a family whose files are not on disk is dropped from the set and the
+ * document falls back to the standard face it used before, which is the
+ * behaviour this file shipped with. A missing font is a plainer PDF, never a
+ * 500. (`src` has to be a path -- react-pdf reads it with fontkit at render
+ * time and does not accept bytes -- so proving it exists is the whole of what
+ * can be checked early, and it is the thing that would actually go wrong.)
  */
-export type PdfFamily = 'Times' | 'Helvetica' | 'Courier'
+export type FamilyName = 'Times' | 'Helvetica' | 'Courier' | 'Carlito' | 'Caladea' | 'Gelasio' | 'EB Garamond'
 
-/** Regular, bold, italic, bold-italic. The standard names, which differ. */
-const FACES: Record<PdfFamily, [string, string, string, string]> = {
-  Times: ['Times-Roman', 'Times-Bold', 'Times-Italic', 'Times-BoldItalic'],
-  Helvetica: ['Helvetica', 'Helvetica-Bold', 'Helvetica-Oblique', 'Helvetica-BoldOblique'],
-  Courier: ['Courier', 'Courier-Bold', 'Courier-Oblique', 'Courier-BoldOblique'],
+/** What a run hands to react-pdf: a face name, or a family plus its variant. */
+export interface Face {
+  fontFamily: string
+  fontWeight?: 'normal' | 'bold'
+  fontStyle?: 'normal' | 'italic'
 }
 
-export function familyFor(stack: string | null | undefined): PdfFamily {
+interface FamilyDefinition {
+  /** The CSS family names this one answers to, in a stack. */
+  aliases: RegExp
+  /**
+   * `line-height: normal` for the face, from its own `hhea` table --
+   * `(ascent - descent + lineGap) / unitsPerEm`, measured with fontkit rather
+   * than guessed. It is what Word calls SINGLE spacing, and the multiplier a
+   * document states is a multiple of it.
+   */
+  natural: number
+  /** Regular, bold, italic, bold-italic. */
+  faces: [Face, Face, Face, Face]
+  /** The four files, for a family this has to register itself. */
+  files?: [string, string, string, string]
+}
+
+const standard = (regular: string, bold: string, italic: string, boldItalic: string): [Face, Face, Face, Face] => [
+  { fontFamily: regular },
+  { fontFamily: bold },
+  { fontFamily: italic },
+  { fontFamily: boldItalic },
+]
+
+const bundled = (family: string): [Face, Face, Face, Face] => [
+  { fontFamily: family, fontWeight: 'normal', fontStyle: 'normal' },
+  { fontFamily: family, fontWeight: 'bold', fontStyle: 'normal' },
+  { fontFamily: family, fontWeight: 'normal', fontStyle: 'italic' },
+  { fontFamily: family, fontWeight: 'bold', fontStyle: 'italic' },
+]
+
+/**
+ * ORDER IS RESOLUTION ORDER and the specific faces come first, because a
+ * browser resolving `"Garamond", Georgia, serif` stops at the first family it
+ * has. `Aptos` sits with Carlito deliberately: it is Word's current default
+ * body face and Calibri's successor, close enough in width that a document set
+ * in it keeps its line breaks, and much closer than Helvetica.
+ */
+const FAMILIES: Record<FamilyName, FamilyDefinition> = {
+  Carlito: {
+    aliases: /^(carlito|calibri|aptos)$/i,
+    natural: 1.2207,
+    faces: bundled('Carlito'),
+    files: ['Carlito-Regular.ttf', 'Carlito-Bold.ttf', 'Carlito-Italic.ttf', 'Carlito-BoldItalic.ttf'],
+  },
+  Caladea: {
+    aliases: /^(caladea|cambria)$/i,
+    natural: 1.15,
+    faces: bundled('Caladea'),
+    files: ['Caladea-Regular.ttf', 'Caladea-Bold.ttf', 'Caladea-Italic.ttf', 'Caladea-BoldItalic.ttf'],
+  },
+  Gelasio: {
+    aliases: /^(gelasio|georgia)$/i,
+    natural: 1.2695,
+    faces: bundled('Gelasio'),
+    files: ['Gelasio-Regular.ttf', 'Gelasio-Bold.ttf', 'Gelasio-Italic.ttf', 'Gelasio-BoldItalic.ttf'],
+  },
+  'EB Garamond': {
+    aliases: /garamond/i,
+    natural: 1.305,
+    faces: bundled('EB Garamond'),
+    files: [
+      'EBGaramond-Regular.ttf',
+      'EBGaramond-Bold.ttf',
+      'EBGaramond-Italic.ttf',
+      'EBGaramond-BoldItalic.ttf',
+    ],
+  },
+  // The standard 14. Times and Helvetica ARE Times New Roman's and Arial's
+  // metrics, so these are not substitutions -- there is nothing to bundle.
+  Times: {
+    aliases: /^(times|times new roman|liberation serif|tinos|serif)$/i,
+    natural: FALLBACK_NATURAL_LINE_HEIGHT,
+    faces: standard('Times-Roman', 'Times-Bold', 'Times-Italic', 'Times-BoldItalic'),
+  },
+  Helvetica: {
+    aliases: /^(helvetica|helvetica neue|arial|arimo|liberation sans|verdana|tahoma|segoe ui|roboto|system-ui|sans-serif)$/i,
+    natural: FALLBACK_NATURAL_LINE_HEIGHT,
+    faces: standard('Helvetica', 'Helvetica-Bold', 'Helvetica-Oblique', 'Helvetica-BoldOblique'),
+  },
+  Courier: {
+    aliases: /^(courier|courier new|consolas|menlo|monaco|cousine|monospace)$/i,
+    natural: 1.13,
+    faces: standard('Courier', 'Courier-Bold', 'Courier-Oblique', 'Courier-BoldOblique'),
+  },
+}
+
+/** Resolution order: the bundled faces first, then the generic fallbacks. */
+const RESOLUTION_ORDER: FamilyName[] = [
+  'Carlito',
+  'Caladea',
+  'Gelasio',
+  'EB Garamond',
+  'Times',
+  'Helvetica',
+  'Courier',
+]
+
+/** Families whose files failed to load. Empty until something goes wrong. */
+const unavailable = new Set<FamilyName>()
+let registered = false
+
+/**
+ * Loads the bundled faces once, reading each file before trusting it.
+ *
+ * `process.cwd()` is the project root in `next dev` and the function root on
+ * Vercel, where `outputFileTracingIncludes` puts these files back at the same
+ * relative path. Read into Buffers rather than handed over as paths so that a
+ * file which is not there fails HERE, with a fallback ready, instead of inside
+ * the renderer halfway down a document.
+ */
+export const FONT_DIRECTORY = 'src/services/integrations/fonts'
+
+function registerFonts(): void {
+  if (registered) return
+  registered = true
+
+  for (const name of RESOLUTION_ORDER) {
+    const definition = FAMILIES[name]
+    if (!definition.files) continue
+    try {
+      const sources = definition.files.map((file) => {
+        const path = join(process.cwd(), FONT_DIRECTORY, file)
+        if (statSync(path).size === 0) throw new Error(`${file} is empty`)
+        return path
+      })
+      Font.register({
+        family: name,
+        fonts: [
+          { src: sources[0], fontWeight: 'normal', fontStyle: 'normal' },
+          { src: sources[1], fontWeight: 'bold', fontStyle: 'normal' },
+          { src: sources[2], fontWeight: 'normal', fontStyle: 'italic' },
+          { src: sources[3], fontWeight: 'bold', fontStyle: 'italic' },
+        ],
+      })
+    } catch (err) {
+      // Named, because the symptom -- a CV in Times that should be in Garamond
+      // -- looks like a mapping bug rather than a deployment one.
+      console.error(`[cv/pdf] ${name} is not available; falling back`, err)
+      unavailable.add(name)
+    }
+  }
+}
+
+/**
+ * The family a CSS stack resolves to, walked in order like a browser does.
+ *
+ * `"Garamond", Georgia, serif` is three answers in preference order, and the
+ * first version of this took the whole string and pattern-matched it for the
+ * word "serif" -- so a document naming two real faces got neither. Each name
+ * is now tried in turn, and a generic keyword only decides it if no real
+ * family in the list is one this can draw.
+ */
+export function familyFor(stack: string | null | undefined): FamilyName {
   if (!stack) return 'Times'
-  if (/mono|courier|consolas|menlo/i.test(stack)) return 'Courier'
-  if (/sans|helvetica|arial|verdana|tahoma|calibri|aptos|segoe|roboto|system-ui/i.test(stack)) {
-    return 'Helvetica'
+  for (const raw of stack.split(',')) {
+    const name = raw.trim().replace(/^['"]|['"]$/g, '')
+    if (!name) continue
+    const match = RESOLUTION_ORDER.find(
+      (family) => !unavailable.has(family) && FAMILIES[family].aliases.test(name)
+    )
+    if (match) return match
   }
   return 'Times'
 }
 
+/** `line-height: normal` for a family, which is what Word calls single. */
+export function naturalLineHeightOf(family: FamilyName): number {
+  return FAMILIES[family].natural
+}
+
 /**
- * The four faces of a family are one font to a reader and four names here.
+ * The four faces of a family are one font to a reader and four entries here.
  *
- * `@react-pdf/renderer` selects a face by NAME, not by `fontWeight`/
- * `fontStyle` -- so bold-inside-italic has to be resolved to `Times-BoldItalic`
- * before it is handed over, or it renders upright and nobody can see why. The
- * regular weight is the one that is not spelled consistently across the three:
- * `Times-Roman`, but plain `Helvetica` and `Courier`.
+ * `@react-pdf/renderer` picks a STANDARD face by name -- `Times-Bold`, not
+ * Times plus a weight -- and a REGISTERED one by family plus `fontWeight` and
+ * `fontStyle`. Both shapes come out of the same table so a caller never has to
+ * know which kind it got, and both are spelled out in full: a nested `<Text>`
+ * that omits `fontWeight` does not inherit the block's, it resets it.
  */
-export function faceFor(bold: boolean, italic: boolean, family: PdfFamily = 'Times'): string {
-  const [regular, boldFace, italicFace, boldItalic] = FACES[family]
+export function faceFor(bold: boolean, italic: boolean, family: FamilyName = 'Times'): Face {
+  const [regular, boldFace, italicFace, boldItalic] = FAMILIES[family].faces
   if (bold && italic) return boldItalic
   if (bold) return boldFace
   if (italic) return italicFace
@@ -175,7 +361,7 @@ export function faceFor(bold: boolean, italic: boolean, family: PdfFamily = 'Tim
 export function styleForMarks(
   marks: Mark[] | undefined,
   baseBold = false,
-  baseFamily: PdfFamily = 'Times'
+  baseFamily: FamilyName = 'Times'
 ): Style {
   const names = new Set((marks ?? []).map((mark) => mark?.type))
   // A run may name its own face; the document's is the default under it.
@@ -187,7 +373,7 @@ export function styleForMarks(
   // Times-Bold rendered upright the moment its text run named Times-Roman,
   // which is every heading. The block passes its own weight down instead.
   const style: Style = {
-    fontFamily: faceFor(names.has('bold') || baseBold, names.has('italic'), family),
+    ...faceFor(names.has('bold') || baseBold, names.has('italic'), family),
   }
 
   // Both at once is a real combination and the type is a fixed union, so the
@@ -224,7 +410,7 @@ export function styleForMarks(
  */
 export interface Sheet {
   page: Style
-  family: PdfFamily
+  family: FamilyName
   heading: (level: number, ruled: boolean) => Style
   paragraph: (inList: boolean) => Style
   listRow: Style
@@ -232,7 +418,25 @@ export interface Sheet {
   listBody: Style
 }
 
-export function sheetFor(geometry: PageGeometry, type: DocumentTypography): Sheet {
+export function sheetFor(
+  geometry: PageGeometry,
+  type: DocumentTypography,
+  /**
+   * What `line-height: normal` resolved to IN THE BROWSER, for the face the
+   * editor actually drew -- measured by `useNaturalLineHeight` and sent with
+   * the export.
+   *
+   * WHY IT IS NOT COMPUTED HERE. Word stores line spacing as a multiple of
+   * SINGLE, single is the font's own line box, and that box differs per face:
+   * 1.15 for Times, 1.22 for Calibri, 1.31 for EB Garamond. The editor knows
+   * which face resolved on the machine looking at it; this process does not,
+   * and a PDF that converts 0.98-of-single through a different ratio than the
+   * preview used is a page of text at a visibly different density from the one
+   * on screen. Absent -- an older client, a direct API call -- the drawn
+   * family's own metric is the honest second answer.
+   */
+  naturalLineHeight?: number
+): Sheet {
   const family = familyFor(type.fontFamily)
   const body = type.fontSize ?? EDITOR.body
   const inches = (value: number) => value * POINTS_PER_INCH
@@ -244,7 +448,11 @@ export function sheetFor(geometry: PageGeometry, type: DocumentTypography): Shee
    * browser here, so the serif fallback is the measurement. Unstated leaves
    * react-pdf's own default alone.
    */
-  const lineHeight = cssLineHeight(type.lineHeight, FALLBACK_NATURAL_LINE_HEIGHT) ?? undefined
+  const natural =
+    naturalLineHeight && Number.isFinite(naturalLineHeight) && naturalLineHeight > 0.5 && naturalLineHeight < 4
+      ? naturalLineHeight
+      : naturalLineHeightOf(family)
+  const lineHeight = cssLineHeight(type.lineHeight, natural) ?? undefined
 
   const headingSize = (level: number) => {
     if (level === 1) return type.titleSize ?? body * EDITOR.titleScale
@@ -258,7 +466,7 @@ export function sheetFor(geometry: PageGeometry, type: DocumentTypography): Shee
       paddingRight: inches(geometry.margin.right),
       paddingBottom: inches(geometry.margin.bottom),
       paddingLeft: inches(geometry.margin.left),
-      fontFamily: faceFor(false, false, family),
+      ...faceFor(false, false, family),
       fontSize: body,
       color: INK,
       ...(lineHeight ? { lineHeight } : {}),
@@ -266,7 +474,7 @@ export function sheetFor(geometry: PageGeometry, type: DocumentTypography): Shee
     family,
     heading: (level, ruled) => ({
       fontSize: headingSize(level),
-      fontFamily: faceFor(true, false, family),
+      ...faceFor(true, false, family),
       // `h1` HAS NO SPACE ABOVE IT even when the document states heading
       // spacing, because the editor's rule is `margin-block: 0 var(...)` for
       // the title and `var(--doc-h-before, 1rem) 0 var(...)` for a section.
@@ -323,15 +531,36 @@ function lineHeightOf(node: Node): number | undefined {
   return undefined
 }
 
-/** The text runs of a block, each as its own styled <Text>. */
+/**
+ * The text runs of a block, each as its own styled <Text>.
+ *
+ * A `hardBreak` IS A LINE OF THE DOCUMENT, and dropping it was this file's
+ * quietest bug (Gabe, 2026-09-17: "spacing ... is not rendering the
+ * original"). Everything that was not a text node was discarded here, and
+ * shift+enter is how every two-line block in this app is built: the sender
+ * block at the top of all five cover letters, and EVERY entry
+ * `templatePersonalization` generates from a LinkedIn profile -- job title
+ * over employer, degree over school. Twenty-four of them across the templates
+ * alone. So a PDF quietly ran each pair together on one line: one line of
+ * spacing lost per entry, and two facts welded into a sentence that was never
+ * written. `docxExport` and `latexExport` have both carried it since they were
+ * written; this is the third exporter to be taught the same thing.
+ *
+ * A NEWLINE, NOT A SECOND <Text>. react-pdf breaks a line inside a `<Text>` on
+ * `\n`, which keeps the break INSIDE the paragraph -- so the two lines share
+ * the block's leading and its spacing, exactly as they do in the editor, and
+ * the break cannot be separated from the run it follows.
+ */
 function inlines(node: Node, keyPrefix: string, sheet: Sheet, baseBold = false): ReactElement[] {
   return (node.content ?? []).flatMap((child, index) => {
+    const key = `${keyPrefix}-t${index}`
+    if (child?.type === 'hardBreak') return [h(Text, { key }, '\n')]
     if (child?.type !== 'text' || typeof child.text !== 'string') return []
     return [
       h(
         Text,
         {
-          key: `${keyPrefix}-t${index}`,
+          key,
           style: styleForMarks(child.marks, baseBold, sheet.family),
         },
         child.text
@@ -425,14 +654,23 @@ function block(node: Node, key: string, sheet: Sheet, inList = false): ReactElem
  * has to read binary output to find out whether bold survived is a test nobody
  * writes twice.
  */
-export function buildDocument(content: unknown, title: string): ReactElement<DocumentProps> {
+export function buildDocument(
+  content: unknown,
+  title: string,
+  naturalLineHeight?: number
+): ReactElement<DocumentProps> {
+  // BEFORE ANYTHING RESOLVES A FAMILY. Registration is what decides whether
+  // Garamond is available at all, and `familyFor` skips a family whose files
+  // did not load -- so a document asking for one would otherwise be answered
+  // before the answer is known.
+  registerFonts()
   const root = (content ?? {}) as Node
   // THE PAGE THE DOCUMENT CARRIES, not a fixed Letter at 0.8in. A CV imported
   // at 0.35in margins and exported at 0.8in wraps every paragraph earlier and
   // grows by several lines: the file a recruiter opens is not the file that
   // was uploaded. Same read as the .docx and .tex exports.
   const geometry = normalizeGeometry(root.attrs?.pageGeometry)
-  const sheet = sheetFor(geometry, normalizeTypography(root.attrs?.documentTypography))
+  const sheet = sheetFor(geometry, normalizeTypography(root.attrs?.documentTypography), naturalLineHeight)
 
   const blocks = (root.content ?? [])
     .map((node, index) => block(node, `b${index}`, sheet))
@@ -452,7 +690,11 @@ export function buildDocument(content: unknown, title: string): ReactElement<Doc
   )
 }
 
-export async function buildPdf(content: unknown, title: string): Promise<Uint8Array> {
-  const buffer = await renderToBuffer(buildDocument(content, title))
+export async function buildPdf(
+  content: unknown,
+  title: string,
+  naturalLineHeight?: number
+): Promise<Uint8Array> {
+  const buffer = await renderToBuffer(buildDocument(content, title, naturalLineHeight))
   return new Uint8Array(buffer)
 }

@@ -666,7 +666,18 @@ export function WordResumeEditor({
   // score, since it looks current.
   // PDF and .docx. `saveDraft` is passed in rather than reached for: see
   // useResumeExport on why that dependency belongs in the signature.
-  const exportState = useResumeExport({ editor, title, saveDraft, authedFetch })
+  const exportState = useResumeExport({
+    editor,
+    title,
+    saveDraft,
+    authedFetch,
+    // WHAT THE SHEET IS ACTUALLY SET IN. `line-height: normal` is a property
+    // of the face the BROWSER resolved -- Garamond where it is installed, the
+    // fallback serif where it is not -- and the PDF has no browser to measure
+    // it in. Sending it is what keeps the exported line spacing at the density
+    // of the preview instead of the density of whatever face the server drew.
+    naturalLineHeight,
+  })
 
   /** Read every render, not memoised -- see the note above this block. */
   const cvText = editor?.getText() ?? ''
