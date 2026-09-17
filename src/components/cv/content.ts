@@ -15,13 +15,40 @@ import type { ResumeContent } from '@/services/resumeService'
  */
 
 
+/**
+ * The starter CV, written in TEMPLATE TOKENS rather than literal prompts.
+ *
+ * THE BUG THIS FIXES (Gabe, 2026-09-17: "creating new CV and cover letter from
+ * scratch, required credentials fetched from LinkedIn is missing"). Choosing a
+ * template ran the document through `personalizeTemplate`, which fills
+ * `{{name}}`, `{{email}}` and the rest from the stored LinkedIn profile and
+ * regenerates the Experience, Projects and Skills sections from it. Starting
+ * from scratch did neither -- not because the call was missing, but because
+ * there was nothing here for it to find: this document said the literal words
+ * "Your name" and "[email] · [phone] · [city]". Somebody who had connected a
+ * profile got specimen text anyway, and had to retype what the app already
+ * knew.
+ *
+ * THE FALLBACKS ARE THE OLD TEXT, EXACTLY. A token without a profile renders
+ * its fallback, so a user with nothing connected gets character-for-character
+ * the document this constant has always produced.
+ *
+ * ANYTHING THAT SHOWS THIS TO A PERSON MUST PERSONALISE IT FIRST -- with
+ * `EMPTY_PROFILE` if it has no profile to hand. `{{` must never reach a
+ * document; see `services/templatePersonalization`.
+ *
+ * The headings are unchanged, and three of them are load-bearing now:
+ * `expandSections` matches Experience, Projects and Skills by name, so a
+ * from-scratch CV fills those in too. There is still no Education heading --
+ * the skeleton's shape is a separate decision from whose details go in it.
+ */
 export const DEFAULT_WORD_CONTENT: JSONContent = {
   type: 'doc',
   content: [
-    { type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text: 'Your name' }] },
-    { type: 'paragraph', content: [{ type: 'text', text: '[email] · [phone] · [city] · [portfolio or GitHub]' }] },
+    { type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text: '{{name|Your name}}' }] },
+    { type: 'paragraph', content: [{ type: 'text', text: '{{email|[email]}} · {{phone|[phone]}} · {{location|[city]}} · {{website|[portfolio or GitHub]}}' }] },
     { type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: 'Summary' }] },
-    { type: 'paragraph', content: [{ type: 'text', text: '[Two sentences: what you do, and the thing you are best at. Write it last.]' }] },
+    { type: 'paragraph', content: [{ type: 'text', text: '{{summary|[Two sentences: what you do, and the thing you are best at. Write it last.]}}' }] },
     { type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: 'Experience' }] },
     { type: 'paragraph', content: [{ type: 'text', text: '[Role] · [Company] · [Month Year – Month Year]' }] },
     { type: 'bulletList', content: [

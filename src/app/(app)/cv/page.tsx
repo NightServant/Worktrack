@@ -296,6 +296,19 @@ function CvRoute() {
       <WordResumeEditor
         key={draft.id}
         draft={draft}
+        /*
+          WHAT KIND OF DOCUMENT THIS IS, AND THE ONLY PLACE THAT KNOWS.
+          `WordResumeEditor` has branched on `kind` since cover letters shipped
+          -- a different tab list, no tailoring rail, `useCvTailoring` never
+          called, the grammar pane reviewing a letter instead of scoring a CV --
+          and its own docblock says "/cv passes `draft.mode` once the documents
+          screen can create a letter". The documents screen has been able to
+          create one since `useCreateDocument` landed; this line is what never
+          followed, so the prop sat on its `'word'` default and EVERY cover
+          letter opened as the CV editor (Gabe, 2026-09-17: "word document
+          editor for Cover Letter still reflects the CV version").
+        */
+        kind={draft.mode}
         // The tailoring rail's application picker. Read here rather than in
         // the editor, so the editors stay renderable without a QueryClient.
         jobs={jobs}
@@ -324,7 +337,7 @@ function CvRoute() {
         onOpenChange={(open) => {
           if (!open) setPendingDeleteId(null)
         }}
-        title="delete this CV?"
+        title={draft.mode === 'cover_letter' ? 'delete this cover letter?' : 'delete this CV?'}
         body="This cannot be undone."
         confirmLabel="delete"
         destructive

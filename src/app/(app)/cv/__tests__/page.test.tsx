@@ -208,6 +208,28 @@ describe('/cv?draft=<id> opens the right editor', () => {
     expect((screen.getByLabelText(/cv title/i) as HTMLInputElement).value).toBe('Backend CV')
   })
 
+  /**
+   * THE WIRING, WHICH IS THE PART THAT WAS MISSING (Gabe, 2026-09-17: "word
+   * document editor for Cover Letter still reflects the CV version").
+   *
+   * `coverLetterEditor.test.tsx` proves the editor behaves as a letter when it
+   * is TOLD it is one, and every assertion in it passed for months while every
+   * real cover letter opened as a CV -- because this route never passed
+   * `kind`, and the prop's default is `'word'`. A component test cannot catch
+   * that; the omission is at the call site. This is the call site.
+   */
+  it('opens a cover letter AS a cover letter, not as the CV editor', () => {
+    params('cv-2')
+    resolved(wordDraft({ id: 'cv-2', title: 'Initech letter', mode: 'cover_letter' }))
+    render(<Page />)
+
+    const tabs = screen.getAllByRole('tab').map((tab) => tab.textContent?.toLowerCase() ?? '')
+    expect(tabs.some((name) => name.includes('letter check'))).toBe(true)
+    expect(tabs.some((name) => name.includes('tailor'))).toBe(false)
+    // And the rewrite controls a letter is never scored by are absent with it.
+    expect(screen.queryByRole('button', { name: /tailor this/i })).toBeNull()
+  })
+
 })
 
 describe('the editor still saves', () => {

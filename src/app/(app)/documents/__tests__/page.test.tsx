@@ -188,6 +188,57 @@ describe('Documents route wrapper', () => {
     expect(written).not.toContain('{{')
   })
 
+  it('writes the user’s own details into a document started FROM SCRATCH too', async () => {
+    /*
+      THE HALF THAT WAS MISSED (Gabe, 2026-09-17: "creating new CV and cover
+      letter from scratch, required credentials fetched from LinkedIn is
+      missing"). Picking a template personalised; starting from scratch wrote
+      a starter that said the literal words "Your name" and "[email]", so
+      somebody who had connected a profile still had to type it all in. Both
+      starters carry tokens now, and both go through the same call.
+    */
+    useResumesMock.mockReturnValue({ data: [], isLoading: false, error: null })
+    useUserProfileMock.mockReturnValue({
+      data: {
+        profile: { ...EMPTY_PROFILE, name: 'Gabe Cervantes', email: 'gabe@example.com' },
+        fetchedAt: null,
+      },
+    })
+    const user = userEvent.setup()
+    render(<Page />)
+
+    await user.click(screen.getByRole('button', { name: /new document/i }))
+    await user.click(screen.getByRole('button', { name: /curriculum vitae/i }))
+
+    const written = JSON.stringify(createMutate.mock.calls[0][0].content)
+    expect(written).toContain('Gabe Cervantes')
+    expect(written).toContain('gabe@example.com')
+    expect(written).not.toContain('{{')
+    expect(written).not.toContain('Your name')
+  })
+
+  it('gives a blank cover letter the same sender block', async () => {
+    // A letter's body stays empty on purpose -- the templates are one click
+    // away -- but who it is from is not scaffolding, it is the profile.
+    useResumesMock.mockReturnValue({ data: [], isLoading: false, error: null })
+    useUserProfileMock.mockReturnValue({
+      data: {
+        profile: { ...EMPTY_PROFILE, name: 'Gabe Cervantes', email: 'gabe@example.com' },
+        fetchedAt: null,
+      },
+    })
+    const user = userEvent.setup()
+    render(<Page />)
+
+    await user.click(screen.getByRole('button', { name: /new document/i }))
+    await user.click(screen.getByRole('button', { name: /cover letter/i }))
+
+    expect(createMutate.mock.calls[0][0]).toMatchObject({ mode: 'cover_letter' })
+    const written = JSON.stringify(createMutate.mock.calls[0][0].content)
+    expect(written).toContain('Gabe Cervantes')
+    expect(written).not.toContain('{{')
+  })
+
   it('falls back to the template’s own wording when no profile is connected', async () => {
     // `personalizeTemplate` is called unconditionally BECAUSE every token
     // carries its own readable default -- skipping the call to "save" it is

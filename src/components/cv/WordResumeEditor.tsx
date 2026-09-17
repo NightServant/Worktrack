@@ -54,6 +54,8 @@ import { cn } from '@/lib/utils'
 import { useDocumentView } from './documentView'
 import { ResumeVersionHistory } from './ResumeVersionHistory'
 import { DEFAULT_WORD_CONTENT, formatSaveTime, normalizeWordContent } from './content'
+import { personalizeTemplate } from '@/services/templatePersonalization'
+import { EMPTY_PROFILE } from '@/services/profile'
 import { maybeCreateSnapshot } from '@/services/resumeSnapshotService'
 import type { ResumeContent, ResumeDraft, ResumeMode } from '@/services/resumeService'
 
@@ -632,7 +634,19 @@ export function WordResumeEditor({
 
 
   const resetTemplate = () => {
-    editor?.commands.setContent(DEFAULT_WORD_CONTENT)
+    /*
+      PERSONALISED WITH AN EMPTY PROFILE, WHICH IS NOT A SHORTCUT. The starter
+      carries `{{name}}` tokens since 2026-09-17 so that creating a CV from
+      scratch fills in the LinkedIn profile, and nothing may hand a document
+      with `{{` in it to the editor. This component is deliberately renderable
+      with plain props and no QueryClient -- it is why `jobs` is a prop -- so it
+      cannot read the profile to do better, and reaching for `useUserProfile`
+      here would break eight tests that mount it bare. `EMPTY_PROFILE` renders
+      every token's fallback, which is exactly the text this reset produced
+      before the tokens existed. Reset means "back to the starter", and the
+      starter is what it has always been.
+    */
+    editor?.commands.setContent(personalizeTemplate(DEFAULT_WORD_CONTENT, EMPTY_PROFILE))
     markDirty()
     info('Template reset', 'The editor has been reset to the starter template.')
   }

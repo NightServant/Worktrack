@@ -55,22 +55,58 @@ export type Notify = (kind: NoticeKind, title: string, message?: string) => void
 const KIND: Record<ResumeMode, string> = { word: 'CV', cover_letter: 'cover letter' }
 
 /**
- * A blank cover letter is actually blank, where a blank CV is a skeleton.
+ * A blank cover letter is blank PROSE over the sender's own block.
  *
  * `DEFAULT_WORD_CONTENT` is a CV's outline -- Summary, Experience, Projects,
- * Skills, each with a bracketed prompt -- and it earns that, because a CV is a
- * document with a required shape most people cannot recall. A letter has no
- * sections to scaffold; it is prose. Reusing the CV skeleton would hand
- * somebody a "Skills" heading to delete, and inventing a specimen letter here
- * would duplicate the five in `COVER_LETTER_TEMPLATES`, which is where a
- * letter with a shape belongs. So blank means blank, and the templates are one
- * click away on the same screen.
+ * Skills, each with a prompt -- and it earns that, because a CV is a document
+ * with a required shape most people cannot recall. A letter has no sections to
+ * scaffold. Reusing the CV skeleton would hand somebody a "Skills" heading to
+ * delete, and inventing a specimen letter here would duplicate the five in
+ * `COVER_LETTER_TEMPLATES`, which is where a letter with a shape belongs. The
+ * body is still empty, and the templates are one click away on the same
+ * screen.
  *
- * One empty paragraph rather than no content at all: tiptap normalises an
- * empty doc anyway, and an explicit paragraph is a document with a cursor in
- * it rather than one the editor has to repair on open.
+ * WHAT CHANGED IS THE HEADER (Gabe, 2026-09-17: "creating new CV and cover
+ * letter from scratch, required credentials fetched from LinkedIn is
+ * missing"). Who the letter is from is not scaffolding and it is not prose --
+ * it is the four fields this app already stores, and every letter needs them
+ * at the top. The block is the one the five templates use, token for token, so
+ * a blank letter and a template letter open with the same sender.
+ *
+ * The trailing empty paragraph is where the writing starts: tiptap normalises
+ * an empty doc anyway, and an explicit paragraph is a document with a cursor
+ * in it rather than one the editor has to repair on open.
  */
-const BLANK_LETTER: ResumeContent = { type: 'doc', content: [{ type: 'paragraph' }] }
+const BLANK_LETTER: ResumeContent = {
+  type: 'doc',
+  content: [
+    {
+      type: 'paragraph',
+      content: [
+        { type: 'text', text: '{{name|Your Name}}', marks: [{ type: 'bold' }] },
+        { type: 'hardBreak' },
+        {
+          type: 'text',
+          text: '{{email|email@example.com}} | {{phone|+63 900 000 0000}} | {{linkedin|linkedin.com/in/you}}',
+        },
+      ],
+    },
+    { type: 'paragraph', content: [{ type: 'text', text: '{{today}}' }] },
+    { type: 'paragraph' },
+  ],
+}
+
+/**
+ * What the toast says about the profile, on every path that reads one.
+ *
+ * Somebody who just created a document and got specimen text has a reason to
+ * hear that connecting a profile would have filled it in; somebody who has
+ * connected one has a reason to know the document is already theirs before
+ * they read it. Shared between the two paths that personalise, because the two
+ * having drifted apart is how one of them ends up claiming the wrong thing.
+ */
+const FILLED = 'Filled in from your LinkedIn profile.'
+const UNFILLED = 'Connect a LinkedIn profile in settings and the next one fills itself in.'
 
 export interface CreateDocumentOptions {
   notify: Notify
@@ -107,12 +143,26 @@ export function useCreateDocument({ notify, replace = false }: CreateDocumentOpt
   return {
     creating: createResume.isPending,
 
+    /**
+     * FROM SCRATCH IS PERSONALISED TOO, and it was not until 2026-09-17.
+     *
+     * The starter documents are templates like any other now -- they carry
+     * `{{name}}`, `{{email}}`, `{{location}}` and the rest -- so the same call
+     * that fills a chosen template fills these, and the Experience, Projects
+     * and Skills headings in the CV skeleton get the profile's own entries.
+     * Writing them raw would have shipped literal `{{` markers, which is why
+     * this is not optional: `EMPTY_PROFILE` when nothing is stored, never a
+     * skipped call.
+     */
     createBlank: (mode: ResumeMode) =>
       write(
         mode,
         `Untitled ${KIND[mode]}`,
-        mode === 'cover_letter' ? BLANK_LETTER : DEFAULT_WORD_CONTENT,
-        'Your draft is ready.'
+        personalizeTemplate(
+          mode === 'cover_letter' ? BLANK_LETTER : DEFAULT_WORD_CONTENT,
+          profile ?? EMPTY_PROFILE
+        ),
+        profile ? FILLED : UNFILLED
       ),
 
     /**
@@ -140,9 +190,7 @@ export function useCreateDocument({ notify, replace = false }: CreateDocumentOpt
         mode,
         `${template.name} ${KIND[mode]}`,
         personalizeTemplate(template.content, profile ?? EMPTY_PROFILE),
-        profile
-          ? 'Filled in from your LinkedIn profile.'
-          : 'Connect a LinkedIn profile in settings and the next one fills itself in.'
+        profile ? FILLED : UNFILLED
       ),
 
     /**
