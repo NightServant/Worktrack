@@ -135,7 +135,7 @@ export function LandingNavbar({ overHero }: LandingNavbarProps) {
         // `px-gutter` at every width, with no `md:px-16` step: the gutter is
         // the footer's, and the container below is what actually holds the
         // content to 1200px once the viewport is wider than that.
-        'fixed inset-x-0 top-0 z-50 flex h-[60px] items-center px-gutter',
+        'fixed inset-x-0 top-0 z-[60] flex h-[60px] items-center px-gutter',
         'md:h-20',
         // Colour only, and only these three properties. A bar that resizes or
         // slides on scroll is the pattern this design system's restraint rules
@@ -143,42 +143,43 @@ export function LandingNavbar({ overHero }: LandingNavbarProps) {
         'transition-[background-color,border-color,color] duration-150',
         'motion-reduce:transition-none',
         /*
-          IT BLURS WHAT PASSES BEHIND IT (Gabe, 2026-09-15: "implement backdrop
-          blur or increase the z-index of the top navigation bar to avoid
-          overlapping with other visual elements").
-          THE Z-INDEX HALF WAS ALREADY DONE and is not what was wrong. Measured
-          in the browser: this bar is `z-50` and every other piece of landing
-          chrome -- the rail, the section index, the sticky mobile CTA, the
-          mobile menu panel -- is `z-40`, so nothing on the page paints over
-          it. The overlap being reported is not a stacking failure, it is that
-          the bar was TRANSPARENT over the hero and OPAQUE-BUT-HARD-EDGED
-          everywhere else: over the hero a headline scrolls straight through
-          the nav links with only a gradient scrim between them, and off it a
-          section's top edge is guillotined by a flat white band.
-          So blur is the fix and the two branches want different amounts of it.
-          OVER THE HERO: `bg-ink-950/30` plus a blur, which is EXACTLY what
-          SectionRail already does for the same problem in the opposite margin
-          -- its docblock is the argument, that white-at-45% marks on a bright
-          moving frame drift in and out of legibility as the clip plays, which
-          is worse than being consistently wrong because it looks like a
-          flicker. The bar has the same problem in the same footage. The scrim
-          gradient below stays: it handles the top of the bar, this handles the
-          whole plate.
-          OFF THE HERO: `bg-bg-canvas/80` plus a blur, so the content under the
-          bar softens as it passes rather than being cut off by an opaque edge.
-          SUPPORTS-GUARDED, and that is not decoration. Without the guard a
-          browser with no `backdrop-filter` gets a bar that is 80% opaque and
-          NOT blurred -- text sliding through legible text, which is strictly
-          worse than the flat bar this replaces. The translucency is therefore
-          bought only where the blur that justifies it is available; everywhere
-          else the bar stays opaque.
+          THE BLUR IS GONE, AND THE OTHER HALF OF THE ORIGINAL REQUEST IS TAKEN
+          INSTEAD (Gabe, 2026-09-17: "remove the backdrop-blur of the navbar but
+          increase the z-index to avoid element overlapping").
+          His 2026-09-15 note offered two remedies -- "implement backdrop blur
+          OR increase the z-index" -- and blur was the branch taken then. This
+          is the same instruction choosing the other branch, so the blur, the
+          translucency it paid for and the `supports-` guards that protected it
+          all come out together. Half-removing it is the one outcome nobody
+          wants: an 80% bar with no blur is sharp text sliding under sharp text,
+          which the previous comment here called strictly worse than a flat bar
+          and was right about.
+          OFF THE HERO IS THEREFORE FULLY OPAQUE. `bg-bg-canvas`, no `/80`. The
+          softened edge the blur bought is not available any more, so the bar
+          goes back to being a plate that content passes behind.
+          OVER THE HERO KEEPS `bg-ink-950/30` and leans on the gradient scrim
+          below (`from-ink-950/55`), which was always the thing carrying the
+          links -- the blur was the plate, the scrim is the shadow. Worth
+          watching: SectionRail's docblock argues that light marks at low
+          opacity over bright moving footage drift in and out of legibility as
+          the clip plays. The hero footage is now tinted to this same
+          `ink-950`, which narrows that gap, but if the links ever flicker
+          against a bright frame the answer is more opacity here, not the blur
+          coming back.
+          THE Z-INDEX WAS ALREADY WINNING, and is raised anyway because it was
+          asked for. Measured in the browser on both 2026-09-15 and 2026-09-17,
+          the second time at six scroll positions: this bar took every probe,
+          and every other piece of landing chrome -- the rail, the section
+          index, the sticky mobile CTA, the mobile menu panel -- is `z-40`.
+          `z-[60]` lifts it clear of the `z-50` shared by the ui/ overlay
+          primitives (dialog, drawer, dropdown, popover). NOTHING ON THIS PAGE
+          MOUNTS ONE, which is the only reason that is safe: a navbar floating
+          above a modal scrim is a worse bug than the one being fixed, so if a
+          dialog ever lands on the landing page this number comes back down.
         */
         overHero
-          ? 'bg-transparent text-ink-50 supports-[backdrop-filter]:bg-ink-950/30 supports-[backdrop-filter]:backdrop-blur-sm'
-          : cn(
-              'border-b border-border-subtle bg-bg-canvas text-text-primary',
-              'supports-[backdrop-filter]:bg-bg-canvas/80 supports-[backdrop-filter]:backdrop-blur-md'
-            )
+          ? 'bg-ink-950/30 text-ink-50'
+          : 'border-b border-border-subtle bg-bg-canvas text-text-primary'
       )}
     >
       {overHero && (

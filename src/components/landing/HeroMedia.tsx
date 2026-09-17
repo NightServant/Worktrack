@@ -87,6 +87,39 @@ export function HeroMedia({ posterSrc, videoSrc, paused = false }: HeroMediaProp
     // here (texture and depth) and leaves orange as the only chroma on the
     // page. It is also why the eyebrow reads at all against it.
     <div aria-hidden className="absolute inset-0 -z-10 overflow-hidden bg-ink-950">
+      {/*
+        THE FOOTAGE WEARS THE UI'S OWN DARK, NOT A NEUTRAL GREY (Gabe,
+        2026-09-17: "Hero background video must have the same color of the top
+        navigation bar").
+
+        `grayscale` alone takes the hue OUT and puts nothing back, so the hero
+        rendered as colourless grey while every dark surface around it --
+        LandingNavbar over the hero is `bg-ink-950/30`, and the page's dark
+        canvas is the same family -- is a slightly blue near-black. Measured on
+        the current clip: the raw frame is sky at rgb(82,124,158), which
+        desaturates to a neutral the eye reads as a DIFFERENT dark from the bar
+        sitting on top of it.
+
+        THIS ADDS NO COLOUR, IT REMOVES ONE. The design system is Swiss with a
+        single orange accent, and the original argument for `grayscale` was that
+        the clip's teal introduced a second colour language. Neutral grey is
+        itself a third dark, so tinting the footage to `ink-950` leaves the page
+        with ONE dark and one accent rather than two darks.
+
+        `mix-blend-color` rather than a filter chain: it takes hue and
+        saturation from this layer and luminosity from what is beneath, which is
+        the definition of "the footage's picture in the UI's colour". A
+        `sepia`/`hue-rotate` stack approximates the same thing by arithmetic
+        nobody can read.
+
+        `grayscale` STAYS on the media as the floor. Anything without blend-mode
+        support gets the colourless hero it had yesterday rather than the raw
+        teal-and-sky clip, which is the failure worth defaulting to.
+
+        The tint is isolated with the media so it cannot reach the scrim below
+        it -- the scrim is token-coloured and must not be blended.
+      */}
+      <div className="relative isolate h-full w-full">
       {wantsVideo ? (
         <video
           ref={videoRef}
@@ -125,6 +158,8 @@ export function HeroMedia({ posterSrc, videoSrc, paused = false }: HeroMediaProp
           alt=""
         />
       )}
+        <div className="absolute inset-0 bg-ink-950 mix-blend-color" />
+      </div>
       {/*
         The scrim, transcribed from the frame: a left-to-right gradient from
         ink-950/90 through 0.72 at 45% to 0.3. It is what makes the hero

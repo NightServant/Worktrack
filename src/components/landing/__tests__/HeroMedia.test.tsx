@@ -89,4 +89,26 @@ describe('HeroMedia pausing', () => {
     play.mockRestore()
     pause.mockRestore()
   })
+
+  it('wears the UI\'s own dark rather than a neutral grey', () => {
+    // Gabe, 2026-09-17: "Hero background video must have the same color of the
+    // top navigation bar." `grayscale` takes the hue out and puts nothing back,
+    // so the hero rendered colourless while LandingNavbar over it is
+    // `bg-ink-950/30` -- two different darks, one of them neutral.
+    //
+    // BOTH HALVES ARE ASSERTED because they answer different failures.
+    // Deleting the tint returns the neutral grey; deleting `grayscale` removes
+    // the floor a browser without blend-mode support falls back to, and that
+    // one fails INVISIBLY here -- jsdom composites nothing, so only the classes
+    // can testify.
+    const { container } = render(<HeroMedia posterSrc="/hero-poster.jpg" videoSrc="/hero.mp4" />)
+
+    expect(screen.getByTestId('hero-video').className).toContain('grayscale')
+
+    const tint = container.querySelector('.mix-blend-color')
+    expect(tint, 'the footage is tinted to the UI dark').not.toBeNull()
+    expect(tint!.className).toContain('bg-ink-950')
+    // Isolated, so the blend cannot reach the token-coloured scrim below it.
+    expect(tint!.parentElement!.className).toContain('isolate')
+  })
 })
