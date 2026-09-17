@@ -91,7 +91,18 @@ export function PipelineFlow({ transitions }: PipelineFlowProps) {
                 border: '1px solid var(--color-border-subtle)',
                 borderRadius: 4,
                 fontSize: 12,
+                color: 'var(--color-popover-foreground)',
               }}
+              /*
+                `itemStyle` IS THE ONE THAT MATTERS, and it is not decoration
+                (Gabe, 2026-09-17: "dark mode hover tags are not readable").
+                recharts styles each tooltip ROW as `color: entry.color ||
+                '#000'` -- the series colour, which a bar chart has and a
+                Sankey link does not. So "wishlist - applied : 10" was drawn in
+                literal black on the popover: fine on the light canvas this was
+                written against, invisible on the dark one.
+              */
+              itemStyle={{ color: 'var(--color-popover-foreground)' }}
             />
           </Sankey>
         </ResponsiveContainer>
