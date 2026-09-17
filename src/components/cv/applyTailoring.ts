@@ -153,6 +153,50 @@ export function tailoredTitle(originalTitle: string, company?: string | null): s
  * harm the rest of this file exists to prevent, and a condition spelled inline
  * in a handler is one nothing can test.
  */
+/**
+ * Which application a tailored CV was written for, or null if it cannot be
+ * said for certain.
+ *
+ * THE JOB COMES FROM THE LINK. NEVER FROM THE TITLE. That distinction is the
+ * whole of this function, and getting it wrong is a bug that shipped on
+ * 2026-09-17: the route derived the job by finding the first link whose
+ * COMPANY produced the open document's title, which is the collision
+ * `isRetailorOfSameApplication` below already warns about in prose. Two
+ * applications at one employer give two links with the same company, so
+ * `.find()` returned whichever came back first and the rail confidently named
+ * the wrong role.
+ *
+ * A title can only ever narrow to a company -- `tailoredTitle` appends the
+ * employer and nothing else -- so it is usable as a GUARD and not as a finder.
+ * Here it does only the job it can do: prove this document is a tailored copy
+ * rather than a master, which matters because a master CV can be linked to
+ * fifty applications and must never be mistaken for a tailored one.
+ *
+ * WHY "EXACTLY ONE" IS THE RIGHT TEST AND NOT A COMPROMISE. Tailoring writes a
+ * NEW file per application (see `isRetailorOfSameApplication`), so two roles at
+ * the same employer produce two documents -- identically titled, each carrying
+ * its own single link. One link each is the normal, correct shape, and it
+ * resolves both. More than one surviving the title guard means this document
+ * really was sent to several roles at one company, and then nothing here can
+ * say which it was MADE for, so it says nothing: the caller shows the picker,
+ * which is the honest outcome rather than a guess with a 50% error rate.
+ */
+export function tailoredJobIdFor(input: {
+  /** The open document's title. */
+  draftTitle: string
+  /** Applications this document has been linked to. */
+  links: { job_id: string; company: string }[]
+}): string | null {
+  const { draftTitle, links } = input
+  if (!draftTitle) return null
+  // The guard: this document is the tailored copy for that link's employer,
+  // not a master that happens to have been sent there.
+  const tailored = links.filter(
+    (link) => tailoredTitle(draftTitle, link.company) === draftTitle
+  )
+  return tailored.length === 1 ? tailored[0].job_id : null
+}
+
 export function isRetailorOfSameApplication(input: {
   /** The open document, or null when there is not one yet. */
   draftId: string | null

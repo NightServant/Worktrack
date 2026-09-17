@@ -16,7 +16,7 @@ import { DocumentChooser } from '@/components/documents/DocumentChooser'
 import { useCreateDocument } from '@/components/documents/useCreateDocument'
 import type { NoticeKind } from '@/components/documents/DocumentsNotice'
 import { WordResumeEditor } from '@/components/cv/WordResumeEditor'
-import { isRetailorOfSameApplication, tailoredTitle } from '@/components/cv/applyTailoring'
+import { isRetailorOfSameApplication, tailoredJobIdFor } from '@/components/cv/applyTailoring'
 import type { ResumeContent, ResumeMode } from '@/services/resumeService'
 
 const DOCUMENTS = '/documents'
@@ -300,20 +300,19 @@ function CvRoute() {
         // the editor, so the editors stay renderable without a QueryClient.
         jobs={jobs}
         /*
-          WHICH APPLICATION THIS CV WAS TAILORED FOR, or nothing if it is an
-          ordinary CV.
-
-          TITLE-PLUS-LINK, NOT MERELY LINKED, and the distinction is the whole
-          correctness of it: a master CV can be pinned to fifty applications,
-          and "has a link" would call every one of those a tailored copy and
-          hide the picker on the document most in need of it. `tailoredTitle`
-          is idempotent, so re-deriving it here and comparing is the same
-          evidence `isRetailorOfSameApplication` already trusts.
+          WHICH APPLICATION THIS CV WAS TAILORED FOR, from the LINK rather than
+          from the title. The first version of this lived inline here and read
+          the job out of the first link whose company matched the title, which
+          names the wrong role for two applications at one employer. It is a
+          predicate in `applyTailoring` now, beside the one that already
+          documented that exact collision, because a condition spelled inline
+          in a route is one nothing can test.
         */
         tailoredForJobId={
-          (resumeLinks.data ?? []).find(
-            (link) => tailoredTitle(draft.title, link.company) === draft.title
-          )?.job_id
+          tailoredJobIdFor({
+            draftTitle: draft.title,
+            links: resumeLinks.data ?? [],
+          }) ?? undefined
         }
         backHref={DOCUMENTS}
         onDelete={(id) => deleteDraft(id)}

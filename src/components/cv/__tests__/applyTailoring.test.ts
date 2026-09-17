@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { JSONContent } from '@tiptap/core'
-import { applySuggestions, tailoredTitle, isRetailorOfSameApplication } from '../applyTailoring'
+import { applySuggestions, tailoredTitle, isRetailorOfSameApplication, tailoredJobIdFor } from '../applyTailoring'
 import type { TailoringSuggestion } from '@/services/integrations/tailoring'
 
 /**
@@ -113,6 +113,75 @@ describe('tailoredTitle', () => {
  * directions are pinned. See `isRetailorOfSameApplication` for why the links
  * are the only evidence it is allowed to use.
  */
+describe('which application a tailored CV belongs to', () => {
+  const link = (job_id: string, company: string) => ({ job_id, company })
+
+  it('reads the job off the link, not off the company in the title', () => {
+    // THE BUG THIS EXISTS FOR, shipped 2026-09-17 and reported as "Same
+    // companies but different jobs. Link CV to jobs only". Two applications at
+    // one employer give two links carrying the SAME company, so a lookup that
+    // matched on the title's company returned whichever came back first and
+    // the rail named the wrong role half the time.
+    //
+    // Each tailored document has its own single link, because tailoring writes
+    // a new file per application -- so each resolves to its own job even
+    // though the two titles are identical strings.
+    expect(
+      tailoredJobIdFor({
+        draftTitle: 'Gabe - CV (ATS) — Initech',
+        links: [link('job-frontend', 'Initech')],
+      })
+    ).toBe('job-frontend')
+
+    expect(
+      tailoredJobIdFor({
+        draftTitle: 'Gabe - CV (ATS) — Initech',
+        links: [link('job-backend', 'Initech')],
+      })
+    ).toBe('job-backend')
+  })
+
+  it('says nothing when one document really is linked to two roles at one employer', () => {
+    // Nothing can say which of the two it was MADE for, so it does not guess.
+    // The caller shows the picker, which is a choice the reader can correct --
+    // unlike a confident wrong role, which they cannot even see is wrong.
+    expect(
+      tailoredJobIdFor({
+        draftTitle: 'Gabe - CV (ATS) — Initech',
+        links: [link('job-frontend', 'Initech'), link('job-backend', 'Initech')],
+      })
+    ).toBeNull()
+  })
+
+  it('never claims a master CV, however many applications it is pinned to', () => {
+    // The master is the document every tailored copy is made from, and it can
+    // carry fifty links. Its title does not end in an employer, so no link
+    // survives the guard.
+    expect(
+      tailoredJobIdFor({
+        draftTitle: 'Gabe - CV (ATS)',
+        links: [link('a', 'Initech'), link('b', 'Globex'), link('c', 'Hooli')],
+      })
+    ).toBeNull()
+  })
+
+  it('ignores links to other employers on a tailored CV', () => {
+    // A tailored copy can still be sent elsewhere. Only the employer it is
+    // NAMED for counts.
+    expect(
+      tailoredJobIdFor({
+        draftTitle: 'Gabe - CV (ATS) — Initech',
+        links: [link('other', 'Globex'), link('mine', 'Initech')],
+      })
+    ).toBe('mine')
+  })
+
+  it('has nothing to say about an untitled or unlinked document', () => {
+    expect(tailoredJobIdFor({ draftTitle: '', links: [link('a', 'Initech')] })).toBeNull()
+    expect(tailoredJobIdFor({ draftTitle: 'CV — Initech', links: [] })).toBeNull()
+  })
+})
+
 describe('choosing between a new file and a rewrite', () => {
   const links = [{ job_id: 'job-initech' }, { job_id: 'job-globex' }]
   const TAILORED = 'Gabe - CV (ATS) — Initech'
