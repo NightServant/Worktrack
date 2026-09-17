@@ -168,6 +168,43 @@ function MetricRow({ metric, ran }: { metric: WritingMetric; ran: boolean }) {
   )
 }
 
+/**
+ * THE CHECK RUNS ON ITS OWN WHEN THIS PANE OPENS (Gabe, 2026-09-17: run the
+ * spelling and grammar check automatically instead of waiting for a press).
+ *
+ * HERE RATHER THAN IN `useProofread`, and that placement is the whole decision.
+ * The hook is mounted by the editor for the life of the document, so an effect
+ * up there would check every CV somebody opened whether or not they ever
+ * looked at the grammar pane -- spending a per-IP allowance on an answer
+ * nobody asked for. This component is mounted only when the grammar pane is
+ * the one being shown, so "the pane opened" and "check the document" are the
+ * same event.
+ *
+ * KEYED ON `run`'s IDENTITY, NOT A MOUNT-ONCE REF, and the difference is
+ * `immediatelyRender: false`. `useEditor` returns null on the first render and
+ * the real editor on a later one, so a ref set at mount would fire against no
+ * editor, `run` would return early and the document would never be checked at
+ * all. `run` is `useCallback([editor])`, so its identity changes exactly when
+ * the editor arrives or is replaced -- which is the event worth re-running on.
+ *
+ * WHAT DELIBERATELY DOES NOT RE-RUN IT: applying a correction. That clears
+ * `ran` and leaves the button reading "re-check", and it does not touch the
+ * editor instance, so the effect stays put. Chaining a check onto every
+ * accepted fix would be one request per suggestion on a document that may
+ * carry a dozen, which is the per-IP limit spent on a list somebody is halfway
+ * through. An edited document is a cache miss by definition, so the re-check
+ * is a real request and is worth a press.
+ *
+ * AN EMPTY DOCUMENT COSTS NOTHING: `chunkText('')` returns no chunks, so `run`
+ * resolves without a request. There is no separate "has text" guard because
+ * there is nothing for one to prevent.
+ */
+function useAutomaticCheck(run: ProofreadState['run']) {
+  React.useEffect(() => {
+    void run()
+  }, [run])
+}
+
 function RunButton({ state }: { state: ProofreadState }) {
   return (
     <Button
@@ -309,6 +346,8 @@ export function GrammarCheckPane({
   thesaurus?: ThesaurusState
 }) {
   const { score } = state
+
+  useAutomaticCheck(state.run)
 
   // COMPUTED FROM `state.text`, which is the text the current findings came
   // back against and is empty until a check has run. Reading the editor

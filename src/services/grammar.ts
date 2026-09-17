@@ -291,3 +291,104 @@ export function applyIssue(text: string, issue: GrammarIssue, replacement: strin
   }
   return text.slice(0, issue.start) + replacement + text.slice(issue.end)
 }
+
+/**
+ * ONE FINISHED CHECK PER DOCUMENT, KEYED ON THE TEXT IT RAN AGAINST.
+ *
+ * THE RATE LIMIT IS WHY THIS EXISTS, AND IT IS NOT A SPEED TWEAK. The public
+ * endpoint is keyless and limited PER IP -- that is the whole reason this is
+ * called from the browser rather than through a server proxy, as the docblock
+ * at the top of this file records -- so the allowance being spent is the
+ * reader's own. Since 2026-09-17 the check runs on its own when the grammar
+ * pane opens rather than on a press (Gabe: run it automatically), and without
+ * a cache the same unedited CV would be sent again on every open, every
+ * remount and every trip back to the tab. Running out does not announce
+ * itself: the request simply fails and the pane says the checker could not be
+ * reached, which reads as the feature being broken.
+ *
+ * THE TEXT IS THE KEY, STORED WHOLE RATHER THAN HASHED. An unedited document
+ * hits and an edited one misses, which is exactly the rule wanted. A 32-bit
+ * hash was the first instinct and it is the wrong trade here: a collision
+ * hands back findings computed against a DIFFERENT document, and those offsets
+ * underline whatever words happen to sit at those indices. A CV is a few KB of
+ * text against a findings payload that is bigger, so the exact key is the
+ * cheaper half of what gets stored anyway.
+ *
+ * FIVE DOCUMENTS, NEWEST LAST. A single entry was the first shape and it
+ * thrashes on the thing people actually do -- comparing two CVs -- where every
+ * switch back is a fresh request and the cache has bought nothing.
+ *
+ * QUOTA IS WHY THE WRITE RETRIES. `setItem` throws `QuotaExceededError`
+ * synchronously when the payload does not fit, and the payload scales with the
+ * document: a 50,000-word CV is several hundred KB of text and findings, and
+ * five of those against a 5MB origin quota shared with the rest of the app is
+ * no longer a rounding error. So a failed write is retried with ONLY the new
+ * entry, evicting the other four; if even that does not fit, nothing is stored
+ * and that document simply re-checks. A cache that cannot be written is a
+ * missing optimisation, never a broken feature.
+ *
+ * EVERY READ AND WRITE IS WRAPPED, because a private window and blocked site
+ * data THROW on access rather than returning null. Same rule and same key
+ * prefix as `worktrack:document-tab` in `WordResumeEditor`.
+ */
+export const PROOFREAD_CACHE_KEY = 'worktrack:proofread-cache'
+
+/** How many documents' findings are kept. See the docblock. */
+const CACHED_DOCUMENTS = 5
+
+interface CachedCheck {
+  text: string
+  issues: GrammarIssue[]
+}
+
+function readCache(): CachedCheck[] {
+  try {
+    const raw = window.localStorage.getItem(PROOFREAD_CACHE_KEY)
+    if (!raw) return []
+    const parsed: unknown = JSON.parse(raw)
+    // ANYTHING UNRECOGNISED IS DISCARDED, NOT TRUSTED. This value outlives the
+    // code that wrote it and is editable by anyone with devtools open; a
+    // malformed entry taken as a hit would render findings that index nothing.
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter(
+      (entry): entry is CachedCheck =>
+        !!entry &&
+        typeof entry === 'object' &&
+        typeof (entry as CachedCheck).text === 'string' &&
+        Array.isArray((entry as CachedCheck).issues)
+    )
+  } catch {
+    return []
+  }
+}
+
+/** True when the entries landed; false is a quota refusal, never a throw. */
+function writeCache(entries: CachedCheck[]): boolean {
+  try {
+    window.localStorage.setItem(PROOFREAD_CACHE_KEY, JSON.stringify(entries))
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * The findings already known for exactly this text, or `null` to go and ask.
+ *
+ * `null` RATHER THAN `[]` FOR A MISS, because an empty array is a real answer
+ * -- a document the checker found nothing wrong with -- and conflating the two
+ * would re-check every clean CV forever.
+ */
+export function cachedIssues(text: string): GrammarIssue[] | null {
+  const hit = readCache().find((entry) => entry.text === text)
+  return hit ? hit.issues : null
+}
+
+/** Remember one completed check. Storage being unavailable is not an error. */
+export function cacheIssues(text: string, issues: GrammarIssue[]): void {
+  const entry: CachedCheck = { text, issues }
+  const next = [...readCache().filter((other) => other.text !== text), entry].slice(
+    -CACHED_DOCUMENTS
+  )
+  if (!writeCache(next)) writeCache([entry])
+}

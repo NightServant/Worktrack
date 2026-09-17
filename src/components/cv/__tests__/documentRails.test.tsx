@@ -75,21 +75,29 @@ describe('the desktop rails', () => {
     expect(railGrid().className).toContain('lg:grid-cols-[380px_minmax(0,1fr)_500px]')
   })
 
-  it('starts both rails closed on a laptop, and open only on a wide screen', () => {
-    // 1700 is the wide tier this file already has -- above it the rails widen
-    // to 380/500 because there is room to spare, which is the same statement as
-    // "both are comfortable here". It was 1280, which opened both on a 1440
-    // laptop and left the document the smallest of three panels.
+  it('starts both rails open on a laptop too, not only on a wide screen', () => {
+    // Gabe, 2026-09-17: open the left and right rails by default. `railsOpen`
+    // has read `true` since the drawer was written, and it was NOT the real
+    // default: the measurement effect overwrote it once, on mount, with
+    // `width >= 1700` -- so every laptop narrower than that opened shut and
+    // the initialiser described a screen almost nobody has.
+    //
+    // 1024 IS THE POINT OF THIS TEST rather than a round number. It is the
+    // narrowest width this chrome renders at at all (`useBelowDesktop` hands
+    // anything below `lg` to the compact chrome), so if the old measured
+    // default survived anywhere it survives here.
     stubWorkspaceWidth(1024)
     const narrow = renderChrome()
-    expect(expand()).toHaveAttribute('aria-expanded', 'false')
-    // 380 + 500 of a 1024px window would leave the page nothing at all.
-    expect(railGrid().className).toContain('lg:grid-cols-[44px_minmax(0,1fr)]')
+    expect(collapse()).toHaveAttribute('aria-expanded', 'true')
+    // Open, in the TWO-column arrangement -- which is why the arithmetic that
+    // justified shutting them no longer applies: both panels share one 320px
+    // rail, so a 1440 laptop keeps 1120 for the page rather than 720.
+    expect(railGrid().className).toContain('lg:grid-cols-[320px_minmax(0,1fr)]')
     narrow.unmount()
 
     stubWorkspaceWidth(1700)
     renderChrome()
-    expect(collapse()).toBeInTheDocument()
+    expect(collapse()).toHaveAttribute('aria-expanded', 'true')
     expect(railGrid().className).toContain('lg:grid-cols-[380px_minmax(0,1fr)_500px]')
   })
 
@@ -173,10 +181,17 @@ describe('the desktop rails', () => {
     expect(document.getElementById('document-right-rail')).not.toBeNull()
   })
 
-  it('lets a resize correct an unmeasured first paint, once', () => {
+  it('lets a resize correct an unmeasured first paint, without reopening a shut drawer', async () => {
     // A hidden pane or a background tab lays nothing out, so the direct
     // measurement reads 0 and an observer has to carry the answer later. Zero
     // must not itself be read as "narrow".
+    //
+    // WHAT THE OBSERVER MAY DECIDE IS THE ARRANGEMENT, NEVER THE INTENT. It
+    // used to set the open/shut default too, behind a `defaulted` ref that
+    // fired it once; that default is gone (2026-09-17) and the ref with it, so
+    // the invariant is now the stronger one: a drawer somebody shut stays shut
+    // through any number of resizes.
+    const user = userEvent.setup()
     let deliver: (() => void) | undefined
     const observe = vi.fn()
     const disconnect = vi.fn()
@@ -192,24 +207,29 @@ describe('the desktop rails', () => {
     globalThis.ResizeObserver = Observer as unknown as typeof ResizeObserver
     try {
       renderChrome()
-      // 0 was not taken as narrow.
+      // 0 was not taken as narrow: the wide, three-column arrangement stands.
       expect(collapse()).toBeInTheDocument()
+      expect(railGrid().className).toContain('lg:grid-cols-[380px_minmax(0,1fr)_500px]')
       expect(observe).toHaveBeenCalled()
 
+      // The late measurement moves the LAYOUT and leaves the rails open.
       stubWorkspaceWidth(1100)
       React.act(() => deliver!())
-      expect(expand()).toBeInTheDocument()
-
-      // Settled: a later, wider callback does not reopen what was decided.
-      stubWorkspaceWidth(1600)
-      React.act(() => deliver!())
-      expect(expand()).toBeInTheDocument()
+      expect(collapse()).toBeInTheDocument()
+      expect(railGrid().className).toContain('lg:grid-cols-[320px_minmax(0,1fr)]')
     } finally {
       globalThis.ResizeObserver = real
     }
+
+    // And a shut drawer is never reopened under somebody: `wide` goes on
+    // tracking the window, the open/shut state does not.
+    await user.click(collapse())
+    stubWorkspaceWidth(1700)
+    React.act(() => deliver!())
+    expect(expand()).toBeInTheDocument()
   })
 
-  it('gives a smaller laptop two columns, with both panels in one rail', async () => {
+  it('gives a smaller laptop two columns, with both panels in one rail', () => {
     // Gabe, 2026-09-13, after watching 880px of rails squeeze the document to
     // 220 and the page honestly shrink to fit: "how about no left and right
     // rails? implement two column layout in smaller laptop screens."
@@ -217,10 +237,8 @@ describe('the desktop rails', () => {
     // The left rail is a TAB LIST and the right rail is the pane those tabs
     // select, so one column is the arrangement they already have in the
     // compact dock -- not a compromise.
-    const user = userEvent.setup()
     stubWorkspaceWidth(1024)
     renderChrome()
-    await user.click(expand())
 
     expect(railGrid().className).toContain('lg:grid-cols-[320px_minmax(0,1fr)]')
     // One rail, carrying both.
@@ -231,12 +249,11 @@ describe('the desktop rails', () => {
     expect(screen.getByRole('heading', { name: 'document tools & tailoring' })).toBeInTheDocument()
   })
 
-  it('keeps the strip next to the pane it selects, in both arrangements', async () => {
+  it('keeps the strip next to the pane it selects, in both arrangements', () => {
     // Gabe, 2026-09-13: "and render the clicked navigation". In one column the
     // strip used to sit above an outline and a statistics table with the pane
     // below both, so clicking a tab changed something two screens down -- which
     // reads as the click having done nothing.
-    const user = userEvent.setup()
     const order = (root: HTMLElement) =>
       [...root.querySelectorAll('button')].map(
         (b) => b.getAttribute('aria-label') ?? b.textContent!.trim()
@@ -244,7 +261,6 @@ describe('the desktop rails', () => {
 
     stubWorkspaceWidth(1024)
     const narrow = renderChrome()
-    await user.click(expand())
     // strip, then what it selects, then the reference material.
     expect(order(document.getElementById('document-left-rail')!)).toEqual([
       'Collapse document panels',

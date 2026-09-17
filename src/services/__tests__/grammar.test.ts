@@ -1,12 +1,16 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   MAX_CHUNK_CHARS,
+  PROOFREAD_CACHE_KEY,
   applyIssue,
+  cacheIssues,
+  cachedIssues,
   categoryOf,
   chunkText,
   contextOf,
   splitByCategory,
   toIssues,
+  type GrammarIssue,
 } from '../grammar'
 
 /** The live shape, abbreviated: offset/length, an array of replacements. */
@@ -285,5 +289,116 @@ describe('contextOf', () => {
     const moved = { ...issue, start: issue.start + 200, end: issue.end + 200 }
     expect(contextOf(long, moved).before.startsWith('…')).toBe(true)
     expect(contextOf(text, issue).before.startsWith('…')).toBe(false)
+  })
+})
+
+/**
+ * The cache in front of the request.
+ *
+ * IT IS A RATE-LIMIT GUARD, NOT A SPEED ONE, and that is what these assert.
+ * The check runs on its own when the grammar pane opens (2026-09-17), and the
+ * free LanguageTool endpoint is limited per IP -- so "answers from storage"
+ * and "never grows without bound" are both correctness properties here, not
+ * optimisations. The behaviour the pane depends on is covered end to end in
+ * `components/cv/__tests__/proofreadAutoCheck.test.tsx`; what is left for this
+ * file is the two paths a rendered pane cannot reach: eviction, and storage
+ * refusing the write.
+ */
+describe('the proofread cache', () => {
+  const issue = (start: number): GrammarIssue => ({
+    start,
+    end: start + 2,
+    replacements: ['goes'],
+    category: 'grammar',
+    rawCategory: 'GRAMMAR',
+    message: 'Agreement error',
+  })
+
+  beforeEach(() => window.localStorage.clear())
+  afterEach(() => vi.restoreAllMocks())
+
+  it('answers for the exact text it was given, and not for any other', () => {
+    cacheIssues('He go to work.', [issue(3)])
+    expect(cachedIssues('He go to work.')).toEqual([issue(3)])
+    // One character different is a different document: those offsets index
+    // text that is no longer there.
+    expect(cachedIssues('He go to work!')).toBeNull()
+  })
+
+  it('separates "nothing wrong" from "never checked"', () => {
+    // `[]` is a real answer and `null` is a miss. Reading a clean document as
+    // a miss would re-check exactly the CVs that never need it again.
+    cacheIssues('A clean sentence.', [])
+    expect(cachedIssues('A clean sentence.')).toEqual([])
+    expect(cachedIssues('An unseen sentence.')).toBeNull()
+  })
+
+  it('keeps five documents and drops the oldest, so comparing CVs still hits', () => {
+    // One entry was the first shape and it thrashes on the thing people
+    // actually do -- flipping between two CVs -- where every switch back is a
+    // fresh request and the cache has bought nothing.
+    for (let n = 0; n < 6; n += 1) cacheIssues(`document ${n}`, [issue(n)])
+
+    expect(cachedIssues('document 0')).toBeNull()
+    for (let n = 1; n < 6; n += 1) {
+      expect(cachedIssues(`document ${n}`)).toEqual([issue(n)])
+    }
+  })
+
+  it('re-checking a document moves it to the front rather than duplicating it', () => {
+    cacheIssues('the CV', [issue(1)])
+    cacheIssues('the CV', [issue(2)])
+    expect(cachedIssues('the CV')).toEqual([issue(2)])
+    expect(JSON.parse(window.localStorage.getItem(PROOFREAD_CACHE_KEY)!)).toHaveLength(1)
+  })
+
+  it('evicts the rest rather than storing nothing when the quota refuses', () => {
+    // `setItem` throws QuotaExceededError SYNCHRONOUSLY, and the payload
+    // scales with the document -- a 50,000-word CV is several hundred KB of
+    // text and findings. A failed write is retried with only the new entry,
+    // so the document somebody is looking at is the one that survives.
+    cacheIssues('an older CV', [issue(1)])
+
+    const real = Storage.prototype.setItem
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (
+      this: Storage,
+      key: string,
+      value: string
+    ) {
+      if (JSON.parse(value).length > 1) throw new Error('QuotaExceededError')
+      real.call(this, key, value)
+    })
+
+    cacheIssues('a very long CV', [issue(2)])
+    expect(cachedIssues('a very long CV')).toEqual([issue(2)])
+    expect(cachedIssues('an older CV')).toBeNull()
+  })
+
+  it('caches nothing, and throws nothing, when storage is unavailable', () => {
+    // Private windows and blocked site data throw on access. Losing the cache
+    // costs a request; letting the throw out costs the pane.
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('access denied')
+    })
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('access denied')
+    })
+
+    expect(() => cacheIssues('the CV', [issue(1)])).not.toThrow()
+    expect(cachedIssues('the CV')).toBeNull()
+  })
+
+  it('ignores a stored value it does not recognise', () => {
+    // The value outlives the code that wrote it and is editable by anyone with
+    // devtools open. A malformed entry taken as a hit renders findings that
+    // index nothing.
+    window.localStorage.setItem(PROOFREAD_CACHE_KEY, 'not json at all')
+    expect(cachedIssues('the CV')).toBeNull()
+
+    window.localStorage.setItem(
+      PROOFREAD_CACHE_KEY,
+      JSON.stringify([{ text: 'the CV', issues: 'nonsense' }, { text: 'the CV' }])
+    )
+    expect(cachedIssues('the CV')).toBeNull()
   })
 })

@@ -4,6 +4,8 @@ import * as React from 'react'
 import type { Editor } from '@tiptap/core'
 import {
   LANGUAGETOOL_ENDPOINT,
+  cacheIssues,
+  cachedIssues,
   chunkText,
   splitByCategory,
   toIssues,
@@ -25,6 +27,14 @@ import { proofreadScore, type ProofreadScore } from './proofreadScore'
  * to do. Routing it through the server would actively hurt: the free tier is
  * rate limited PER IP, and every user sharing one server address is a far
  * lower ceiling than each using their own.
+ *
+ * AND SINCE 2026-09-17 IT IS NOT CALLED AT ALL FOR A DOCUMENT ALREADY
+ * CHECKED. The pane runs this on mount rather than on a press, so the request
+ * boundary needed a cache before the automatic run was safe: `services/grammar`
+ * keeps a completed pass against the exact text it ran on, and `run` answers
+ * from it when the document has not been edited. The failure it prevents is
+ * silent -- the free endpoint just stops answering, and the pane reports that
+ * the checker could not be reached.
  *
  * THE ISSUE LIST IS CLEARED THE MOMENT ONE IS APPLIED, and that is the
  * important rule in this file rather than a tidiness preference. Every offset
@@ -77,6 +87,28 @@ export function useProofread(editor: Editor | null): ProofreadState {
     if (!editor) return
     const current = editor.getText({ blockSeparator: BLOCK_SEPARATOR })
 
+    /**
+     * THE CACHE IS CONSULTED BEFORE THE REQUEST, WHICH IS WHAT MAKES THE
+     * AUTOMATIC RUN AFFORDABLE. `GrammarCheckPane` calls this on mount now
+     * rather than waiting for a press, and the pane mounts again on every
+     * remount and every trip back to the grammar tab; without this line each
+     * of those would be a fresh request against a per-IP limit that is the
+     * reader's own. `services/grammar` documents the key, the eviction and
+     * what happens when storage refuses the write.
+     *
+     * NO SPINNER ON THE WAY THROUGH: this returns before `setRunning(true)`,
+     * so a hit shows the findings rather than flashing "checking" at somebody
+     * for a synchronous read.
+     */
+    const cached = cachedIssues(current)
+    if (cached) {
+      setIssues(cached)
+      setText(current)
+      setRan(true)
+      setError(null)
+      return
+    }
+
     setRunning(true)
     setError(null)
     try {
@@ -97,7 +129,13 @@ export function useProofread(editor: Editor | null): ProofreadState {
         })
       )
 
-      setIssues(responses.flat())
+      const fresh = responses.flat()
+      // CACHED ONLY ON A COMPLETE PASS. The catch below treats one failed
+      // chunk as a failed check; storing a partial result here would make that
+      // decision permanent for this text, and "3 problems" over a document
+      // with more reads as a clean bill of health.
+      cacheIssues(current, fresh)
+      setIssues(fresh)
       setText(current)
       setRan(true)
     } catch {

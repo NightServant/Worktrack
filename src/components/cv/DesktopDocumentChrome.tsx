@@ -17,27 +17,31 @@ const LEFT_RAIL_ID = 'document-left-rail'
 const RIGHT_RAIL_ID = 'document-right-rail'
 
 /**
- * WHERE BOTH RAILS START OPEN, in pixels of workspace width.
+ * WHERE THE TWO RAILS SEPARATE INTO COLUMNS OF THEIR OWN, in pixels of
+ * workspace width.
  *
- * 1700, WHICH IS THE WIDE TIER THIS FILE ALREADY HAS, and it is deliberately
- * the same number as the `min-[1700px]:` rules below rather than a second
- * threshold sitting near them. Above it the rails widen to 380 and 500 because
- * there is room to spare; that is the same statement as "both rails are
- * comfortable here", so it should not be made twice with different numbers.
+ * 1700, WHICH IS THE WIDE TIER THIS FILE ALREADY HAD as `min-[1700px]:`
+ * classes before the arrangement moved into JS. Above it the rails widen to
+ * 380 and 500 because there is room to spare; that is the same statement as
+ * "both rails are comfortable here", so it should not be made twice with
+ * different numbers.
  *
- * IT WAS 1280 AND THAT WAS TOO EAGER (Gabe, 2026-09-13: "rail should collapse
- * in smaller laptop screens"). The arithmetic, which is what settles it: the
- * rails take 720px between them. A 1440 laptop -- the commonest there is --
- * was opening both and leaving the page 720px, so the document was the
- * smallest of the three panels on a screen whose entire purpose is the
- * document. At 1700 the page keeps 820, which is an 816px letter page at very
- * nearly 1:1.
+ * IT USED TO DECIDE WHETHER THE RAILS STARTED OPEN AS WELL, AND IT NO LONGER
+ * DOES (Gabe, 2026-09-17: open the left and right rails by default). The
+ * arithmetic that made it a default has expired. It was set against the
+ * THREE-column arrangement, where a 1440 laptop opening both rails kept 720px
+ * for the page and made the document the smallest of three panels on a screen
+ * whose entire purpose is the document. Below this threshold there is no
+ * three-column arrangement any more: `oneColumn` puts both panels in ONE 320px
+ * rail, so the same 1440 laptop opens to 320 of rail and 1120 of page. The
+ * objection was never "rails are open", it was "the page is the smallest thing
+ * on screen", and the two-column layout already answers it.
  *
- * A DEFAULT, NEVER A BINDING. Below 1700 the rails are one click from open and
- * stay wherever they are put; see the measurement effect for why no observer
- * survives to argue with that click.
+ * WHAT IT STILL DECIDES is `wide`: three columns above, two below. That has to
+ * keep tracking the window, which the open/shut state does not -- see the
+ * measurement effect.
  */
-const RAILS_OPEN_AT = 1700
+const RAILS_SPLIT_AT = 1700
 
 /* THE DRAWER IS NAMED FOR WHAT IT HOLDS, not for the rail the handle is on.
    One control moves both panels, so "document tools" (the left rail's own
@@ -223,35 +227,43 @@ export function DesktopDocumentChrome({
   const displayTitle = title.trim() || 'untitled CV'
 
   /**
-   * ONE BOOLEAN FOR BOTH RAILS, and it starts OPEN.
+   * ONE BOOLEAN FOR BOTH RAILS, AND IT STARTS OPEN AT EVERY WIDTH.
    *
    * IT WAS TWO UNTIL 2026-09-13, one per rail. Gabe: "left drawer should open
    * both left and right rail." Two booleans is four states, and the two mixed
    * ones were never chosen deliberately -- they were what you landed in on the
    * way to one of the other two.
    *
+   * `true` WAS ALREADY WRITTEN HERE AND WAS NOT THE REAL DEFAULT UNTIL
+   * 2026-09-17, which is the trap this comment exists to close. The
+   * measurement effect below used to overwrite it once, on mount, with
+   * `width >= RAILS_SPLIT_AT` -- so on every laptop narrower than 1700, which
+   * is nearly all of them, the rails arrived shut and this initialiser only
+   * ever described a screen almost nobody has. Gabe asked for them open by
+   * default; what had to change was the effect, not this line. See
+   * `RAILS_SPLIT_AT` for why the arithmetic that justified the old default
+   * does not survive the two-column arrangement.
+   *
    * DESKTOP-FIRST for the same reason `useBelowDesktop` is: the server cannot
    * measure anything, so the first client render must agree with the markup it
-   * hydrates. Starting open means a wide screen never flashes a collapsed rail
-   * open; a narrow one corrects itself in the same frame as mount, which is
-   * the cheaper of the two wrong first paints.
+   * hydrates. Nothing corrects this after mount now, so there is no wrong
+   * first paint left to be the cheaper of.
    */
   const [railsOpen, setRailsOpen] = React.useState(true)
   /**
    * WHETHER THERE IS ROOM FOR THE RAILS BESIDE THE PAGE, tracked for the life
-   * of the component rather than settled once like the default above.
+   * of the component -- the one thing the measurement still decides.
    *
-   * It has to keep up, because it decides HOW the rails open (beside the page
-   * or over it) rather than WHETHER they start open -- and a window dragged
-   * across 1700 with the drawer already out would otherwise keep whichever
-   * answer happened to be true at mount.
+   * It has to keep up, because it decides HOW the rails open (two columns or
+   * three) rather than WHETHER they start open -- and a window dragged across
+   * 1700 with the drawer out would otherwise keep whichever answer happened to
+   * be true at mount.
    */
   const [wide, setWide] = React.useState(true)
-  const defaulted = React.useRef(false)
   const rootRef = React.useRef<HTMLDivElement>(null)
 
   /**
-   * THE DEFAULT IS MEASURED, NOT ASKED OF A MEDIA QUERY, and once only.
+   * THE ARRANGEMENT IS MEASURED, NOT ASKED OF A MEDIA QUERY.
    *
    * A media query answers about the VIEWPORT; what decides whether two rails
    * and a page fit is the width of this workspace, which is the viewport minus
@@ -267,10 +279,13 @@ export function DesktopDocumentChrome({
    * cannot be starved, so it goes first and the observer is the fallback for
    * the case where there was no layout to read yet.
    *
-   * THE OPEN/SHUT DEFAULT IS TAKEN ONCE; THE WIDTH IS NOT. `defaulted` is what
-   * separates them: a person who opens the drawer keeps it open across a
-   * resize, while `wide` -- which decides whether the rails sit beside the page
-   * or float over it -- has to stay current for as long as the window can
+   * IT NO LONGER TOUCHES `railsOpen` (Gabe, 2026-09-17: open the left and
+   * right rails by default). It set it once, on mount, from the same
+   * threshold -- which is what made "starts open" false on every laptop under
+   * 1700px. That one-shot default is gone, along with the `defaulted` ref that
+   * existed only to fire it once; the drawer now starts open and moves only
+   * when somebody moves it. What survives is `wide`, which is about layout
+   * rather than intent and has to stay current for as long as the window can
    * change.
    */
   React.useEffect(() => {
@@ -281,20 +296,12 @@ export function DesktopDocumentChrome({
       const width = el.getBoundingClientRect().width
       // ZERO IS "UNMEASURED", NOT "NARROW". jsdom lays nothing out and reports
       // 0 for every element, and a `display:none` subtree does the same in a
-      // real browser. There is no such thing as a 0px workspace; collapsing
-      // both rails on that reading would hide half the editor wherever it is
-      // rendered without a layout. Keeping the default is the honest answer to
-      // a measurement that did not happen.
+      // real browser. There is no such thing as a 0px workspace; taking that
+      // reading would drop a wide screen into the two-column arrangement
+      // wherever it is rendered without a layout. Keeping the default is the
+      // honest answer to a measurement that did not happen.
       if (width === 0) return
-      const roomForBoth = width >= RAILS_OPEN_AT
-      setWide(roomForBoth)
-      // THE DEFAULT IS TAKEN ONCE AND NEVER RE-ARGUED. `wide` goes on tracking
-      // the window; this does not, so a person who opened the drawer keeps it
-      // open through a resize instead of having it shut under them.
-      if (!defaulted.current) {
-        defaulted.current = true
-        setRailsOpen(roomForBoth)
-      }
+      setWide(width >= RAILS_SPLIT_AT)
     }
 
     measure()
@@ -315,7 +322,7 @@ export function DesktopDocumentChrome({
   const showRightRail = !!rightRail && drawerOpen
 
   /**
-   * BELOW `RAILS_OPEN_AT` THE TWO RAILS BECOME ONE COLUMN.
+   * BELOW `RAILS_SPLIT_AT` THE TWO RAILS BECOME ONE COLUMN.
    *
    * THE ARITHMETIC IS WHY. The rails want 880px between them at their proper
    * widths, so on a 1100px window opening both leaves the document 220 -- and
@@ -541,10 +548,11 @@ export function DesktopDocumentChrome({
         {/*
           THREE COLUMNS FROM `lg`, AND A DRAWER. The rails want ~300px each
           beside an 816px page, which is more than a 1366 laptop has to give
-          all three at once -- so the answer is whether the panels are open
-          rather than which layout is in force. Below `RAILS_OPEN_AT` of
-          workspace they start shut and the page has the screen to itself; the
-          handle on the left edge is how you get both back.
+          all three at once -- so the answer is which layout is in force rather
+          than whether the panels are open. Below `RAILS_SPLIT_AT` of workspace
+          both panels share one 320px rail beside the page; above it they take
+          a column each. Either way they start open, and the handle on the left
+          edge is how the page gets the screen to itself.
 
           The page itself is a PRINT PROOF, not app chrome: it keeps its own
           white sheet and letter geometry and deliberately does not follow the
