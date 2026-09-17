@@ -11,7 +11,7 @@ import {
   LINE_SPACINGS,
   RIBBON_GROUPS,
   STYLE_PRESETS,
-  currentFontPx,
+  currentFontPt,
   currentLineHeight,
   type RibbonCommand,
 } from './ribbonCommands'
@@ -244,7 +244,7 @@ export function DocumentToolbar({
   const row = cn(ROW, stacked && 'flex-wrap gap-y-1.5')
 
   const currentFamily = (editor?.getAttributes('textStyle').fontFamily as string | undefined) ?? ''
-  const fontPx = currentFontPx(editor)
+  const fontPt = currentFontPt(editor)
   const history = RIBBON_GROUPS[0]
   const [fontRow, markRow] = RIBBON_GROUPS[1].rows
   const paragraph = RIBBON_GROUPS[2]
@@ -299,10 +299,10 @@ export function DocumentToolbar({
                 11.5pt are ordinary in a .docx; both would have read "select". */}
             <Select
               aria-label="font size"
-              value={String(fontPx)}
-              placeholder={String(fontPx)}
+              value={String(fontPt)}
+              placeholder={String(fontPt)}
               disabled={!editor}
-              onValueChange={(value) => editor?.chain().focus().setFontSize(`${value}px`).run()}
+              onValueChange={(value) => editor?.chain().focus().setFontSize(`${value}pt`).run()}
               items={FONT_SIZES.map((size) => ({ value: size, label: size }))}
               className={TRIGGER}
             />

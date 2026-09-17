@@ -95,6 +95,28 @@ describe('the formatting ribbon', () => {
     expect(editor.getHTML()).toContain('Georgia, serif')
   })
 
+  /**
+   * THE MENU SAYS 18 AND THE DOCUMENT HAS TO BE SET IN 18 POINTS (Gabe,
+   * 2026-09-17: "font size 18 looks small in my system").
+   *
+   * `FONT_SIZES` is Word's list, and Word's list is points -- but this control
+   * wrote `18px`, which is 13.5pt. Every size in the menu came out a quarter
+   * small, on screen and in the exported PDF, while the templates and the
+   * .docx import had been writing points all along.
+   */
+  it("sets the size in points, because that is the unit the menu's numbers are", async () => {
+    editor = editorWith()
+    editor.commands.selectAll()
+    render(<DocumentToolbar editor={editor} />)
+
+    const user = userEvent.setup({ delay: null })
+    const size = screen.getByLabelText('font size')
+    await chooseOption(user, size, '18')
+    expect(editor.getHTML()).toContain('font-size: 18pt')
+    expect(editor.getHTML()).not.toContain('px')
+    expect(selectedLabel(size)).toBe('18')
+  })
+
   it('sets line spacing, and shows the spacing the caret is already in', async () => {
     // The control used to be uncontrolled with a bare ↕ option, so it never
     // reported anything -- it could only send. Being controlled is the part

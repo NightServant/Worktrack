@@ -92,12 +92,30 @@ export const FONT_SIZES = ['8', '9', '10', '11', '12', '14', '16', '18', '20', '
 export const LINE_SPACINGS = ['1', '1.15', '1.5', '2']
 
 /** Word's default body size, and what grow/shrink step from when none is set. */
-export const DEFAULT_FONT_PX = 12
+export const DEFAULT_FONT_PT = 12
 
-export function currentFontPx(editor: Editor | null): number {
-  const raw = editor?.getAttributes('textStyle').fontSize as string | undefined
-  const parsed = Number.parseFloat(String(raw ?? '').replace('px', ''))
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_FONT_PX
+/**
+ * The size under the caret, IN POINTS, which is what the dropdown says.
+ *
+ * THE BUG THIS FIXES (Gabe, 2026-09-17: "font size 18 looks small in my
+ * system"). `FONT_SIZES` is Word's list -- 8 through 36 -- and Word's list is
+ * points, but this control wrote `18px`. A CSS pixel is 1/96in against a
+ * point's 1/72, so picking 18 set the text at 13.5pt: every size in the menu
+ * came out a quarter small, and the PDF faithfully reproduced the wrong
+ * number because `toPoints` converted the px it was given. Nothing else in the
+ * app spoke pixels -- the templates state `documentTypography.fontSize` in
+ * points and the .docx import writes `${pt}pt` marks -- so this control was
+ * the only pixel in a document measured in points.
+ *
+ * A `px` VALUE IS STILL READ, and converted rather than believed: text sized
+ * by this control before today carries one, and reporting `18` for something
+ * drawing 13.5 is the same lie in the other direction.
+ */
+export function currentFontPt(editor: Editor | null): number {
+  const raw = String(editor?.getAttributes('textStyle').fontSize ?? '').trim()
+  const parsed = Number.parseFloat(raw)
+  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_FONT_PT
+  return raw.toLowerCase().endsWith('px') ? parsed * 0.75 : parsed
 }
 
 /**
@@ -117,11 +135,11 @@ export function currentLineHeight(editor: Editor | null): string {
 /** Word's A↑ / A↓ walk the size list rather than adding a fixed amount. */
 function stepFontSize(editor: Editor, direction: 1 | -1) {
   const sizes = FONT_SIZES.map(Number)
-  const current = currentFontPx(editor)
+  const current = currentFontPt(editor)
   const index = sizes.findIndex((s) => s >= current)
   const at = index === -1 ? sizes.length - 1 : index
   const next = sizes[Math.min(sizes.length - 1, Math.max(0, at + direction))]
-  editor.chain().focus().setFontSize(`${next}px`).run()
+  editor.chain().focus().setFontSize(`${next}pt`).run()
 }
 
 /**
@@ -295,7 +313,7 @@ export const STYLE_PRESETS: StylePreset[] = [
     id: 'subtitle',
     label: 'Subtitle',
     preview: 'text-[11px] tracking-wide text-text-secondary',
-    apply: (e) => e.chain().focus().setParagraph().setFontSize('14px').run(),
+    apply: (e) => e.chain().focus().setParagraph().setFontSize('14pt').run(),
     isActive: () => false,
   },
   {
