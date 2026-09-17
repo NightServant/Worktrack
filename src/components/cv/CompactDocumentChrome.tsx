@@ -409,15 +409,22 @@ export function CompactDocumentChrome({
               // 44px targets side by side under one thumb. The tablet
               // has the width to spend and the sheet is what needed
               // shortening there.
-              // ONE COLUMN ON A PHONE, SIX TRACKS FROM `sm`.
+              // ONE COLUMN ON A PHONE, EIGHT TRACKS FROM `sm`.
               //
-              // Six rather than three so the sheet can hold two row
-              // shapes without a second grid: the three exports are two
-              // tracks each (three peers of one weight, one row), and
-              // save and delete are three each (Gabe, 2026-09-06). Three
-              // tracks cannot express halves, which is why this is not
-              // `grid-cols-3` with a span.
-              'grid grid-cols-1 gap-2 px-4 pb-4 sm:grid-cols-6',
+              // The point of a track count larger than the number of
+              // cells is that the sheet can hold two row shapes without
+              // a second grid: peers at two tracks each on one row, then
+              // save and delete at half a row each (Gabe, 2026-09-06).
+              // Three tracks cannot express halves at all, which is why
+              // this has never been `grid-cols-3` with a span.
+              //
+              // EIGHT RATHER THAN SIX SINCE 2026-09-17, when `.tex`
+              // joined the compact row and made the caller's first row
+              // four cells -- reset and three exports. Six fitted three
+              // exactly and had nowhere to put a fourth: it wrapped onto
+              // save's row, leaving a track of nothing and pushing
+              // delete onto a third row of its own.
+              'grid grid-cols-1 gap-2 px-4 pb-4 sm:grid-cols-8',
               'sm:[&>button]:col-span-2',
               '[&_button]:w-full [&_button]:justify-center',
               // EVERY ACTION IS A TILE. The caller ranks these for a
@@ -438,7 +445,7 @@ export function CompactDocumentChrome({
               // caller ranks save last, so among the grid's direct
               // <button> children it is the final one -- delete is
               // nested in its own div and is not one of them.
-              'sm:[&>button:last-of-type]:col-span-3',
+              'sm:[&>button:last-of-type]:col-span-4',
               // Anything a caller passes that is not a <button> still
               // has to fill its cell rather than keep its own width.
               '[&_[data-slot=select-trigger]]:w-full [&_[data-slot=select-trigger]]:justify-center'
@@ -460,7 +467,7 @@ export function CompactDocumentChrome({
                     with a trash glyph. The phone keeps the rule, because
                     there the two are stacked and it costs nothing. */}
                 <Separator className="my-1 sm:hidden" />
-                <div className="sm:col-span-3">{destructiveActions}</div>
+                <div className="sm:col-span-4">{destructiveActions}</div>
               </>
             )}
           </div>

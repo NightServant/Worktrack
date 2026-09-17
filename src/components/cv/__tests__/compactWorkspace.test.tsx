@@ -112,19 +112,21 @@ describe('the editor below lg', () => {
     // cramped for `export .docx` and two thumb targets side by side; the third
     // put save alone on its own row with a hole beside it.
     //
-    // SIX TRACKS, not three, because the sheet holds two row shapes: the three
-    // exports at two tracks each, then save and delete at three each. Three
-    // tracks cannot express halves.
+    // EIGHT TRACKS, not three, because the sheet holds two row shapes: the
+    // caller's peers at two tracks each, then save and delete at four each.
+    // Three tracks cannot express halves. It was six until 2026-09-17, when
+    // `.tex` made the compact editor's first row four cells rather than three
+    // and the fourth wrapped onto save's row.
     const user = userEvent.setup()
     const { container } = renderWorkspace()
     await user.click(screen.getByRole('button', { name: /more actions/i }))
     const grid = container.ownerDocument.querySelector('[data-slot="sheet-content"] .grid')!
     expect(grid.className).toContain('grid-cols-1')
-    expect(grid.className).toContain('sm:grid-cols-6')
+    expect(grid.className).toContain('sm:grid-cols-8')
     expect(grid.className).toContain('sm:[&>button]:col-span-2')
     // Save is the caller's last <button>; delete is nested in its own div and
     // is deliberately not one of them.
-    expect(grid.className).toContain('sm:[&>button:last-of-type]:col-span-3')
+    expect(grid.className).toContain('sm:[&>button:last-of-type]:col-span-4')
   })
 
   it('keeps the destructive rule on a phone and drops it where the row is shared', async () => {

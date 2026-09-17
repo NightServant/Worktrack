@@ -62,9 +62,10 @@ import type { ResumeContent, ResumeDraft, ResumeMode } from '@/services/resumeSe
  *
  * Moved out of `src/screens/ResumePage.tsx` when that file was split into
  * `/documents` and `/cv`. The engine is byte-for-byte what it was -- the same
- * 1200ms save debounce, the same 5000ms snapshot debounce, the same
- * `resume-export-pdf` call -- because the plan asked for the chrome to be
- * restyled, not for the editor to be rewritten. What changed is the chrome:
+ * 1200ms save debounce, the same 5000ms snapshot debounce, the same PDF
+ * export call (`resume-export-pdf` then, `/api/cv/pdf` since 2026-09-15) --
+ * because the plan asked for the chrome to be restyled, not for the editor to
+ * be rewritten. What changed is the chrome:
  * M4 tokens, hairline rules, 4px radius, and no lucide. Its `Save` and
  * `Back` are text (two of the four glyphs the icon set eliminated), and
  * `RotateCcw`/`Download` resolve to the drawn icons. Its five formatting
@@ -934,10 +935,12 @@ export function WordResumeEditor({
                       The mark is accent text rather than a badge -- see
                       ActionRow -- and exactly one row carries it.
 
-                      STILL NOT IN THE COMPACT ROW BELOW. That row holds two
-                      exports on a phone and the menu carries all three at
-                      every width; which two belong on a handset is a separate
-                      question from which one is best. */}
+                      THE COMPACT ROW CARRIES ALL THREE TOO (2026-09-17). It
+                      held two, under a note here claiming this menu covered
+                      every width -- but the menu is `!compact`, so below `lg`
+                      there was no menu and no `.tex` anywhere. The one format
+                      the app recommends was the one a phone could not reach.
+                      */}
                   <ActionRow
                     icon={<DownloadIcon size={16} aria-hidden className={iconMotion('drop')} />}
                     label={exportState.isExportingLatex ? 'exporting .tex…' : 'export .tex'}
@@ -987,11 +990,34 @@ export function WordResumeEditor({
             </Popover>
           )}
 
+          {/*
+            THE SAME THREE EXPORTS AS THE MENU, IN THE MENU'S ORDER. This row
+            is written by hand rather than derived from the list above, which
+            is how it came to be missing `.tex` for two days while the menu
+            called `.tex` the recommended format: two surfaces, one of them
+            edited.
+
+            `.tex` TAKES THE EMPHASIS AND PDF GIVES IT UP. The menu marks one
+            row `recommended`; a sheet of ghost buttons has no such marker, so
+            the ranking has to come from the variants -- and a row where PDF
+            is the raised control says the opposite of what the menu says.
+            Save is still the only FILLED control here; `secondary` sits under
+            it, not beside it.
+          */}
           {compact && (
             <>
               <Button variant="ghost" size="s" onClick={resetTemplate} disabled={!editor}>
                 <RotateCcwIcon size={14} aria-hidden className={iconMotion('back')} />
                 reset
+              </Button>
+              <Button
+                variant="secondary"
+                size="s"
+                onClick={exportState.exportLatex}
+                disabled={!editor || exportState.isExportingLatex}
+              >
+                <DownloadIcon size={14} aria-hidden className={iconMotion('drop')} />
+                {exportState.isExportingLatex ? 'exporting' : 'export .tex'}
               </Button>
               <Button
                 variant="ghost"
@@ -1003,7 +1029,7 @@ export function WordResumeEditor({
                 {exportState.isExportingDocx ? 'exporting' : 'export .docx'}
               </Button>
               <Button
-                variant="secondary"
+                variant="ghost"
                 size="s"
                 onClick={exportState.exportPdf}
                 disabled={!editor || exportState.isExportingPdf}
