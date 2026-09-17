@@ -128,18 +128,64 @@ const STOPWORDS = new Set([
 ])
 
 /**
+ * Quantities with the number spelled out.
+ *
+ * THE SAME RULE AS THE DIGITS BELOW, and it is here because "render a minimum
+ * of 500 hours" and "at least one server-side language" are the same sentence
+ * written two ways. The digit rule caught the first and the second walked
+ * straight through: measured against four real-shaped adverts, `one`, `two`,
+ * `three` and `thousands` were all counted as things a CV had to say.
+ *
+ * A RULE, NOT ANOTHER BATCH OF STOPWORDS, and the difference is that this list
+ * is CLOSED. The cardinals and the round magnitudes can be written out in full
+ * and then they are done; advert prose cannot, which is why STOPWORDS has been
+ * hand-extended twice and will be again. `first`, `second` and `third` are
+ * already up there with the adjectives, so only the cardinals are new.
+ *
+ * Nothing here collides with a technology. The one to watch is that a real
+ * name must never be swallowed -- `go`, `ai` and `aws` are not quantities, and
+ * `3d` and `2fa` lead with a digit and are handled by the rule below.
+ */
+const NUMBER_WORDS = new Set([
+  'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
+  'eleven', 'twelve', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'hundred',
+  'hundreds', 'thousand', 'thousands', 'million', 'millions', 'dozen',
+  'fourth', 'fifth',
+])
+
+/**
  * Whether a token can be a requirement at all.
  *
  * NUMBERS NEVER CAN. "500", "2025" and "10" are quantities in a sentence --
  * "render a minimum of 500 hours" -- and no CV contains them as a skill, so
- * every one was a guaranteed miss. Ordinals go with them.
+ * every one was a guaranteed miss. Ordinals go with them, and so do the
+ * spelled-out quantities in `NUMBER_WORDS`.
  *
  * Anything that merely STARTS with a digit survives, because `3d` and `2fa`
  * are real answers.
+ *
+ * WHAT WAS MEASURED AND REJECTED HERE (2026-09-17). The obvious next step is a
+ * morphological rule: the list holds `perform` while a posting says
+ * `performance`, so stem both sides and be done with the hand-tuning. It was
+ * built and measured against four adverts, and it is WORSE than the list it
+ * would replace. Expanding every stopword through `variantsOf` removed six
+ * terms across the corpus: zero were prose and all six were real -- among them
+ * `communication` and `collaboration`, which are headings on the CV being
+ * scored, and `rendering`, which for a Next.js role means server-side
+ * rendering. The naive stem rule additionally swallowed `performance` and
+ * `management`. See `atsMatch.test.ts`, "a derived form of a stopword can
+ * still be a requirement", which fails if anyone tries it again.
+ *
+ * The reason is not that the rule was built badly. `ortigas` and `docker` are
+ * both said once, neither derives from a stopword, and only one is a skill --
+ * so the thing that separates them is meaning, not shape. Sorting that out
+ * needs a skills taxonomy (`integrations/esco.ts` is exactly one, unused), not
+ * another suffix.
  */
 function isRequirementCandidate(token: string): boolean {
   if (token.length < 2) return false
   if (STOPWORDS.has(token)) return false
+  if (NUMBER_WORDS.has(token)) return false
   if (/^\d+$/.test(token)) return false
   if (/^\d+(st|nd|rd|th)$/.test(token)) return false
   return true
@@ -281,8 +327,23 @@ function mentions(cvTokens: Set<string>, term: string): boolean {
  * term a posting is down to words it used once, in passing, in a sentence
  * about the office. Counting them as requirements moves the score without
  * telling the reader anything they can act on.
+ *
+ * EXPORTED (2026-09-17) so `/api/tailor` can bound the keyword list it
+ * forwards by the number that actually produces it. The route had its own
+ * `40`, which silently dropped the tail of `missing` on a long posting.
+ *
+ * MEASURED, AND IT IS NOT A TAIL OF JUNK. The cap looks like it should be
+ * lower: strike sixteen prose words from a posting and the cap refills the
+ * denominator from further down the frequency order, which reads like the fix
+ * giving the points straight back. Counted across four adverts, the terms a
+ * posting says ONCE are 85-89% real requirements -- 95 of 107 on one of them.
+ * The refill is mostly `redux`, `jest`, `accessibility` and `scrum`: things
+ * genuinely asked for and genuinely not on the CV. A frequency floor was
+ * measured too and it hides 113 real gaps across the corpus while flattering
+ * the score by up to 29 points, which is the one direction this file's
+ * docblocks have always refused to move in.
  */
-const MAX_TERMS = 100
+export const MAX_TERMS = 100
 
 /**
  * The terms a posting actually leans on, most-used first.

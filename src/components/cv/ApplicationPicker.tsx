@@ -48,6 +48,22 @@ import type { Job } from '@/types'
  * second opinion about which applications exist, and the hook would go on
  * happily holding a selection this list cannot show.
  *
+ * A TAILORED CV HAS NO CHOICE TO OFFER, AND SO IT IS OFFERED NONE (Gabe,
+ * 2026-09-17). Tailoring writes a NEW file keyed to the application it was run
+ * for, and `/cv` pins the link that makes the next run a rewrite of that file
+ * rather than a tenth copy of it. The target was therefore settled before the
+ * document existed, and a search box in front of it is a control that cannot
+ * do what it looks like it does: picking a different posting does not
+ * re-target the file, it only scores a CV written for one employer against
+ * another employer's words. So on a tailored CV this draws the company and the
+ * role it was written for, in the same two lines an option row uses, and there
+ * is nothing to type into.
+ *
+ * NOT A DISABLED COMBOBOX. A greyed-out search field says "this is switched
+ * off, find out why" about a decision that is not reversible and is not a
+ * setting; the honest shape is a statement of fact, which is also the one a
+ * screen reader can read without landing on a dead control first.
+ *
  * THE KEYBOARD CONTRACT IS THE REASON THIS IS NOT A DIV WITH AN ONCLICK:
  * `role="combobox"` with `aria-expanded` and `aria-activedescendant`, the list
  * as `role="listbox"`, arrows to move, Enter to take, Escape to close. A
@@ -61,6 +77,16 @@ export interface ApplicationPickerProps {
   onChange: (jobId: string) => void
   label?: string
   className?: string
+  /**
+   * The application this DOCUMENT was tailored for, if it is a tailored CV.
+   *
+   * Set, this replaces the whole control with the company and role -- see the
+   * note above. It arrives already resolved rather than as an id, because
+   * `useCvTailoring` is the thing that knows whether the id still names an
+   * application (the picker's list is the wishlist, and a tailored CV's
+   * posting has usually moved past that by the time anyone reopens the file).
+   */
+  tailoredFor?: Job | null
 }
 
 /** Match on role, company or location, because people search by any of them. */
@@ -80,6 +106,7 @@ export function ApplicationPicker({
   onChange,
   label = 'application',
   className,
+  tailoredFor = null,
 }: ApplicationPickerProps) {
   const [query, setQuery] = React.useState('')
   const [open, setOpen] = React.useState(false)
@@ -136,6 +163,28 @@ export function ApplicationPicker({
 
   const CheckIcon = icons.Check
   const SearchIcon = icons.Search
+
+  // BELOW THE HOOKS, NEVER ABOVE THEM. Returning before `useState` would give
+  // a tailored document a different hook order from an untailored one, which
+  // React treats as a different component and refuses to render. The hooks
+  // above cost nothing when this branch is taken: the list is never opened, so
+  // the outside-click listener is never attached.
+  if (tailoredFor) {
+    return (
+      <div
+        className={cn('flex flex-col gap-1.5', className)}
+        data-tailored-for={tailoredFor.id}
+      >
+        <p className="text-label-caps uppercase text-text-secondary">tailored for</p>
+        {/* Role over company, the same two lines an option row draws, so the
+            target reads as the row that would have been chosen. No box around
+            it: this section groups with hairline rules and states facts in
+            plain text, and a filled panel here would look like a control. */}
+        <span className="truncate text-body-m text-text-primary">{tailoredFor.role}</span>
+        <span className="truncate text-body-s text-text-muted">{tailoredFor.company}</span>
+      </div>
+    )
+  }
 
   return (
     <div ref={rootRef} className={cn('relative flex flex-col gap-1.5', className)}>

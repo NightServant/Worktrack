@@ -71,6 +71,22 @@ describe('what counts as a requirement at all', () => {
     expect([...missing, ...matched]).not.toContain('500')
   })
 
+  it('does not treat a spelled-out quantity as a skill either', () => {
+    // The same sentence as "500 hours", written out. Measured 2026-09-17
+    // across four adverts: `one`, `two`, `three` and `thousands` were all
+    // being counted as things a CV had to say.
+    const { missing, matched } = matchKeywords(
+      'React developer',
+      'We need React, two years of experience, and one of the three of you will lead.'
+    )
+    const counted = new Set([...missing, ...matched])
+    for (const quantity of ['one', 'two', 'three']) {
+      expect(counted, `"${quantity}" is a quantity, not a skill`).not.toContain(quantity)
+    }
+    // The guard on the guard: the real requirement still survives.
+    expect(matched).toContain('react')
+  })
+
   it('does not treat prose verbs and adverbs as requirements', () => {
     const { missing, matched } = matchKeywords(CV, POSTING)
     const counted = new Set([...missing, ...matched])
@@ -220,6 +236,41 @@ describe('matchKeywords ignores the vocabulary of an advert', () => {
     const terms = [...matched, ...missing]
     expect(terms).toEqual(expect.arrayContaining(['ai', 'governance', 'uat', 'code', 'generation']))
     expect(terms).not.toEqual(expect.arrayContaining(['responsible', 'key', 'inc']))
+  })
+})
+
+/**
+ * A DERIVED FORM OF A STOPWORD CAN STILL BE A REQUIREMENT.
+ *
+ * This guards a change that was measured and NOT made, which is why it is
+ * written down rather than left to be rediscovered.
+ *
+ * The list holds `perform`, `render` and `related` while real postings say
+ * `performance`, `rendering` and `relational`, so the obvious tidy-up is to
+ * stop hand-extending STOPWORDS and match morphologically instead -- stem both
+ * sides, or run each stopword through this file's own `variantsOf`. Measured
+ * against four adverts on 2026-09-17, that rule removed six terms: NONE were
+ * prose and all six were real, including `communication` and `collaboration`,
+ * which are literally headings on the CV being scored. The naive stem variant
+ * also took `performance` and `management`. Both scored the corpus LOWER than
+ * the hand list they replaced.
+ *
+ * Every term below is a genuine requirement of a real front-end or data role.
+ * If a future rule makes one of them stop counting, that rule is the same
+ * mistake wearing a tidier shape, and this goes red.
+ */
+describe('a derived form of a stopword can still be a requirement', () => {
+  it.each([
+    ['performance', 'You will improve front-end performance and Core Web Vitals.'],
+    ['rendering', 'Experience with Next.js server-side rendering.'],
+    ['relational', 'Design and query relational databases.'],
+    ['communication', 'Clear written communication is essential.'],
+    ['collaboration', 'Close collaboration with designers.'],
+    ['management', 'Familiarity with state management libraries.'],
+    ['maintainable', 'Write modular, maintainable code.'],
+  ])('still counts "%s"', (term, posting) => {
+    const { matched, missing } = matchKeywords('', posting)
+    expect([...matched, ...missing]).toContain(term)
   })
 })
 

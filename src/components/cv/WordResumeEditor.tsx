@@ -129,6 +129,20 @@ export interface WordResumeEditorProps {
   kind?: ResumeMode
 
   draft: ResumeDraft
+  /**
+   * The application this CV was tailored FOR, if it is a tailored copy.
+   *
+   * A PROP RATHER THAN SOMETHING DERIVED HERE, because the evidence lives in
+   * `application_documents` and this component is deliberately renderable
+   * without a QueryClient -- the same reason `jobs` is passed in rather than
+   * fetched. /cv holds the links and does the deriving.
+   *
+   * Empty or absent means an ordinary CV, which is the only case that gets the
+   * application picker: a tailored file's target was decided when it was
+   * written, so offering a combobox there is offering a choice that does
+   * nothing.
+   */
+  tailoredForJobId?: string
   backHref: string
   onDelete: (draftId: string) => void
   onPersistDraft: (
@@ -405,6 +419,7 @@ export function WordResumeEditor({
   jobs = [],
   onTailored,
   kind = 'word',
+  tailoredForJobId,
 }: WordResumeEditorProps) {
   const isLetter = kind === 'cover_letter'
   const { user } = useAuth()
@@ -695,6 +710,13 @@ export function WordResumeEditor({
     // can mark the tailor tab "needs an application". See CvTailoringOptions.
     jobId: tailorJobId,
     onJobId: setTailorJobId,
+    // WHAT MAKES THE CACHE AND THE FIXED TARGET REAL. Both were written to be
+    // driven from here and neither does anything until it is: no id means no
+    // cache, and no tailored-for job means the picker. `draft.id` rather than
+    // the title, because two roles at one company produce the same tailored
+    // title and would then share a cache entry.
+    documentId: draft.id,
+    tailoredForJobId,
     // A GETTER, not `editor?.getJSON()` inline. The plain text above is read
     // on every render on purpose; serialising the whole node tree on every
     // keystroke for a button nobody has pressed is not the same trade. This

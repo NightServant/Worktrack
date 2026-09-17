@@ -23,6 +23,7 @@ import { PanelSection } from '@/components/ui/panel-section'
 import { AtsTermChips, AtsVerdict } from '@/components/ui/ats-verdict'
 import { verdictFor } from '@/components/ui/ats-verdict-copy'
 import { CssSpinner } from '@/components/ui/css-spinner'
+import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion'
 import { authedFetch } from '@/lib/authedFetch'
 import { matchKeywords, type KeywordMatch } from '@/services/atsMatch'
 import type { TailoringResult } from '@/services/integrations/tailoring'
@@ -109,6 +110,17 @@ export interface CvTailoringState {
   outcome: TailoringOutcome | null
   run: () => Promise<void>
   selectedJob: Job | null
+  /**
+   * The application this DOCUMENT was tailored for, or null when the target is
+   * still a choice. `ApplicationPicker` draws it instead of a search box.
+   */
+  tailoredFor: Job | null
+  /**
+   * Whether `result` is the last run read back out of storage rather than
+   * something this session paid a model call for. The rail says so -- a
+   * verdict with no visible provenance is one somebody re-runs to be sure.
+   */
+  restored: boolean
 }
 
 export interface CvTailoringOptions {
@@ -147,6 +159,37 @@ export interface CvTailoringOptions {
   /** The open document's title; the new one is named from it. */
   title?: string
   /**
+   * The open document's row id, and HALF OF THE CACHE KEY (Gabe, 2026-09-17:
+   * reopening a document should show the last analysis rather than spending
+   * another model call for the answer it already had).
+   *
+   * OPTIONAL, AND NO ID MEANS NO CACHE -- never a fallback to the title. A
+   * cached run belongs to one (document, application) pair, and a title is
+   * neither unique nor stable: two roles at one company produce the SAME
+   * tailored name, and every document here is renameable in place. Keying on
+   * it would eventually print one file's analysis under another's, which is
+   * the one failure this cache must not have. An editor mounted without a
+   * route -- which is how the tests render these -- simply re-runs.
+   */
+  documentId?: string
+  /**
+   * The application this document was ALREADY tailored for, when it is a
+   * tailored CV (Gabe, 2026-09-17: a tailored CV "must not offer the picker").
+   *
+   * THE FILE'S TARGET IS DECIDED THE MOMENT IT IS WRITTEN. `/cv` creates a
+   * tailored CV keyed to an application and pins the `application_documents`
+   * row that makes the next run a rewrite rather than a tenth copy. A combobox
+   * in front of that offers a choice with nothing behind it: picking a
+   * different posting does not re-target the file, it only scores a CV written
+   * for one employer against another employer's words.
+   *
+   * AN ID, NOT A COMPANY AND A ROLE. This hook already resolves applications
+   * out of `jobs`; two strings passed alongside an id are two strings that can
+   * disagree with it, and the picker's whole history is about not holding a
+   * second copy of the selection.
+   */
+  tailoredForJobId?: string
+  /**
    * Where a tailored document goes. Optional because the route owns every
    * write in this app and the editors have to stay renderable without one.
    */
@@ -167,6 +210,70 @@ export interface CvTailoringOptions {
 }
 
 /**
+ * THE LAST RUN, REMEMBERED PER BROWSER (Gabe, 2026-09-17).
+ *
+ * `localStorage`, under the `worktrack:` prefix, because that is what this
+ * codebase already does with per-viewer state of this kind -- see the rail tab
+ * remembered under `worktrack:document-tab`. This is not account data: it is
+ * one person's last look at one file, and putting it in Supabase would mean a
+ * table, a policy and a write on a path that is already spending a metered
+ * model call.
+ *
+ * THE KEY IS THE PAIR, AND THAT IS THE WHOLE CORRECTNESS ARGUMENT. An analysis
+ * is about this document against THIS posting; showing it over a different
+ * document, or the same document against a different application, is a
+ * confident lie rather than a stale convenience. Both ids are in the key, so a
+ * miss is a miss -- there is no nearest match to fall back to.
+ *
+ * ONLY A SUCCESSFUL RUN IS KEPT. A rate limit or a dropped connection is a
+ * fact about a minute ago, not about the document, and re-running after one is
+ * exactly what should happen.
+ *
+ * EVERY READ AND WRITE IS WRAPPED. Private windows and blocked site data throw
+ * on access, and a cleared store returns null or JSON that no longer parses;
+ * the section has to render the same either way, so a failure here resolves to
+ * "no cached run" rather than to an error.
+ */
+const TAILORING_CACHE_PREFIX = 'worktrack:tailoring:'
+
+function cacheKey(documentId: string, jobId: string): string {
+  return `${TAILORING_CACHE_PREFIX}${documentId}:${jobId}`
+}
+
+/** The last successful run for this pair, or null for anything else. */
+function readCachedRun(documentId: string, jobId: string): TailoringResult | null {
+  try {
+    const raw = window.localStorage.getItem(cacheKey(documentId, jobId))
+    if (!raw) return null
+    const parsed: unknown = JSON.parse(raw)
+    // SHAPE-CHECKED, NOT CAST. Anything can be under a localStorage key -- an
+    // older version of this value, another tab's half-written write, a user
+    // with devtools open -- and `suggestions.length` on a cast `any` is how a
+    // rail renders a crash instead of a panel.
+    if (
+      !parsed ||
+      typeof parsed !== 'object' ||
+      (parsed as { ok?: unknown }).ok !== true ||
+      !Array.isArray((parsed as { suggestions?: unknown }).suggestions)
+    ) {
+      return null
+    }
+    return parsed as TailoringResult
+  } catch {
+    return null
+  }
+}
+
+function writeCachedRun(documentId: string, jobId: string, result: TailoringResult): void {
+  try {
+    window.localStorage.setItem(cacheKey(documentId, jobId), JSON.stringify(result))
+  } catch {
+    // Private mode, blocked site data, or a full quota. Remembering a run is a
+    // convenience; failing to is not worth taking the section down with it.
+  }
+}
+
+/**
  * Owns the tailoring state for one document.
  *
  * A hook rather than state inside the rail, because the score and the rewrite
@@ -174,18 +281,78 @@ export interface CvTailoringOptions {
  * new document's name.
  */
 export function useCvTailoring(options: CvTailoringOptions): CvTailoringState {
-  const { jobId, onJobId } = options
+  const { jobId, onJobId, documentId = '', tailoredForJobId = '' } = options
   const [running, setRunning] = React.useState(false)
   const runningRef = React.useRef(false)
   const [result, setResult] = React.useState<TailoringResult | null>(null)
   const [outcome, setOutcome] = React.useState<TailoringOutcome | null>(null)
+  /** True while `result` is the cached run rather than this session's. */
+  const [restored, setRestored] = React.useState(false)
 
   const jobs = React.useMemo(
     () => options.jobs.filter((job) => job.status === 'wishlist'),
     [options.jobs]
   )
 
-  const selectedJob = React.useMemo(() => jobs.find((job) => job.id === jobId) ?? null, [jobs, jobId])
+  /**
+   * The application this file was tailored for, resolved out of EVERY
+   * application rather than out of the wishlist above.
+   *
+   * The wishlist filter exists so the hook cannot hold a selection the picker
+   * refuses to show. A tailored CV's target was never chosen from that list --
+   * it was decided when the file was written -- and by the time anyone reopens
+   * the document the posting has usually moved to `applied`, which is the
+   * whole point of having tailored it. Filtering here would blank the target,
+   * the posting and the score on exactly the documents that have one.
+   */
+  const tailoredFor = React.useMemo(
+    () => (tailoredForJobId ? (options.jobs.find((job) => job.id === tailoredForJobId) ?? null) : null),
+    [options.jobs, tailoredForJobId]
+  )
+
+  /**
+   * `tailoredFor` WINS OVER THE LIFTED ID, and it has to for one commit.
+   *
+   * The id lives in the editor (see `CvTailoringOptions`), so a tailored CV
+   * mounts with it empty and the effect below is what fills it in -- which
+   * lands AFTER the first paint. Reading the selection out of `jobs` alone
+   * would therefore draw the locked target above "pick an application above to
+   * score this CV", a sentence with no picker under it to act on.
+   */
+  const selectedJob = React.useMemo(
+    () => tailoredFor ?? jobs.find((job) => job.id === jobId) ?? null,
+    [tailoredFor, jobs, jobId]
+  )
+
+  /**
+   * The lifted id catches up to the file's own target.
+   *
+   * NOT A SECOND COPY OF THE SELECTION. `jobId` is the one copy and it lives in
+   * the editor, because the tab strip in another workspace slot reads it to
+   * mark the tailor tab "needs an application"; this writes THROUGH the same
+   * setter rather than keeping a private id beside it. A tailored CV with an
+   * empty selection would leave that tab badged as unfinished over a document
+   * whose target was settled before it existed.
+   */
+  React.useEffect(() => {
+    if (tailoredFor && tailoredFor.id !== jobId) onJobId(tailoredFor.id)
+  }, [tailoredFor, jobId, onJobId])
+
+  /**
+   * The last run for this pair, back on screen without paying for it again.
+   *
+   * KEYED ON BOTH IDS, so switching applications inside one document reads a
+   * different entry and finding nothing leaves the section blank rather than
+   * showing the previous posting's answer. Nothing is written back here: this
+   * effect only ever reads, so a restore cannot overwrite a live run.
+   */
+  React.useEffect(() => {
+    if (!documentId || !jobId) return
+    const cached = readCachedRun(documentId, jobId)
+    if (!cached) return
+    setResult(cached)
+    setRestored(true)
+  }, [documentId, jobId])
 
   const description = selectedJob?.description?.trim() ?? ''
 
@@ -205,6 +372,8 @@ export function useCvTailoring(options: CvTailoringOptions): CvTailoringState {
     setRunning(true)
     setResult(null)
     setOutcome(null)
+    // Whatever is on screen is about to be this session's own answer.
+    setRestored(false)
     /**
      * Whether the new document has been handed to the route.
      *
@@ -249,6 +418,11 @@ export function useCvTailoring(options: CvTailoringOptions): CvTailoringState {
 
       setResult(payload)
       if (!payload.ok) return
+      // REMEMBERED HERE, not after the document is written. This is the half
+      // that cost a model call; whether the route could then save a file is a
+      // different failure, and re-running the model to retry a save would
+      // spend the allowance to fix something the allowance did not break.
+      if (documentId && jobId) writeCachedRun(documentId, jobId, payload)
 
       const current = options.getContent?.() ?? null
       if (!current || !options.onTailored) {
@@ -305,7 +479,7 @@ export function useCvTailoring(options: CvTailoringOptions): CvTailoringState {
         setRunning(false)
       }
     }
-  }, [description, options, match, selectedJob])
+  }, [description, options, match, selectedJob, documentId, jobId])
 
   /**
    * Choosing a different application drops the previous run's answer.
@@ -327,6 +501,10 @@ export function useCvTailoring(options: CvTailoringOptions): CvTailoringState {
       onJobId(next)
       setResult(null)
       setOutcome(null)
+      // The restore effect re-runs on the new id and may put a different
+      // cached run here; clearing first is what stops the OLD posting's answer
+      // from staying on screen when the new pair has nothing stored.
+      setRestored(false)
     },
     [onJobId]
   )
@@ -342,6 +520,8 @@ export function useCvTailoring(options: CvTailoringOptions): CvTailoringState {
     outcome,
     run,
     selectedJob,
+    tailoredFor,
+    restored,
   }
 }
 
@@ -358,9 +538,171 @@ export function useCvTailoring(options: CvTailoringOptions): CvTailoringState {
  * merged on 2026-09-11. A prop with one live value is a branch nobody reads.
  */
 
+/**
+ * THE SCORE ARRIVES RATHER THAN SNAPPING INTO PLACE (Gabe, 2026-09-17: the
+ * ring, the percentage and the matched/missing lists should animate).
+ *
+ * ONE PROGRESS, READ BY EVERYTHING. The arc, the number in the middle of it,
+ * the legend counts and both chip inventories are four views of one match, and
+ * four independent animations is how they come to disagree by a term
+ * mid-flight. This hook owns the only clock; the rail derives every drawn
+ * number from the frame it returns.
+ *
+ * IT ANIMATES THE COMPONENTS THAT ARE ALREADY THERE. `AtsDonut` draws its arc
+ * from the matched/missing COUNTS (deliberately -- see its docblock, the ring
+ * and the lists must agree), so sweeping those counts sweeps the ring without
+ * a second chart, a charting library, or a recharts entry animation that has
+ * already shipped a ring with no arcs in it at all. The chips arrive the same
+ * way: the rail hands over as many terms as the frame has reached, so the
+ * heading count and the list are the same fact moving together.
+ *
+ * FROM WHERE IT IS, NOT ALWAYS FROM ZERO. The first score sweeps up from an
+ * empty ring, which is the arrival Gabe asked for; a score that CHANGES --
+ * a re-tailored document, a different application, a keyword typed into the CV
+ * -- travels from the number on screen to the new one. Restarting at zero on
+ * every change would make an edit that moves the score by a point look like
+ * the panel reloading, and `cvText` is re-read on every keystroke.
+ *
+ * THE DURATION IS THE DESIGN SYSTEM'S, READ OFF THE ROOT. `--duration-slow` is
+ * what `progress-fill` uses for a bar filling, which is the same gesture. It
+ * is read rather than hard-coded so retuning the token retunes this too; the
+ * fallback is only for an environment with no stylesheet (jsdom, a test).
+ *
+ * THE EASING IS DECELERATION AND NOTHING ELSE. `--ease-decelerate` is
+ * `cubic-bezier(0, 0, 0.2, 1)`; this is its arithmetic cousin, a quadratic
+ * ease-out. A bezier solver for one ring is code nobody needs, and anything
+ * with overshoot in it would make a diagnostic number bounce past itself --
+ * this house's motion is restrained, and a score that overshoots 86% is a
+ * score that briefly reports the wrong thing.
+ *
+ * UNDER REDUCED MOTION THERE IS NO CLOCK AT ALL, following `HeroScrollCue`:
+ * not a shorter sweep and not a paused one, but the final frame committed
+ * directly, so nothing can resume if the preference is re-evaluated. Two other
+ * ways out land the same way, for the same reason `Reveal` has them -- a
+ * hidden document (a background tab, a headless pane) has rAF paused, and an
+ * environment without rAF never ticks, and in both cases a ring that waits for
+ * a frame is a ring stuck at zero. A missing animation is cosmetic; a panel
+ * reporting 0% is wrong.
+ */
+interface ScoreFrame {
+  /** 0-100. The ring's centre number, and the panel's sr-only sentence. */
+  score: number
+  /** Matched terms on screen: the filled arc AND the matched chip list. */
+  matched: number
+  /** Missing terms on screen. The chip list only -- see the rail's `missing`. */
+  missing: number
+}
+
+/** An empty ring: where the first sweep starts. */
+const EMPTY_RING: ScoreFrame = { score: 0, matched: 0, missing: 0 }
+
+/** Only reached where the `--duration-slow` token is not resolvable. */
+const SWEEP_FALLBACK_MS = 400
+
+function sweepDurationMs(): number {
+  const raw = getComputedStyle(document.documentElement).getPropertyValue('--duration-slow').trim()
+  const ms = raw.endsWith('ms')
+    ? Number.parseFloat(raw)
+    : raw.endsWith('s')
+      ? Number.parseFloat(raw) * 1000
+      : Number.NaN
+  return Number.isFinite(ms) && ms > 0 ? ms : SWEEP_FALLBACK_MS
+}
+
+function useScoreSweep(score: number | null, matched: number, missing: number): ScoreFrame {
+  const reduced = usePrefersReducedMotion()
+  const [shown, setShown] = React.useState<ScoreFrame>(EMPTY_RING)
+  /**
+   * What the last committed frame drew, so a new target can travel FROM it.
+   *
+   * A ref beside the state rather than a read of the state: the effect that
+   * starts a sweep would otherwise have to list `shown` as a dependency, and a
+   * sweep that restarts every time it advances a frame is a sweep that never
+   * ends. Written only from the effect and its own frames.
+   */
+  const shownRef = React.useRef<ScoreFrame>(EMPTY_RING)
+
+  React.useEffect(() => {
+    // Nothing to score: the rail draws its own "pick an application" instead.
+    if (score === null) return
+
+    const to: ScoreFrame = { score, matched, missing }
+    const land = () => {
+      shownRef.current = to
+      setShown(to)
+    }
+
+    if (
+      reduced ||
+      typeof requestAnimationFrame !== 'function' ||
+      (typeof document !== 'undefined' && document.visibilityState === 'hidden')
+    ) {
+      land()
+      return
+    }
+
+    const from = shownRef.current
+    // The terms in the posting, which is the whole the arc is a proportion of.
+    const total = matched + missing
+    const started = Date.now()
+    const duration = sweepDurationMs()
+    let frame = 0
+
+    const step = () => {
+      // `Date.now`, not the frame's own timestamp: the timestamp is a
+      // high-resolution clock that fake timers do not advance, so a test that
+      // drives 500ms of frames would watch the sweep sit at zero for all of
+      // them. Millisecond resolution is plenty for a 400ms travel.
+      const t = Math.min(1, (Date.now() - started) / duration)
+      if (t >= 1) {
+        land()
+        return
+      }
+      const eased = 1 - (1 - t) * (1 - t)
+      const at = (a: number, b: number, ceiling: number) =>
+        Math.max(0, Math.min(ceiling, Math.round(a + (b - a) * eased)))
+      shownRef.current = {
+        score: at(from.score, to.score, 100),
+        matched: at(from.matched, to.matched, total),
+        missing: at(from.missing, to.missing, total),
+      }
+      setShown(shownRef.current)
+      frame = requestAnimationFrame(step)
+    }
+
+    frame = requestAnimationFrame(step)
+    return () => cancelAnimationFrame(frame)
+    // The VALUES, not the match object: `match` is rebuilt on every keystroke
+    // because `cvText` is, and depending on it would restart the sweep on
+    // characters that did not move the score.
+  }, [score, matched, missing, reduced])
+
+  /**
+   * NEVER ZERO TERMS WHILE THERE IS ONE TO SHOW, applied on the way out rather
+   * than inside the frames.
+   *
+   * `AtsTermChips` prints an empty-state sentence at zero terms -- "none of
+   * the posting's terms appear in this CV yet" -- and the FIRST commit happens
+   * before any frame has run, so without this floor every score starts with a
+   * sentence that is about to be contradicted and a block that jumps when it
+   * is. Flooring here covers that commit too; inside the loop it could not.
+   */
+  return {
+    score: shown.score,
+    matched: Math.max(matched > 0 ? 1 : 0, Math.min(shown.matched, matched + missing)),
+    missing: Math.max(missing > 0 ? 1 : 0, shown.missing),
+  }
+}
+
 /** The whole tailoring pane: pick a posting, read the match, rewrite the CV. */
 export function TailoringAnalysisRail({ state }: { state: CvTailoringState }) {
-  const { match, result, running, outcome } = state
+  const { match, result, running, outcome, restored } = state
+  // One sweep, read by the ring, the number and both inventories.
+  const shown = useScoreSweep(
+    match?.score ?? null,
+    match?.matched.length ?? 0,
+    match?.missing.length ?? 0
+  )
 
   return (
     // `border-t-0 pt-0`: it is the first thing in the rail, so the section's
@@ -372,6 +714,10 @@ export function TailoringAnalysisRail({ state }: { state: CvTailoringState }) {
           jobs={state.jobs}
           value={state.jobId}
           onChange={state.setJobId}
+          // Set on a tailored CV, and the picker then draws the target instead
+          // of a search box. The decision is the hook's because only it knows
+          // whether the id resolves to an application that still exists.
+          tailoredFor={state.tailoredFor}
         />
         {state.selectedJob && !state.selectedJob.description && (
           // Not an error and not a dead end: the description lives on the
@@ -473,6 +819,20 @@ export function TailoringAnalysisRail({ state }: { state: CvTailoringState }) {
             document.
           </p>
         )}
+
+        {restored && result?.ok && (
+          // THE LAST RUN, AND IT SAYS SO. Reopening a tailored CV used to show
+          // an empty section with a live button under it, so the only way to
+          // learn what the model had already produced for this posting was to
+          // spend another call and be told the same thing. Saying which run
+          // this is matters as much as showing it: an answer with no
+          // provenance is one somebody re-runs to be sure it is current.
+          <p role="status" data-tailoring-restored className="text-body-s text-text-muted">
+            already tailored for this application — {result.suggestions.length}{' '}
+            {result.suggestions.length === 1 ? 'rewrite' : 'rewrites'} from the last run. running it
+            again spends another model call.
+          </p>
+        )}
       </div>
       {/* THREE: HOW IT SCORES. Read like the application record's third column
           -- verdict in words, then the ring, then the two inventories -- from
@@ -491,27 +851,47 @@ export function TailoringAnalysisRail({ state }: { state: CvTailoringState }) {
           </p>
         ) : (
           <>
+            {/* THE FINAL SCORE, NOT THE SWEPT ONE. This is the verdict in
+                words, and words that read "needs work" before settling on
+                "strong" are the app changing its mind on screen. The sweep is
+                for the quantities. */}
             <AtsVerdict score={match.score} />
             {/* Sizes itself by its CONTAINER rather than the viewport -- this
                 rail is 320px on the same wide screen where the record dialog
                 is roomy, and a viewport query cannot tell those apart. */}
             <AtsDonut
-              score={match.score}
-              matched={match.matched.length}
-              missing={match.missing.length}
+              score={shown.score}
+              matched={shown.matched}
+              /* THE WHOLE STAYS THE SIZE OF THE POSTING. The arc is a
+                 proportion of the terms in the posting, so it can only SWEEP
+                 if that total holds still: matched grows into a full-size
+                 track and missing resolves down to meet it. Growing both from
+                 zero keeps the ratio constant, which is a ring that fades in
+                 rather than one that fills -- and it would print "terms in
+                 posting: 0" in the legend on the way. */
+              missing={match.matched.length + match.missing.length - shown.matched}
+              /* Also the final verdict: the arc's colour IS the answer, and a
+                 ring that runs red to amber to green on its way to green
+                 offers three of them for one score. */
               verdict={verdictFor(match.score)}
             />
+            {/* SLICED BY THE SWEEP, which is what makes the lists arrive
+                rather than appear -- and it animates the counts for free,
+                since the number in each heading IS the length of the list
+                under it. Sliced here rather than faded in `AtsTermChips`
+                because that component is shared with the application record,
+                where the score is not being revealed. */}
             <AtsTermChips
               label="matched"
               tone="matched"
-              terms={match.matched}
+              terms={match.matched.slice(0, shown.matched)}
               limit={12}
               emptyText="none of the posting’s terms appear in this CV yet."
             />
             <AtsTermChips
               label="missing"
               tone="missing"
-              terms={match.missing}
+              terms={match.missing.slice(0, shown.missing)}
               limit={12}
               emptyText="none — every term in the posting shows up in this CV."
             />

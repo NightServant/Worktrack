@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { authenticate } from '@/lib/apiAuth'
 import { readIntegrationConfig, capabilitiesOf, configProblems } from '@/services/integrations/config'
 import { tailorCv, type TailoringInput } from '@/services/integrations/tailoring'
+import { MAX_TERMS } from '@/services/atsMatch'
 
 /**
  * The server side of AI CV tailoring.
@@ -95,8 +96,18 @@ export async function POST(request: Request) {
     {
       cvText,
       jobDescription,
+      // BOUNDED BY THE THING THAT PRODUCES IT, not by a number of its own.
+      //
+      // This was `slice(0, 40)`. `matchKeywords` already caps a posting at
+      // `MAX_TERMS`, so `missing` cannot exceed that -- and where a posting
+      // and CV are far apart, `missing` is most of it. Measured on a
+      // mid-level front-end advert: 65 terms missing, 40 forwarded, 25
+      // dropped, and three of the dropped ones were the only terms in the
+      // whole list the CV could honestly have answered. The model was being
+      // denied the actionable tail to save a hundred short words next to a
+      // body that already carries 24,000 characters of CV and posting.
       missingKeywords: Array.isArray(body.missingKeywords)
-        ? body.missingKeywords.slice(0, 40).map(String)
+        ? body.missingKeywords.slice(0, MAX_TERMS).map(String)
         : undefined,
       role: body.role ? String(body.role) : undefined,
       company: body.company ? String(body.company) : undefined,

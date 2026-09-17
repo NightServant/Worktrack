@@ -16,7 +16,7 @@ import { DocumentChooser } from '@/components/documents/DocumentChooser'
 import { useCreateDocument } from '@/components/documents/useCreateDocument'
 import type { NoticeKind } from '@/components/documents/DocumentsNotice'
 import { WordResumeEditor } from '@/components/cv/WordResumeEditor'
-import { isRetailorOfSameApplication } from '@/components/cv/applyTailoring'
+import { isRetailorOfSameApplication, tailoredTitle } from '@/components/cv/applyTailoring'
 import type { ResumeContent, ResumeMode } from '@/services/resumeService'
 
 const DOCUMENTS = '/documents'
@@ -299,6 +299,22 @@ function CvRoute() {
         // The tailoring rail's application picker. Read here rather than in
         // the editor, so the editors stay renderable without a QueryClient.
         jobs={jobs}
+        /*
+          WHICH APPLICATION THIS CV WAS TAILORED FOR, or nothing if it is an
+          ordinary CV.
+
+          TITLE-PLUS-LINK, NOT MERELY LINKED, and the distinction is the whole
+          correctness of it: a master CV can be pinned to fifty applications,
+          and "has a link" would call every one of those a tailored copy and
+          hide the picker on the document most in need of it. `tailoredTitle`
+          is idempotent, so re-deriving it here and comparing is the same
+          evidence `isRetailorOfSameApplication` already trusts.
+        */
+        tailoredForJobId={
+          (resumeLinks.data ?? []).find(
+            (link) => tailoredTitle(draft.title, link.company) === draft.title
+          )?.job_id
+        }
         backHref={DOCUMENTS}
         onDelete={(id) => deleteDraft(id)}
         onPersistDraft={persistDraft}
