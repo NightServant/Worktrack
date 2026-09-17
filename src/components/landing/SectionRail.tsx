@@ -144,14 +144,26 @@ export function SectionRail({
       className={cn(
         'fixed right-6 top-1/2 z-40 hidden -translate-y-1/2 rounded-md py-4 pl-3 pr-4 min-[1640px]:block',
         'transition-colors duration-150 motion-reduce:transition-none',
-        // Its own plate over the hero, for the reason the navbar has its own
-        // scrim: the rail is pinned to the RIGHT edge, which is precisely
-        // where the hero's left-to-right scrim has decayed to 0.3 alpha and
-        // the footage is at its brightest. White-at-45% dots on a bright frame
-        // of video are not visible, and they drift in and out of legibility as
-        // the clip plays -- worse than being consistently wrong, because it
-        // looks like a flicker.
-        overHero && 'bg-ink-950/30 backdrop-blur-sm'
+        // NO PLATE OVER THE HERO SINCE 2026-09-17 (Gabe: "Remove the background
+        // color and backdrop-blur of the scroll right rail in hero section
+        // only"), which is the same call he made for the navbar an hour
+        // earlier: over footage, a translucent plate is a visible panel across
+        // the picture, and that costs more than it buys.
+        //
+        // WHAT IT BOUGHT IS WORTH KEEPING WRITTEN DOWN, because it was a real
+        // observation rather than decoration. This rail is pinned to the RIGHT
+        // edge, which is exactly where the hero's left-to-right scrim has
+        // decayed to 0.3 alpha and the footage is at its brightest -- the
+        // clouds in Gabe's own screenshot. Light marks at low opacity there do
+        // not merely read poorly, they drift in and out as the clip plays,
+        // which looks like a flicker rather than like a design.
+        //
+        // Two things make that survivable now and neither is luck: the footage
+        // is tinted to `ink-950` rather than left neutral, and the marks over
+        // the hero already run at a heavier weight than their off-hero
+        // counterparts (`bg-white/40` track, and see the dots below). If it
+        // does flicker against a bright cut, the answer is heavier marks --
+        // not the panel coming back.
       )}
     >
       <ol className="relative flex flex-col gap-6">

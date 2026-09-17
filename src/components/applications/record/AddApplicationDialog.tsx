@@ -146,6 +146,20 @@ export function AddApplicationDialog({
   /** A read that FAILED, which is the only state with anything to offer. */
   const [readError, setReadError] = React.useState('')
   const [resumeId, setResumeId] = React.useState('')
+  /**
+   * Whether the model has already restructured this draft's description.
+   *
+   * THE READ STEP DIGESTS WHAT IT FETCHES, and until now that was the only
+   * place it ran -- so a description the READER pasted, which is exactly what
+   * the failure copy asks them to do, was stored verbatim. The one person the
+   * digest never reached was the one the instruction was written for.
+   *
+   * A ref rather than state: nothing renders differently for it, and it must
+   * be readable inside the submit handler without that handler being rebuilt.
+   */
+  const digested = React.useRef(false)
+  /** The save is waiting on the model rather than on the database. */
+  const [digesting, setDigesting] = React.useState(false)
 
   const index = STEPS.findIndex((s) => s.id === step)
 
@@ -158,6 +172,8 @@ export function AddApplicationDialog({
     setReadNote('')
     setReadError('')
     setResumeId('')
+    digested.current = false
+    setDigesting(false)
     replace({ ...emptyDraft(defaultCurrency) })
     // `replace` is stable and `defaultCurrency` never changes mid-session.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -185,13 +201,69 @@ export function AddApplicationDialog({
       setReadNote,
       setReadError,
       onAutofill,
-      onDigest,
+      // WRAPPED SO THE SAVE KNOWS. `autofillPosting` runs this on a fetched
+      // description; recording that here is what stops the save digesting the
+      // same text a second time, and it costs no change to that module's
+      // signature.
+      onDigest: onDigest
+        ? async (text: string) => {
+            digested.current = true
+            return onDigest(text)
+          }
+        : undefined,
       // Only for the link it arrived with. Once the reader edits the URL the
       // captured source belongs to a different page, and parsing one page's
       // HTML under another page's address is how a wrong posting gets saved
       // looking right.
       html: draft.url === initialUrl ? (initialHtml ?? undefined) : undefined,
     })
+
+  /**
+   * Tidies a PASTED description on the way to saving it.
+   *
+   * THE GAP THIS CLOSES. `onDigest` ran in exactly one place -- inside the
+   * read step, on a description the FETCH returned -- so the model reached
+   * every posting the app could read and none of the ones it could not. The
+   * failure copy tells the reader to paste the posting in themselves, which
+   * means the digest skipped precisely the documents it was most needed for,
+   * and `RecordDescription`'s docblock meanwhile assumed the opposite ("by the
+   * time a description reaches a record it has already been tidied"). True of
+   * fetched postings, false of pasted ones.
+   *
+   * IT RUNS AT SAVE RATHER THAN ON BLUR OR ON A TIMER. A paste is not finished
+   * when it lands -- people paste, then trim the recruiter's boilerplate off
+   * the end -- and a model call per keystroke or per blur would spend a
+   * metered allowance on text that is still being edited. Save is the first
+   * moment the description is certainly final, and it is already a moment the
+   * reader expects to wait through.
+   *
+   * ONCE, NEVER TWICE. `digested` is set by the read step's own call, so a
+   * posting that arrived through a successful fetch is not restructured again
+   * on its way out.
+   *
+   * A FAILURE HERE MUST NOT COST THE APPLICATION. The catch keeps the verbatim
+   * text and saves it: the digest is a tidy-up, and losing somebody's pasted
+   * posting because a model was rate-limited would be a far worse bug than an
+   * untidy description. Same reasoning as the read step's own inner try/catch.
+   */
+  const submitWithDigest = async (data: JobFormData, interviewAt?: string | null) => {
+    const pasted = (data.description ?? '').trim()
+    if (onDigest && !digested.current && pasted) {
+      setDigesting(true)
+      try {
+        const digest = await onDigest(pasted)
+        digested.current = true
+        // `digest.description` rather than `formatted`, the same choice the
+        // read step makes and for the same reason -- see autofillPosting.
+        data = { ...data, description: digest.description }
+      } catch {
+        // Keep what they pasted. See the docblock.
+      } finally {
+        setDigesting(false)
+      }
+    }
+    return onSubmit(data, interviewAt)
+  }
 
   /**
    * Throws the link away and leaves an ordinary form behind.
@@ -437,8 +509,12 @@ export function AddApplicationDialog({
               layout="review"
               form={form}
               defaultCurrency={defaultCurrency}
-              saving={saving}
-              onSubmit={onSubmit}
+              // The model's turn is part of the save from the reader's side:
+              // one press, one wait, one outcome. Splitting it into a second
+              // spinner would describe our architecture rather than their
+              // action.
+              saving={saving || digesting}
+              onSubmit={submitWithDigest}
               resumes={resumes}
               linkedResumeId={resumeId || null}
               onLinkedResumeChange={(next) => {

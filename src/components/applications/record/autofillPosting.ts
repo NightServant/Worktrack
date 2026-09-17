@@ -137,15 +137,19 @@ export async function autofillPosting({
       // WHAT IT SAYS NOW IS THE TRUE VERSION OF THE SAME ADVICE. Nothing was
       // filled in, because this throw happens before `replace`. The
       // description column is to the right of the fields on a wide screen and
-      // under them on a narrow one, and what is pasted there is STORED AS
-      // PASTED -- `onDigest` runs above this, on a fetched posting, and
-      // nowhere else in the app (verified 2026-09-17: `usePostingDigest` has
-      // exactly one caller, and it is this file's `onDigest`). Promising a
-      // tidy-up that never comes is the same defect as naming the button was.
+      // under them on a narrow one. This sentence has now been wrong in both
+      // directions, which is why it is worth one comment: it first promised a
+      // `tidy and summarise` button that had been deleted, was corrected to
+      // promise nothing ("saved exactly as you paste it") because `onDigest`
+      // genuinely ran only on FETCHED postings -- and as of 2026-09-17 the
+      // save digests a pasted description too, so the honest sentence is the
+      // one that says so. Copy describing a capability has to be changed by
+      // whoever changes the capability; see AddApplicationDialog's
+      // `submitWithDigest`.
       setReadError(
         `${err instanceof Error ? err.message : 'Could not read that posting.'} ` +
           'Nothing was filled in. Paste the posting into the description column ' +
-          'beside these fields; it is saved exactly as you paste it.'
+          'beside these fields and it will be tidied and summarised when you save.'
       )
     }
 

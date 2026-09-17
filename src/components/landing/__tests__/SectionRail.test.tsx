@@ -69,16 +69,23 @@ describe('SectionRail', () => {
     )
   })
 
-  it('carries its own plate over the hero, where the scrim has run out', () => {
-    // The rail is pinned to the right edge, which is exactly where the hero's
-    // left-to-right scrim has decayed to 0.3 alpha and the footage is
-    // brightest. Without a plate the dots drift in and out of legibility as
-    // the clip plays, which reads as a flicker rather than as a control.
+  it('carries no plate anywhere, over the hero least of all', () => {
+    // REVERSED ON 2026-09-17 (Gabe: "Remove the background color and
+    // backdrop-blur of the scroll right rail in hero section only"), and this
+    // test is kept rather than deleted because it used to assert the opposite
+    // and the reason it did is still true: the rail sits at the right edge,
+    // where the hero's left-to-right scrim has decayed to 0.3 alpha and the
+    // footage is brightest, so light marks there can drift as the clip plays.
+    //
+    // What answers that now is the weight of the marks and the `ink-950` tint
+    // on the footage -- not a panel across the picture. If it ever flickers,
+    // the fix belongs in the dots, and this assertion says so.
     render(<SectionRail sections={SECTIONS} activeId="hero" progress={0} overHero />)
-    expect(rail().className).toContain('backdrop-blur')
+    expect(rail().className).not.toContain('backdrop-blur')
+    expect(rail().className).not.toContain('bg-ink-950')
   })
 
-  it('drops the plate past the hero, where the page provides its own ground', () => {
+  it('carries none past the hero either, where the page provides its own ground', () => {
     render(<SectionRail sections={SECTIONS} activeId="faq" progress={0.8} />)
     expect(rail().className).not.toContain('backdrop-blur')
   })

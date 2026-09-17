@@ -154,12 +154,12 @@ def autofill_from_url_alone(url: str) -> Envelope:
         f"Most {name} listings are copies: if the same job is on the employer's "
         "own careers page, paste THAT link instead -- it reads better than any "
         "aggregator. Otherwise paste the description into the column beside the "
-        "fields; it is saved exactly as you paste it."
+        "fields and it will be tidied and summarised when you save."
         if name
         else "That page could not be read automatically. If the job is also on "
         "the employer's own careers page, that link reads best. Otherwise paste "
-        "the description into the column beside the fields; it is saved exactly "
-        "as you paste it."
+        "the description into the column beside the fields and it will be tidied "
+        "and summarised when you save."
     )
     return {"values": values, "confidence": confidence, "warnings": [warning]}
 

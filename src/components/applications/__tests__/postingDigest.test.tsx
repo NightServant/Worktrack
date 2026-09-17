@@ -63,6 +63,91 @@ async function digestWith(result: PostingDigestResult, description = 'messy   po
 }
 
 /**
+ * Reaches the review step WITHOUT a successful fetch, pastes a description in,
+ * and saves.
+ *
+ * This is the path the failure copy sends people down, and until 2026-09-17 it
+ * was the one path the digest never ran on: `onDigest` fired only on text the
+ * FETCH returned, so the reader who was told to paste got no tidy-up at all.
+ * The wizard advancing to review on a failed read is deliberate -- see
+ * `autofillPosting` -- which is what makes this reachable.
+ */
+async function pasteAndSave(options: {
+  onDigest?: ReturnType<typeof vi.fn>
+  onSubmit?: ReturnType<typeof vi.fn>
+  pasted?: string
+  fetchSucceedsWith?: string
+} = {}) {
+  const onDigest = options.onDigest ?? vi.fn().mockResolvedValue(RESULT())
+  const onSubmit = options.onSubmit ?? vi.fn()
+  const onAutofill = options.fetchSucceedsWith
+    ? vi.fn().mockResolvedValue({
+        values: { description: options.fetchSucceedsWith },
+        confidence: {},
+        warnings: [],
+      })
+    : vi.fn().mockRejectedValue(new Error('Could not fetch page (status 401)'))
+
+  render(
+    <AddApplicationDialog
+      open
+      onOpenChange={vi.fn()}
+      defaultCurrency={CURRENCY}
+      onSubmit={onSubmit}
+      onAutofill={onAutofill}
+      onDigest={onDigest}
+    />
+  )
+  const user = userEvent.setup()
+  await user.type(screen.getByLabelText(/job posting url/i), 'https://www.indeed.com/viewjob?jk=1')
+  await user.click(screen.getByRole('button', { name: /continue/i }))
+  await user.click(screen.getByRole('button', { name: /fill it in/i }))
+  await screen.findByRole('button', { name: /save application/i })
+
+  if (options.pasted) {
+    // PASTED, NOT TYPED. The empty-state textarea hands off to the section
+    // editor on its first change, so `type` lands one character and then aims
+    // at a node that has been replaced. A paste is also the actual gesture
+    // this whole path is named for.
+    await user.click(screen.getByPlaceholderText(/paste the posting here/i))
+    await user.paste(options.pasted)
+  }
+  // Company and position are required; without them the save never submits
+  // and every assertion below would be about validation instead.
+  await user.type(screen.getByLabelText(/company/i), 'Acme')
+  await user.type(screen.getByLabelText(/position/i), 'Engineer')
+  await user.click(screen.getByRole('button', { name: /save application/i }))
+  return { onDigest, onSubmit }
+}
+
+describe('a description the reader pasted is tidied on save', () => {
+  it('runs the model on text the fetch never produced', async () => {
+    // The gap this closes: the failure copy asks for a paste, and the paste
+    // was the one thing the digest never saw.
+    const { onDigest, onSubmit } = await pasteAndSave({ pasted: 'messy pasted posting' })
+    expect(onDigest).toHaveBeenCalledWith('messy pasted posting')
+    await vi.waitFor(() => expect(onSubmit).toHaveBeenCalled())
+    expect(onSubmit.mock.calls[0][0].description).toBe(RESULT().description)
+  })
+
+  it('does not run it twice on a posting the fetch already digested', async () => {
+    // One metered call per posting. The read step's digest is recorded, so the
+    // save does not spend a second one restructuring its own output.
+    const { onDigest } = await pasteAndSave({ fetchSucceedsWith: 'fetched posting text' })
+    expect(onDigest).toHaveBeenCalledTimes(1)
+    expect(onDigest).toHaveBeenCalledWith('fetched posting text')
+  })
+
+  it('still saves the verbatim paste when the model fails', async () => {
+    // A tidy-up that throws must not cost somebody the posting they pasted.
+    const onDigest = vi.fn().mockRejectedValue(new Error('rate limited'))
+    const { onSubmit } = await pasteAndSave({ onDigest, pasted: 'raw posting nobody tidied' })
+    await vi.waitFor(() => expect(onSubmit).toHaveBeenCalled())
+    expect(onSubmit.mock.calls[0][0].description).toContain('raw posting nobody tidied')
+  })
+})
+
+/**
  * THE PATH FOR THE BOARDS NO SERVER CAN FETCH. The wizard needs a URL our
  * servers can read; several cannot be read at all -- JavaScript-rendered
  * postings, and sites that refuse datacenter traffic. Where the fetch does
