@@ -44,7 +44,18 @@ export interface IntegrationConfig {
    * one of their free tiers has changed its limits at least once -- so the
    * provider is configuration and never an import.
    */
-  tailoring: { baseUrl?: string; apiKey?: string; model: string }
+  tailoring: {
+    baseUrl?: string
+    apiKey?: string
+    model: string
+    /**
+     * A kill switch that does not require deleting the key.
+     *
+     * ABSENT MEANS ON, exactly as `ESCO_ENABLED` reads next door, so no
+     * existing deployment changes behaviour by this field appearing.
+     */
+    enabled?: boolean
+  }
   /** The EU skills taxonomy. No key, so it is on unless explicitly disabled. */
   esco: { baseUrl: string; enabled: boolean }
 }
@@ -57,6 +68,21 @@ export function readIntegrationConfig(): IntegrationConfig {
       // No default that names a vendor. A model id is meaningless without the
       // base URL it belongs to, so the two are set together or not at all.
       model: trimmed('TAILORING_MODEL') ?? '',
+      // OFF WITHOUT UNSETTING THE KEY (2026-09-17).
+      //
+      // Production and Preview hold the same provider key, and every free
+      // tier meters by KEY rather than by deployment -- so one preview branch
+      // that tailors a CV spends the live site's daily quota, and the live
+      // site then reports the exhaustion as a model error rather than as a
+      // quota one. Preview gets `TAILORING_ENABLED=false`.
+      //
+      // A SWITCH RATHER THAN AN ABSENT KEY, because the two differ in what it
+      // costs to change your mind: unsetting the Preview copy of a secret is
+      // undoable only by someone who can still read the value out of the
+      // provider's dashboard, while this is one variable anybody can flip to
+      // test a branch against a real model. The honest fix is a second key;
+      // this is what holds until there is one.
+      enabled: trimmed('TAILORING_ENABLED') !== 'false',
     },
     esco: {
       baseUrl: trimmed('ESCO_BASE_URL') ?? 'https://ec.europa.eu/esco/api',
@@ -125,7 +151,10 @@ export function capabilitiesOf(config: IntegrationConfig): IntegrationCapabiliti
     // a key with no base URL has nowhere to go.
     // Shape-checked, not just presence-checked: three non-empty strings in the
     // wrong order passed the old test and failed at the request.
+    // The switch is read FIRST: a deployment told not to spend the key cannot
+    // claim the capability, however complete its config is.
     tailorCv:
+      config.tailoring.enabled !== false &&
       !!config.tailoring.apiKey &&
       /^https?:\/\//i.test(config.tailoring.baseUrl ?? '') &&
       !!config.tailoring.model &&

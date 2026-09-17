@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import {
   capabilitiesOf,
   configProblems,
+  readIntegrationConfig,
   type IntegrationConfig,
 } from '../config'
 import { parseTailoringReply, tailorCv } from '../tailoring'
@@ -70,6 +71,38 @@ describe('what this deployment can do', () => {
     })
     expect(capabilitiesOf(right).tailorCv).toBe(true)
     expect(configProblems(right)).toEqual([])
+  })
+
+  it('will not claim the capability on a deployment that is switched off', () => {
+    // Production and Preview hold the SAME provider key, and every free tier
+    // meters by key rather than by deployment -- so a preview branch that
+    // tailors a CV spends the live site's daily quota, and the live site
+    // reports the exhaustion as a model error. Preview carries
+    // TAILORING_ENABLED=false, and it has to beat a config that is otherwise
+    // complete, which is the entire point of it.
+    const off = configWith({
+      tailoring: {
+        apiKey: 'k',
+        baseUrl: 'https://api.groq.com/openai/v1',
+        model: 'openai/gpt-oss-120b',
+        enabled: false,
+      },
+    })
+    expect(capabilitiesOf(off).tailorCv).toBe(false)
+    // And it is NOT a misconfiguration: nothing about this deployment is
+    // wrong, so nothing is reported to the operator as though it were.
+    expect(configProblems(off)).toEqual([])
+  })
+
+  it('reads the switch from the environment, and absent means on', () => {
+    // The default matters more than the switch: every existing deployment has
+    // no such variable, and none of them may lose tailoring by this field
+    // coming into existence.
+    vi.stubEnv('TAILORING_ENABLED', 'false')
+    expect(readIntegrationConfig().tailoring.enabled).toBe(false)
+    vi.stubEnv('TAILORING_ENABLED', '')
+    expect(readIntegrationConfig().tailoring.enabled).toBe(true)
+    vi.unstubAllEnvs()
   })
 
   it('names a half-configured integration instead of failing at the request', () => {

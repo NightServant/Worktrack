@@ -59,9 +59,17 @@ export async function POST(request: Request) {
       {
         ok: false,
         reason: 'unconfigured',
-        message: problems.length
-          ? 'AI tailoring is misconfigured on the server. The deployment logs name the problem.'
-          : 'AI tailoring is not configured. Set TAILORING_BASE_URL, TAILORING_API_KEY and TAILORING_MODEL.',
+        // THREE FAULTS NOW, and the third one has a complete config: a
+        // deployment can be told not to spend the shared provider key
+        // (`TAILORING_ENABLED=false`, which Preview carries so a branch
+        // cannot burn production's free-tier quota). Telling that operator to
+        // set three variables they have already set is the same mistake the
+        // comment above this one was written about, so it is checked first.
+        message: config.tailoring.enabled === false
+          ? 'AI tailoring is switched off on this deployment (TAILORING_ENABLED=false).'
+          : problems.length
+            ? 'AI tailoring is misconfigured on the server. The deployment logs name the problem.'
+            : 'AI tailoring is not configured. Set TAILORING_BASE_URL, TAILORING_API_KEY and TAILORING_MODEL.',
       },
       { status: 501 }
     )
