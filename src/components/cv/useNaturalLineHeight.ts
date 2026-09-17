@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { FALLBACK_NATURAL_LINE_HEIGHT } from '@/lib/pageGeometry'
 
 /**
  * What `line-height: normal` actually resolves to, for one font family.
@@ -26,8 +27,8 @@ import * as React from 'react'
  * own.
  */
 
-/** A serif's typical line box, for the server pass and for a face with none. */
-export const FALLBACK_NATURAL_LINE_HEIGHT = 1.15
+/** Re-exported from where the conversion lives; see `lib/pageGeometry`. */
+export { FALLBACK_NATURAL_LINE_HEIGHT }
 
 /** The probe's font-size, chosen so the division is exact and readable. */
 const PROBE_PX = 100

@@ -496,6 +496,16 @@ export function readParagraphFormats(documentXml: string, stylesXml = ''): Parag
  * property of whichever face actually resolved -- Garamond where it is
  * installed, the fallback serif where it is not.
  */
+/**
+ * A serif's typical line box, for anywhere the browser cannot be asked.
+ *
+ * LIVES HERE RATHER THAN BESIDE THE HOOK because it now has two callers that
+ * cannot share a DOM: `useNaturalLineHeight` measures the real face and falls
+ * back to this, and the PDF export has no browser to measure in at all -- it
+ * lays out in JavaScript, so this IS its natural line height.
+ */
+export const FALLBACK_NATURAL_LINE_HEIGHT = 1.15
+
 export function cssLineHeight(multipleOfSingle: number | null, natural: number): number | null {
   if (multipleOfSingle === null || !Number.isFinite(natural) || natural <= 0) return null
   return multipleOfSingle * natural
