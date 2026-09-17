@@ -233,9 +233,89 @@ def test_challenged_site_names():
 def test_challenge_detected_by_status_and_by_body():
     assert looks_like_bot_challenge(403, "") is True
     assert looks_like_bot_challenge(503, "") is True
+    # THE STATUS ALONE, on an empty body, because that is what pins the status
+    # rule: with the real body below either half would answer True and the
+    # other could rot untested.
+    assert looks_like_bot_challenge(401, "") is True
     assert looks_like_bot_challenge(200, "<html><title>Just a moment...</title>") is True
     assert looks_like_bot_challenge(200, '<div class="cf-browser-verification">') is True
     assert looks_like_bot_challenge(200, "<html><title>Frontend Engineer at Acme</title>") is False
+
+
+#: Indeed's answer to an anonymous fetch, as measured 2026-09-17 -- 1,675 bytes
+#: whose only content is a redirect to a login, quoted in
+#: docs/BRIGHTDATA-EVALUATION.md §1. Kept as a fixture rather than paraphrased
+#: because every wrong assumption this cost came from the SHAPE: the status is
+#: 401 and not 403, the title is "Authenticating..." and not "Just a moment",
+#: and the Cloudflare marker is `__CF$cv$params` and not `__cf_chl`.
+INDEED_401_BODY = """<!DOCTYPE html><html><head><title>Authenticating...</title>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8"></head>
+<body><script>window.location.href =
+"https://www.indeed.com/account/login?branding=login-required&from=bot-detection-anonymous&continue=%2Fviewjob%3Fjk%3D0000000000000000";
+</script><script>window.__CF$cv$params={r:'a3c66b5fcab3cc15',t:'MTc1ODA3'};
+var a=document.createElement('script');
+a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';
+document.getElementsByTagName('head')[0].appendChild(a);</script></body></html>"""
+
+
+def test_indeed_401_is_a_challenge_and_not_a_failed_fetch():
+    """The 401 that never reached Firecrawl (docs/BRIGHTDATA-EVALUATION.md).
+
+    This is the whole defect in one assertion. `app.py` checks this predicate
+    BEFORE its generic `status >= 400` branch, so False here meant Indeed was
+    answered with "Could not fetch page (status 401)" and the rendered
+    escalation we already pay for was never attempted.
+    """
+    assert looks_like_bot_challenge(401, INDEED_401_BODY) is True
+    # AND AGAIN WITH THE STATUS THROWN AWAY. `/extract` re-asks this about
+    # whatever the escalation returns, as `looks_like_bot_challenge(200, ...)`
+    # -- so if Firecrawl hands back the same interstitial, only the body
+    # markers can stop it being parsed as a posting.
+    assert looks_like_bot_challenge(200, INDEED_401_BODY) is True
+
+
+def test_indeed_challenge_is_named_rather_than_blamed_on_the_link():
+    # A page that was never read must not come back as a broken URL: the
+    # fallback names the site, keeps the link, and asks for a paste.
+    assert challenged_site_name("www.indeed.com") == "Indeed"
+    assert challenged_site_name("ph.indeed.com") == "Indeed"
+    assert challenged_site_name("notindeed.com.evil.test") is None
+    result = autofill_from_url_alone("https://www.indeed.com/viewjob?jk=0000000000000000")
+    assert result["values"]["source"] == "Indeed"
+    assert "Indeed blocks automated reads" in " ".join(result["warnings"])
+
+
+def test_the_paste_prompt_names_nothing_that_was_deleted():
+    # `Tidy and summarise` was removed on 2026-09-10 (the wizard summarises
+    # what it FETCHES), and this warning is shown to the one reader the digest
+    # never runs for. Telling them to press a control that is not on screen
+    # reads as the app being broken rather than the page.
+    #
+    # BOTH BRANCHES, because the sentence is written twice -- once for a site
+    # this module can name and once for anything else -- and the first pass at
+    # this test only read the unnamed one.
+    for url in ("https://unknown.example/job/1", "https://www.indeed.com/viewjob?jk=1"):
+        joined = " ".join(autofill_from_url_alone(url)["warnings"])
+        assert "tidy and summarise" not in joined.lower()
+        assert "aste" in joined
+
+
+def test_a_blocked_aggregator_sends_the_reader_upstream():
+    # NOT A CONSOLATION PRIZE. Measured 2026-09-17
+    # (docs/EXTRACTION-FREE-OPTIONS.md): an aggregator mirror yields ~0.40-0.70
+    # confidence per field even when it can be read, because the posting has
+    # been reformatted into the aggregator's template, while the employer's own
+    # posting -- usually a Greenhouse/Lever/Ashby page `registry.py` already
+    # parses natively -- yields 0.90-0.95. So the block is worth answering with
+    # "go one step upstream", which beats anything a paid unlocker could buy
+    # pointed at the mirror.
+    #
+    # Both branches again, for the reason the test above this one records.
+    for url in ("https://www.indeed.com/viewjob?jk=1", "https://unknown.example/job/1"):
+        joined = " ".join(autofill_from_url_alone(url)["warnings"]).lower()
+        assert "careers page" in joined
+        # And it must still say what to do when there is no employer page.
+        assert "aste" in joined
 
 
 def test_url_alone_says_what_it_can_prove():

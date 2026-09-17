@@ -56,7 +56,7 @@ export interface RecordBasicsProps {
   /** Forces every field open. The add wizard's review step wants them all. */
   showAll?: boolean
   /**
-   * `cv submitted` MOVED IN HERE (2026-09-13) and it is a layout fix, not a
+   * `cv used` MOVED IN HERE (2026-09-13) and it is a layout fix, not a
    * tidy-up. It was rendered by ApplicationRecordView directly under this
    * component, which made it a block of its own in a flex column -- a whole
    * 86px row for one dropdown, outside the grid that pairs everything else.
@@ -251,9 +251,19 @@ export function RecordBasics({
           application" restates the label in a sentence, and a redundant hint
           costs a real 26px on its row. The one that is NOT redundant -- the
           empty case, which says where CVs come from -- still shows. */}
+      {/* `cv used`, NOT `cv submitted` (Gabe, 2026-09-17). "Submitted" is
+          false at most of this pipeline and the field is reachable at all of
+          it: a `wishlist` row has sent nothing to anyone, and a tailored CV is
+          attached and ATS-scored here long before it goes anywhere. A label
+          that claims an application was sent is the kind of wrong that is
+          never noticed and quietly makes the record untrue.
+
+          THE LABEL ONLY. The column is `application_documents`, the prop is
+          `resumeId`, and both keep their names -- renaming a database column
+          to fix a word on screen is a migration bought with nothing. */}
       <Field
         id="resume_id"
-        label="cv submitted"
+        label="cv used"
         hint={resumes.length ? undefined : 'no CVs yet — write one in Documents and it will appear here.'}
       >
         <Select

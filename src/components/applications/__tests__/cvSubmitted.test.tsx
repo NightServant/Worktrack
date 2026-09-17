@@ -23,11 +23,18 @@ const RESUMES = [
  * CALLERS: `documentLinkService.pin` and `.unpin` were dead code, and
  * `LinkedCv` rendered "no CV linked" over an application there was no way to
  * link one to. These tests are what keep both ends wired.
+ *
+ * THE FIELD READS `cv used` SINCE 2026-09-17 and this file is still called
+ * cvSubmitted. The queries below moved with the label because they find the
+ * control BY ITS LABEL -- which is the point of querying that way, and is why
+ * the rename could not be silent. The filename did not, because the thing it
+ * names is the `application_documents` link rather than the words on screen,
+ * and renaming a test file rewrites its history for a word.
  */
-describe('the "CV submitted" field on an application', () => {
+describe('the "CV used" field on an application', () => {
   it('offers every CV the user has written', async () => {
     render(<ApplicationRecordView job={null} onSubmit={vi.fn()} defaultCurrency={CURRENCY} resumes={RESUMES} />)
-    await userEvent.click(screen.getByLabelText(/cv submitted/i))
+    await userEvent.click(screen.getByLabelText(/cv used/i))
     expect(await screen.findByRole('option', { name: 'frontend cv' })).toBeTruthy()
     expect(screen.getByRole('option', { name: 'backend cv' })).toBeTruthy()
   })
@@ -45,7 +52,7 @@ describe('the "CV submitted" field on an application', () => {
         onLinkedResumeChange={onLinkedResumeChange}
       />
     )
-    await userEvent.click(screen.getByLabelText(/cv submitted/i))
+    await userEvent.click(screen.getByLabelText(/cv used/i))
     await userEvent.click(await screen.findByRole('option', { name: 'backend cv' }))
     expect(onLinkedResumeChange).toHaveBeenCalledWith('r2')
   })
@@ -64,7 +71,7 @@ describe('the "CV submitted" field on an application', () => {
         onLinkedResumeChange={onLinkedResumeChange}
       />
     )
-    await userEvent.click(screen.getByLabelText(/cv submitted/i))
+    await userEvent.click(screen.getByLabelText(/cv used/i))
     await userEvent.click(await screen.findByRole('option', { name: 'none' }))
     expect(onLinkedResumeChange).toHaveBeenCalledWith(null)
   })
@@ -79,7 +86,7 @@ describe('the "CV submitted" field on an application', () => {
         linkedResumeId="r2"
       />
     )
-    expect(screen.getByLabelText(/cv submitted/i)).toHaveTextContent('backend cv')
+    expect(screen.getByLabelText(/cv used/i)).toHaveTextContent('backend cv')
   })
 
   it('says so, rather than offering an empty dropdown, before any CV exists', () => {
@@ -92,7 +99,7 @@ describe('the "CV submitted" field on an application', () => {
         resumes={[]}
       />
     )
-    const field = screen.getByLabelText(/cv submitted/i)
+    const field = screen.getByLabelText(/cv used/i)
     expect(field).toBeDisabled()
     // Deliberately said twice: once as the field's hint, once as the only
     // thing the disabled control can show.
@@ -119,7 +126,7 @@ describe('the "CV submitted" field on an application', () => {
     const save = screen.getByRole('button', { name: /save application/i })
     expect(save).toBeDisabled()
 
-    await userEvent.click(screen.getByLabelText(/cv submitted/i))
+    await userEvent.click(screen.getByLabelText(/cv used/i))
     await userEvent.click(await screen.findByRole('option', { name: 'backend cv' }))
 
     expect(save).toBeEnabled()
@@ -140,11 +147,11 @@ describe('the "CV submitted" field on an application', () => {
       />
     )
     const save = screen.getByRole('button', { name: /save application/i })
-    await userEvent.click(screen.getByLabelText(/cv submitted/i))
+    await userEvent.click(screen.getByLabelText(/cv used/i))
     await userEvent.click(await screen.findByRole('option', { name: 'backend cv' }))
     expect(save).toBeEnabled()
 
-    await userEvent.click(screen.getByLabelText(/cv submitted/i))
+    await userEvent.click(screen.getByLabelText(/cv used/i))
     await userEvent.click(await screen.findByRole('option', { name: 'frontend cv' }))
     expect(save).toBeDisabled()
   })
@@ -164,7 +171,7 @@ describe('the "CV submitted" field on an application', () => {
     )
     await userEvent.type(screen.getByLabelText(/^company/i), 'Acme')
     await userEvent.type(screen.getByLabelText(/^position/i), 'Engineer')
-    await userEvent.click(screen.getByLabelText(/cv submitted/i))
+    await userEvent.click(screen.getByLabelText(/cv used/i))
     await userEvent.click(await screen.findByRole('option', { name: 'frontend cv' }))
     // The record's one commit, named exactly: `add more details` in the first
     // column also matches a loose /save|add/.
@@ -183,7 +190,7 @@ describe('the "CV submitted" field on an application', () => {
  * "it displays all the job positions".
  *
  * The relationship is still readable from the other end, on the record's `cv
- * submitted` field above, which is where somebody asks the question that way
+ * used` field above, which is where somebody asks the question that way
  * round. `LinkedApplications` and `useResumeLinks` still exist and are
  * deliberately unused.
  */

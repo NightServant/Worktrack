@@ -80,7 +80,7 @@ export function LinkedApplications({
           // Not an empty menu. It says where the link is made, because the
           // control that makes it is on a different screen entirely.
           <DropdownMenuItem disabled>
-            record it in an application&rsquo;s &ldquo;CV submitted&rdquo; field
+            record it in an application&rsquo;s &ldquo;cv used&rdquo; field
           </DropdownMenuItem>
         ) : (
           links.map((link) => (

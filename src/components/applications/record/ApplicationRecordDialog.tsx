@@ -72,7 +72,7 @@ export interface ApplicationRecordDialogProps {
     interviewAt?: string | null
   ) => void | boolean | Promise<void | boolean>
   onDirtyChange?: (dirty: boolean) => void
-  /** For the record's "CV submitted" field. */
+  /** For the record's "cv used" field. */
   resumes?: { id: string; title: string }[]
   linkedResumeId?: string | null
   onLinkedResumeChange?: (resumeId: string | null) => void

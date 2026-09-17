@@ -48,15 +48,37 @@ from .schema import Envelope
 # interstitial. The status is a refusal either way, so the behaviour is the
 # same, but calling it Cloudflare would send the next person hunting for a
 # challenge that is not there.
+#
+# INDEED JOINED THE LIST 2026-09-17, and the whole point of the row is the
+# MESSAGE: a 401 used to reach the reader as "Could not fetch page (status
+# 401)", which reads as a broken link on a URL that is perfectly correct. See
+# docs/BRIGHTDATA-EVALUATION.md §1 for the measurement -- 1,675 bytes titled
+# "Authenticating...", whose only content redirects to
+# /account/login?...&from=bot-detection-anonymous. `ph.indeed.com` answers
+# identically and `robots.txt` answers 200, which is the same signature
+# JobStreet and SEEK showed.
 _CHALLENGED_HOSTS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"(^|\.)jobstreet\.com(\.[a-z]{2})?$", re.I), "JobStreet"),
     (re.compile(r"(^|\.)seek\.com(\.[a-z]{2})?$", re.I), "SEEK"),
+    (re.compile(r"(^|\.)indeed\.com(\.[a-z]{2})?$", re.I), "Indeed"),
 )
 
 _CHALLENGE_MARKERS = (
     re.compile(r"Just a moment\.\.\.", re.I),
     re.compile(r"cf-browser-verification|cf_chl_opt|__cf_chl", re.I),
     re.compile(r"Checking your browser before accessing", re.I),
+    # CLOUDFLARE'S OTHER BOOTSTRAP, and the three above genuinely miss it.
+    # Indeed's interstitial says "Authenticating..." and carries `__CF$cv$params`
+    # with a `/cdn-cgi/challenge-platform/` script -- no "Just a moment", no
+    # `__cf_chl` (measured 2026-09-17).
+    #
+    # THE STATUS RULE BELOW DOES NOT COVER THIS. `/extract` re-asks
+    # `looks_like_bot_challenge(200, rendered)` about whatever Firecrawl hands
+    # back, where there is no status left to judge -- so without this marker an
+    # escalation that returned the same challenge page would be parsed as a
+    # posting and yield "Authenticating..." as the role. That is the docblock's
+    # second rule, on the exact page that prompted it.
+    re.compile(r"__cf\$cv\$params|/cdn-cgi/challenge-platform/", re.I),
 )
 
 
@@ -69,7 +91,22 @@ def challenged_site_name(hostname: str) -> str | None:
 
 
 def looks_like_bot_challenge(status: int, body: str) -> bool:
-    if status in (403, 503):
+    # 401 IS A BOT CHALLENGE HERE, and it was the two-character gap that kept
+    # Indeed unreadable (measured 2026-09-17, docs/BRIGHTDATA-EVALUATION.md).
+    # Indeed answers an anonymous fetch with 401 and a Cloudflare page that
+    # redirects to /account/login?...&from=bot-detection-anonymous, so `app.py`
+    # fell past this branch into the generic `status >= 400` error and
+    # `_fetch_rendered` -- Firecrawl, which we already pay for and whose `auto`
+    # proxy escalates on exactly 401/403/429 -- was never asked.
+    #
+    # THE TRADE, STATED: 401 genuinely means "not authorised", so a page that
+    # truly requires a login is now labelled a challenge rather than an error.
+    # For this service that is the correct reading -- every target is a public
+    # posting URL somebody pasted, and a 401 on one IS a refusal to serve bots.
+    # Both outcomes of the relabel beat the old one: a render that works, or a
+    # 200 from `autofill_from_url_alone` that names the site and asks for a
+    # paste instead of blaming a valid link.
+    if status in (401, 403, 503):
         return True
     head = body[:4000]
     return any(marker.search(head) for marker in _CHALLENGE_MARKERS)
@@ -90,12 +127,39 @@ def autofill_from_url_alone(url: str) -> Envelope:
     if name:
         values["source"] = name
         confidence["source"] = 1.0
+    # IT NAMED A BUTTON THAT NO LONGER EXISTS. Both halves of this said "use
+    # 'Tidy and summarise'", which was deleted on 2026-09-10 when the add
+    # wizard started summarising every posting it FETCHES -- so the one reader
+    # who ever sees this sentence is the one reader the digest never runs for.
+    # Instructions to press something that is not on screen are worse than no
+    # instructions: they read as the app being broken rather than the page.
+    #
+    # It says where the box is instead, because that is the only thing left to
+    # do here, and it says the paste is kept verbatim so nobody waits for a
+    # tidy-up that is not coming.
+    # IT SENDS THEM TO THE EMPLOYER FIRST, and that is not a consolation
+    # prize -- it is the best outcome available anywhere in this system.
+    # Measured 2026-09-17 (docs/EXTRACTION-FREE-OPTIONS.md): an aggregator
+    # mirror yields roughly 0.40-0.70 confidence per field even when it CAN be
+    # read, because the posting has been reformatted into the aggregator's own
+    # template. The employer's own page -- which for most listings is a
+    # Greenhouse, Lever, Ashby or Workable posting that `registry.py` already
+    # parses natively and for free -- yields 0.90-0.95 on every field.
+    #
+    # So the unreadable aggregator is a prompt to go one step upstream, where
+    # the answer was always better. A paid unlocker pointed at the mirror buys
+    # a worse extraction than this sentence does.
     warning = (
         f"{name} blocks automated reads, so the posting could not be fetched. "
-        "Paste the description below and use \u201cTidy and summarise\u201d."
+        f"Most {name} listings are copies: if the same job is on the employer's "
+        "own careers page, paste THAT link instead -- it reads better than any "
+        "aggregator. Otherwise paste the description into the column beside the "
+        "fields; it is saved exactly as you paste it."
         if name
-        else "That page could not be read automatically. Paste the description "
-        "below and use \u201cTidy and summarise\u201d."
+        else "That page could not be read automatically. If the job is also on "
+        "the employer's own careers page, that link reads best. Otherwise paste "
+        "the description into the column beside the fields; it is saved exactly "
+        "as you paste it."
     )
     return {"values": values, "confidence": confidence, "warnings": [warning]}
 

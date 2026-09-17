@@ -148,32 +148,92 @@ describe('auto-fill, tech stack and tags', () => {
   })
 })
 
+/**
+ * Walks the wizard to its review step with a read that fails on the way.
+ *
+ * `mockRejectedValueOnce` rather than `mockRejectedValue`, so the same mock
+ * can answer a SECOND call differently -- which is the only way to tell
+ * `try again` re-ran the fetch from `try again` merely redrawing the step.
+ */
+const READ_URL = 'https://careers.example.com/j/1'
+
+async function failTheRead(onAutofill: ReturnType<typeof vi.fn>) {
+  render(
+    <AddApplicationDialog
+      open
+      onOpenChange={vi.fn()}
+      defaultCurrency={resolveDefaultCurrency(null)}
+      onSubmit={vi.fn()}
+      onAutofill={onAutofill}
+    />
+  )
+  const user = userEvent.setup()
+  await user.type(screen.getByLabelText(/job posting url/i), READ_URL)
+  await user.click(screen.getByRole('button', { name: /continue/i }))
+  await user.click(screen.getByRole('button', { name: /fill it in/i }))
+  await screen.findByRole('button', { name: /save application/i })
+  return user
+}
+
 describe('when the posting cannot be read at all', () => {
   it('carries on to the review step and says why, rather than dead-ending', async () => {
     // Several boards are JavaScript-rendered or refuse datacenter traffic, and
     // no amount of retrying changes that. Blocking the whole flow on a fetch
     // nobody controls would make the unreliable half the required half.
-    const onAutofill = vi.fn().mockRejectedValue(new Error('Could not fetch this URL'))
-    render(
-      <AddApplicationDialog
-        open
-        onOpenChange={vi.fn()}
-        defaultCurrency={resolveDefaultCurrency(null)}
-        onSubmit={vi.fn()}
-        onAutofill={onAutofill}
-      />
-    )
-    const user = userEvent.setup()
-    await user.type(
-      screen.getByLabelText(/job posting url/i),
-      'https://careers.example.com/j/1'
-    )
-    await user.click(screen.getByRole('button', { name: /continue/i }))
-    await user.click(screen.getByRole('button', { name: /fill it in/i }))
+    await failTheRead(vi.fn().mockRejectedValue(new Error('Could not fetch this URL')))
 
-    expect(await screen.findByRole('button', { name: /save application/i })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /save application/i })).toBeTruthy()
     expect(screen.getByText(/Could not fetch this URL/)).toBeInTheDocument()
-    expect(screen.getByText(/tidy and summarise/i)).toBeInTheDocument()
+    // WHERE TO PASTE IT, which is the only thing left to do here.
+    expect(screen.getByText(/description column/i)).toBeInTheDocument()
+  })
+
+  it('names no control that was deleted', async () => {
+    // `tidy and summarise` went on 2026-09-10, when the wizard started
+    // summarising every posting it FETCHES -- so this copy was read only by
+    // the one person the digest never runs for, and it sent them hunting the
+    // screen for a button that is not on it.
+    await failTheRead(vi.fn().mockRejectedValue(new Error('Could not fetch this URL')))
+    expect(screen.queryByText(/tidy and summarise/i)).toBeNull()
+  })
+
+  it('re-runs the read on the same URL when asked to try again', async () => {
+    const onAutofill = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('Could not fetch this URL'))
+      .mockResolvedValueOnce({ values: { company: 'Acme' }, confidence: {}, warnings: [] })
+    const user = await failTheRead(onAutofill)
+
+    await user.click(screen.getByRole('button', { name: /try again/i }))
+    await screen.findByRole('button', { name: /save application/i })
+
+    expect(onAutofill).toHaveBeenCalledTimes(2)
+    // THE SAME URL, not a re-typed one: the link is the thing the reader
+    // already gave and the thing they would otherwise have to give again.
+    expect(onAutofill.mock.calls[1][0]).toBe(READ_URL)
+    expect(screen.getByLabelText(/^company/i)).toHaveValue('Acme')
+    // And the failure is gone with it, rather than sitting over a record that
+    // has since filled in.
+    expect(screen.queryByRole('button', { name: /try again/i })).toBeNull()
+    expect(screen.queryByText(/Could not fetch this URL/)).toBeNull()
+  })
+
+  it('drops the link and the message on discard, leaving a clean manual form', async () => {
+    const user = await failTheRead(
+      vi.fn().mockRejectedValue(new Error('Could not fetch this URL'))
+    )
+
+    await user.click(screen.getByRole('button', { name: /discard/i }))
+
+    // THE URL GOES WITH IT. Left in the field it would be saved onto the
+    // application and read back later as "this is where I applied", for a page
+    // the app has just proved it cannot open.
+    expect(screen.getByLabelText(/posting url/i)).toHaveValue('')
+    expect(screen.queryByText(/Could not fetch this URL/)).toBeNull()
+    expect(screen.queryByRole('button', { name: /try again/i })).toBeNull()
+    // Still on the review step, with a form to fill in by hand.
+    expect(screen.getByRole('button', { name: /save application/i })).toBeTruthy()
+    expect(screen.getByLabelText(/^company/i)).toBeTruthy()
   })
 
   it('will not start at all without a link, rather than reaching the read step with nothing to read', async () => {

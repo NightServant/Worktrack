@@ -141,13 +141,13 @@ export interface ApplicationsPageProps {
    * auto-summarising that sentence refers to.
    */
   onDigest?: (text: string) => Promise<PostingDigestResult>
-  /** The CVs available to the "CV submitted" field. */
+  /** The CVs available to the "cv used" field. */
   resumes?: { id: string; title: string }[]
   /** The CV already linked to whichever row is open, if any. */
   linkedResumeId?: string | null
   onDelete?: (job: Job) => void
   onImport?: (rows: JobFormData[]) => Promise<boolean>
-  onAutofill?: (url: string) => Promise<JobAutofillResult>
+  onAutofill?: (url: string, html?: string) => Promise<JobAutofillResult>
   onCsvError?: (message: string) => void
   saving?: boolean
   importing?: boolean
@@ -179,6 +179,8 @@ export interface ApplicationsPageProps {
    * that does not.
    */
   initialAddUrl?: string | null
+  /** Page source captured by the bookmarklet for `initialAddUrl`. */
+  initialAddHtml?: string | null
 }
 
 export function ApplicationsPage({
@@ -200,6 +202,7 @@ export function ApplicationsPage({
   onOpenJobChange,
   initialOpenId = null,
   initialAddUrl = null,
+  initialAddHtml = null,
 }: ApplicationsPageProps) {
   // THE FIXED FRAME IS GONE, and it went because of what now sits above the
   // toolbar (Gabe, 2026-09-10: a chart and four statistics cards).
@@ -414,6 +417,7 @@ export function ApplicationsPage({
         onDigest={onDigest}
         onDirtyChange={setFormDirty}
         initialUrl={initialAddUrl}
+        initialHtml={initialAddHtml}
       />
 
       <ConfirmDialog

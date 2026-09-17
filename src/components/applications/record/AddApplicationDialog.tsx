@@ -10,8 +10,9 @@ import { Field } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
-import { ArrowRightIcon } from '@/components/icons'
-import { iconMotion } from '@/components/icons/motion'
+import { AlertCircleIcon, ArrowRightIcon } from '@/components/icons'
+import { ICON_STATE_MOTION, iconMotion } from '@/components/icons/motion'
+import { cn } from '@/lib/utils'
 import { ApplicationRecordView } from './ApplicationRecordView'
 import { WizardProgress } from './wizardSteps'
 import { STEPS, type StepId } from './wizardStepModel'
@@ -37,12 +38,20 @@ import type { JobAutofillResult, JobFormData } from '@/types'
  * halfway down that most people never reached.
  *
  * WHAT HAPPENS WHEN THE FETCH FAILS, which it will: several boards are
- * JavaScript-rendered or refuse datacenter traffic, and no amount of retrying
- * changes that. Step 3 does not become a dead end -- it says so and carries on
- * to the review step with whatever it got, where the description box takes a
- * paste and `tidy and summarise` does the rest of the work locally. Blocking
- * the whole flow on a fetch nobody controls would make the unreliable half the
- * required half.
+ * JavaScript-rendered or refuse datacenter traffic, and sometimes retrying
+ * changes that and sometimes nothing will. Step 3 does not become a dead end
+ * -- it says so and carries on to the review step with whatever it got, where
+ * the description column beside the fields takes a paste. Blocking the whole
+ * flow on a fetch nobody controls would make the unreliable half the required
+ * half.
+ *
+ * AND THE REVIEW STEP OFFERS THE TWO WAYS OUT (Gabe, 2026-09-17), because a
+ * failure with no control beside it is a wizard telling somebody bad news and
+ * then asking them to carry on as though it had not: `try again`, for the
+ * board that was merely busy, and `discard`, which drops the link and leaves a
+ * clean manual form for the board that is never going to open. Both are in the
+ * review step itself rather than in a dialog over it -- a modal on top of a
+ * modal to report that a fetch failed would be the app raising its voice.
  */
 
 /**
@@ -80,7 +89,7 @@ export interface AddApplicationDialogProps {
     interviewAt?: string | null
   ) => void | boolean | Promise<void | boolean>
   onLinkedResumeChange?: (resumeId: string | null) => void
-  onAutofill?: (url: string) => Promise<JobAutofillResult>
+  onAutofill?: (url: string, html?: string) => Promise<JobAutofillResult>
   autofilling?: boolean
   /**
    * Tidies and summarises the fetched posting.
@@ -101,6 +110,16 @@ export interface AddApplicationDialogProps {
    * would hide the one screen where a wrong link can still be corrected.
    */
   initialUrl?: string | null
+  /**
+   * The page source the bookmarklet captured for `initialUrl`.
+   *
+   * IT SEEDS TOO, AND IT STILL DOES NOT SKIP -- the same reasoning as
+   * `initialUrl` above. Arriving with the source in hand makes the read free
+   * and unblockable, but it does not make the LINK right, and the link step is
+   * where a wrong one is still correctable. What it removes is the fetch, not
+   * the confirmation.
+   */
+  initialHtml?: string | null
 }
 
 export function AddApplicationDialog({
@@ -116,6 +135,7 @@ export function AddApplicationDialog({
   onDigest,
   onDirtyChange,
   initialUrl = null,
+  initialHtml = null,
 }: AddApplicationDialogProps) {
   const form = useRecordDraft(null, defaultCurrency, onDirtyChange)
   const { draft, set, replace, fillEmpty } = form
@@ -123,6 +143,8 @@ export function AddApplicationDialog({
   const [step, setStep] = React.useState<StepId>('link')
   const [linkError, setLinkError] = React.useState('')
   const [readNote, setReadNote] = React.useState('')
+  /** A read that FAILED, which is the only state with anything to offer. */
+  const [readError, setReadError] = React.useState('')
   const [resumeId, setResumeId] = React.useState('')
 
   const index = STEPS.findIndex((s) => s.id === step)
@@ -134,6 +156,7 @@ export function AddApplicationDialog({
     setStep('link')
     setLinkError('')
     setReadNote('')
+    setReadError('')
     setResumeId('')
     replace({ ...emptyDraft(defaultCurrency) })
     // `replace` is stable and `defaultCurrency` never changes mid-session.
@@ -160,9 +183,36 @@ export function AddApplicationDialog({
       replace,
       setStep,
       setReadNote,
+      setReadError,
       onAutofill,
       onDigest,
+      // Only for the link it arrived with. Once the reader edits the URL the
+      // captured source belongs to a different page, and parsing one page's
+      // HTML under another page's address is how a wrong posting gets saved
+      // looking right.
+      html: draft.url === initialUrl ? (initialHtml ?? undefined) : undefined,
     })
+
+  /**
+   * Throws the link away and leaves an ordinary form behind.
+   *
+   * THE URL GOES WITH THE MESSAGE, which is the whole difference between this
+   * and dismissing a warning. A posting address that has just been proved
+   * unreadable is not evidence of anything except a board that said no, and
+   * leaving it in the field means it is saved onto the application and read
+   * back later as "this is where I applied" -- for a page the app could not
+   * open. Somebody who means to keep it can paste it back into `posting url`,
+   * which the review step renders like every other field.
+   *
+   * NOTHING ELSE IS CLEARED BECAUSE NOTHING ELSE WAS FILLED: `autofillPosting`
+   * throws before it applies a patch, so on this path the draft holds only
+   * what the first two steps asked for.
+   */
+  const discardRead = () => {
+    set('url', '')
+    setReadError('')
+    setReadNote('')
+  }
 
   const stepBody = () => {
     switch (step) {
@@ -320,12 +370,66 @@ export function AddApplicationDialog({
           <div className="flex flex-col gap-6">
             <div className="flex flex-col gap-1">
               <p className="text-body-m text-text-primary">
-                Does this look right? Correct anything that does not, then save.
+                {readError
+                  ? 'Fill this in yourself, or try the read again.'
+                  : 'Does this look right? Correct anything that does not, then save.'}
               </p>
-              {readNote && (
-                <p className="text-body-s text-text-muted" data-add-note>
-                  {readNote}
-                </p>
+              {/* THE SAME `AlertCircleIcon` + `text-status-rejected-mark` ROW
+                  `PanelSection` DRAWS A FAILED READ WITH, so a posting that
+                  could not be read reads as the same kind of fact here as it
+                  does on the record's panels -- and visibly not the same kind
+                  as the grey note below it, which reports a read that
+                  WORKED. The glyph's one-shot shake runs when the branch
+                  mounts, which is when the failure appears and not while it
+                  sits there being read.
+
+                  IT IS NOT A CONFIRM DIALOG. `ConfirmDialog` is this app's
+                  other destructive-action shape, and it is wrong here twice
+                  over: this failure arrived unasked, so there is nothing to
+                  confirm, and it would open a second modal over the one the
+                  reader is already in. */}
+              {readError ? (
+                <div className="mt-1 flex flex-col gap-3" data-add-read-error>
+                  <div className="flex items-start gap-2 text-body-s text-status-rejected-mark">
+                    <AlertCircleIcon
+                      size={16}
+                      aria-hidden
+                      className={cn('mt-0.5 shrink-0', ICON_STATE_MOTION.refuse)}
+                    />
+                    <p data-add-note>{readError}</p>
+                  </div>
+                  {/* `secondary` AND `ghost`, NEITHER OF THEM PRIMARY. The
+                      record below this carries `Save application`, which is
+                      the one thing this step is for; a filled orange button
+                      up here would outrank it and point at the recovery
+                      rather than at finishing. */}
+                  <div className="flex items-center gap-2">
+                    <Button type="button" variant="secondary" size="s" onClick={() => void goRead()}>
+                      try again
+                    </Button>
+                    {/* RED AT REST, the rule `IconButton`'s `danger` tone
+                        settled: a control that only admits what it does once
+                        the pointer is on it is a control somebody can press
+                        without ever having been told. Its focus ring turns
+                        red with it, because the accent means "this is the
+                        action we want you to take". */}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="s"
+                      className="text-status-rejected-mark hover:bg-status-rejected-mark/10 hover:text-status-rejected-mark focus-visible:ring-status-rejected-mark"
+                      onClick={discardRead}
+                    >
+                      discard
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                readNote && (
+                  <p className="text-body-s text-text-muted" data-add-note>
+                    {readNote}
+                  </p>
+                )
               )}
             </div>
             <ApplicationRecordView

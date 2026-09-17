@@ -19,9 +19,17 @@ import type { StepId } from './wizardStepModel'
  *
  * IT NEVER BLOCKS ON THE FETCH. Extraction depends on a page nobody here
  * controls, so every failure path still advances to review with whatever it
- * got; the description box takes a paste and `tidy and summarise` does the
- * rest locally. Making the unreliable half the required half is how a wizard
- * strands somebody on step three.
+ * got; the description column beside the fields takes a paste. Making the
+ * unreliable half the required half is how a wizard strands somebody on step
+ * three.
+ *
+ * A FAILURE IS NOT A NOTE (2026-09-17). Every path used to land in
+ * `setReadNote` -- one grey sentence under "Does this look right?" -- so "the
+ * page was read" and "the page refused us" were the same typographic object,
+ * and the only thing distinguishing them was the reader parsing the sentence.
+ * The failing path has its own channel now because it is the only one with
+ * ANYTHING TO DO about it: a read that failed can be run again, and a link
+ * that will never open can be thrown away. A note cannot carry buttons.
  */
 
 export interface AutofillPostingOptions {
@@ -32,7 +40,24 @@ export interface AutofillPostingOptions {
   replace: (next: Partial<RecordDraft>) => void
   setStep: (step: StepId) => void
   setReadNote: (note: string) => void
-  onAutofill?: (url: string) => Promise<JobAutofillResult>
+  /**
+   * Says the read FAILED, as opposed to the note, which says how it went.
+   *
+   * Separate because the review step draws them differently and offers only
+   * this one a way out -- see the docblock above. Set to '' on every run, so a
+   * second attempt clears the first attempt's failure whatever its outcome.
+   */
+  setReadError: (message: string) => void
+  onAutofill?: (url: string, html?: string) => Promise<JobAutofillResult>
+  /**
+   * Page source the caller already holds, from the bookmarklet.
+   *
+   * Its presence changes what the SERVER does -- the extractor parses this and
+   * fetches nothing -- which is why it travels all the way down here rather
+   * than being resolved higher up: this is the function that decides a read
+   * happens at all.
+   */
+  html?: string
   onDigest?: (url: string) => Promise<PostingDigestResult>
 }
 
@@ -42,17 +67,24 @@ export async function autofillPosting({
   replace,
   setStep,
   setReadNote,
+  setReadError,
   onAutofill,
   onDigest,
+  html,
 }: AutofillPostingOptions): Promise<void> {
     setStep('fill')
     setReadNote('')
+    setReadError('')
 
     const url = normalizePostingUrl(draft.url)
     if (!onAutofill || !url) {
+      // A NOTE AND NOT AN ERROR, both of them: neither has a read to retry.
+      // The first step will not advance without a link and this component is
+      // only mounted with `onAutofill` in the app, so these are the states
+      // that should be impossible rather than the ones that go wrong.
       setReadNote(
         onAutofill
-          ? 'No link to read. Paste the posting into the description column and press “tidy and summarise”.'
+          ? 'No link to read. Paste the posting into the description column beside these fields.'
           : 'Reading a posting is not available here. Fill the application in below.'
       )
       setStep('review')
@@ -61,7 +93,7 @@ export async function autofillPosting({
 
     let description = ''
     try {
-      const result = await onAutofill(url)
+      const result = await onAutofill(url, html)
       const values = result.values
       const next: Partial<RecordDraft> = {}
       if (values.company) next.company = values.company
@@ -94,12 +126,26 @@ export async function autofillPosting({
           : 'Filled from the posting. Check every field before saving.'
       )
     } catch (err) {
-      // "The next step" was wrong: this IS the next step. The description
-      // column is to the right of the fields on a wide screen and under them
-      // on a narrow one, which is what the copy has to say instead.
-      setReadNote(
+      // IT NAMED A BUTTON DELETED ON 2026-09-10. This said "press 'tidy and
+      // summarise'", and that control went when the wizard began summarising
+      // what it FETCHES -- so the sentence was only ever read by the one
+      // person the digest never runs for, and it sent them hunting the screen
+      // for a control that is not on it. A page that cannot be read is
+      // already the app looking broken; adding a dead instruction to it is
+      // how somebody concludes the whole flow is.
+      //
+      // WHAT IT SAYS NOW IS THE TRUE VERSION OF THE SAME ADVICE. Nothing was
+      // filled in, because this throw happens before `replace`. The
+      // description column is to the right of the fields on a wide screen and
+      // under them on a narrow one, and what is pasted there is STORED AS
+      // PASTED -- `onDigest` runs above this, on a fetched posting, and
+      // nowhere else in the app (verified 2026-09-17: `usePostingDigest` has
+      // exactly one caller, and it is this file's `onDigest`). Promising a
+      // tidy-up that never comes is the same defect as naming the button was.
+      setReadError(
         `${err instanceof Error ? err.message : 'Could not read that posting.'} ` +
-          'Paste the description into the column beside these fields and press “tidy and summarise”.'
+          'Nothing was filled in. Paste the posting into the description column ' +
+          'beside these fields; it is saved exactly as you paste it.'
       )
     }
 

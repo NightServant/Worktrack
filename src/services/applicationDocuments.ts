@@ -59,7 +59,7 @@ export function describeResumeLink(link: ResumeLinkSummary): string {
 
 /**
  * Which of an application's existing CV links have to go, given the one the
- * "CV submitted" field now names.
+ * "cv used" field now names.
  *
  * THE BUG THIS FIXES (Gabe, 2026-09-11): "CV dropdown from the application
  * overview dialog is not functioning when I select the new CV". Picking a
