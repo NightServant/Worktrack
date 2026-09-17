@@ -1,0 +1,99 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>hero media prep</title>
+<style>
+  body { margin: 0; background: #0b0e12; color: #e7e9ec; font: 13px system-ui; }
+  canvas, video { display: block; width: 520px; }
+  #log { padding: 12px; white-space: pre-wrap; }
+</style>
+<video id="v" src="/source.mp4" muted playsinline></video>
+<canvas id="c" width="1280" height="720"></canvas>
+<div id="log">idle</div>
+<script>
+/*
+ * Prepares `public/hero.mp4` and its two posters from a source clip.
+ *
+ * WHY A BROWSER AND NOT A CONVERTER. This machine has no ffmpeg, and macOS's
+ * `avconvert` only offers a fixed preset ladder with no bitrate control -- on
+ * this source its 1080p preset returned the file unchanged and its 720p preset
+ * produced a file 38% LARGER than the input (9.6MB in, 13.3MB out), because a
+ * preset targets a quality level rather than a size. MediaRecorder takes an
+ * explicit `videoBitsPerSecond`, which is the one knob this job actually needs.
+ *
+ * THE POSTER IS FRAME 0 OF THE CLIP THAT SHIPS, not a separate picture.
+ * HeroMedia shows the poster below 768px and as the video's own `poster`, so if
+ * the two disagree a desktop reader sees the still snap to different footage
+ * the moment it plays.
+ *
+ * It is drawn through a 1280x720 canvas, which both downscales and strips the
+ * alpha channel. 1280 is the width Figma 39:369 specifies and the width the
+ * asset it replaces used; the element is full-bleed behind a scrim that is 90%
+ * opaque at the left, so resolving more than that is spending bytes on
+ * something nobody can see.
+ */
+const W = 1280, H = 720, BITRATE = 1_400_000;
+const v = document.getElementById('v');
+const c = document.getElementById('c');
+const ctx = c.getContext('2d', { alpha: false });
+const log = (m) => { document.getElementById('log').textContent = m; };
+
+/** Mean luminance after the grayscale the page applies, for comparing assets. */
+function meanLuma() {
+  const d = ctx.getImageData(0, 0, W, H).data;
+  let sum = 0, dark = 0;
+  for (let i = 0; i < d.length; i += 4) {
+    const y = 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
+    sum += y;
+    if (y < 16) dark++;
+  }
+  const n = d.length / 4;
+  return { mean: +(sum / n).toFixed(2), pctNearBlack: +(100 * dark / n).toFixed(1) };
+}
+
+const post = (name, blob) => fetch('/save/' + name, { method: 'POST', body: blob });
+
+async function run() {
+  await new Promise((r) => (v.readyState >= 2 ? r() : v.addEventListener('loadeddata', r, { once: true })));
+
+  // Poster first, from frame 0.
+  v.currentTime = 0;
+  await new Promise((r) => v.addEventListener('seeked', r, { once: true }));
+  ctx.drawImage(v, 0, 0, W, H);
+  const luma = meanLuma();
+  await new Promise((r) => c.toBlob((b) => post('hero-poster.jpg', b).then(r), 'image/jpeg', 0.82));
+  const small = document.createElement('canvas');
+  small.width = 768; small.height = 432;
+  small.getContext('2d').drawImage(c, 0, 0, 768, 432);
+  await new Promise((r) => small.toBlob((b) => post('hero-poster-768.jpg', b).then(r), 'image/jpeg', 0.82));
+
+  // Then the clip, re-encoded through the canvas at the target bitrate.
+  const rec = new MediaRecorder(c.captureStream(30), {
+    mimeType: 'video/mp4;codecs=avc1',
+    videoBitsPerSecond: BITRATE,
+  });
+  const chunks = [];
+  rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+  const stopped = new Promise((r) => (rec.onstop = r));
+
+  rec.start();
+  v.currentTime = 0;
+  await v.play();
+  await new Promise((done) => {
+    const draw = () => {
+      if (v.ended) return done();
+      ctx.drawImage(v, 0, 0, W, H);
+      log(`recording ${v.currentTime.toFixed(1)}/${v.duration.toFixed(1)}s`);
+      requestAnimationFrame(draw);
+    };
+    requestAnimationFrame(draw);
+  });
+  rec.stop();
+  await stopped;
+
+  const blob = new Blob(chunks, { type: 'video/mp4' });
+  await post('hero.mp4', blob);
+  window.__done = { bytes: blob.size, seconds: +v.duration.toFixed(2), luma };
+  log('DONE ' + JSON.stringify(window.__done));
+}
+run().catch((e) => { window.__done = { error: e.message }; log('FAILED ' + e.message); });
+</script>

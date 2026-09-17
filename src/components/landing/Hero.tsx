@@ -75,20 +75,34 @@ export function Hero({ posterSrc, videoSrc, unpinned = false }: HeroProps) {
       id="hero"
       data-landing-section="hero"
       /*
-        `pb-40 md:pb-48` -- 160/192px -- and the extra 64px over the old
-        `pb-24 md:pb-32` is RESERVED FOR THE SCROLL CUE rather than being air.
-        The cue is absolutely positioned and reaches 160px up from the bottom
-        edge; the content is centred between this padding and `pt-32`, so it
-        can never come closer to the bottom than the padding does. Keeping the
-        padding at or above the cue's reach is what makes a collision between
-        the two impossible instead of merely unlikely on the viewport somebody
-        happened to test. See HeroScrollCue.
+        `pb-48` -- 192px -- and it is RESERVED FOR THE SCROLL CUE rather than
+        being air. The cue is absolutely positioned and reaches 160px up from
+        the bottom edge (`bottom-28` plus its own 48px); the content is centred
+        between this padding and `pt-32`, so it can never come closer to the
+        bottom than the padding does. See HeroScrollCue.
+
+        IT MUST EXCEED THE CUE'S REACH, NOT MATCH IT, and that is the fix of
+        2026-09-17 rather than the original rule. This was `pb-40 md:pb-48`,
+        and 160px is EXACTLY the cue's reach -- which guarantees the two never
+        overlap and guarantees nothing else. Whenever the hero is content-
+        driven rather than viewport-driven the gap between the CTA and the cue
+        is then precisely zero, and the cue reads as hanging off the button
+        instead of sitting at the foot of the section.
+
+        That is not a rare case, it is every phone: the hero is `min-h-[88svh]`
+        over 427px of content, so below about 740px of visible viewport the
+        88svh floor stops binding and the height comes from the content --
+        715px, with the CTA's bottom edge landing on the padding line the cue
+        starts at. Measured at 375x812 the gap is 54px and at 375x640 it is 0.
+
+        192 - 160 = 32px of clearance, at every width, by construction. Anyone
+        lowering this has to lower the cue with it.
 
         It also reads better: with `justify-center` a larger bottom padding
         lifts the headline and the CTA slightly, which leaves the lower third
         of the hero to the footage and the cue rather than crowding all three.
       */
-      className="relative isolate flex h-full min-h-[88svh] flex-col justify-center overflow-hidden px-gutter pb-40 pt-32 md:pb-48 md:pt-40 lg:min-h-[92svh]"
+      className="relative isolate flex h-full min-h-[88svh] flex-col justify-center overflow-hidden px-gutter pb-48 pt-32 md:pt-40 lg:min-h-[92svh]"
     >
       <HeroMedia posterSrc={posterSrc} videoSrc={videoSrc} paused={unpinned} />
 
