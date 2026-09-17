@@ -87,6 +87,22 @@ export function Landing({
   // -proof transition -- white dots on a white section, invisible for hundreds
   // of pixels of scroll.
   const [railOverHero, setRailOverHero] = React.useState(false)
+  /**
+   * Whether the page has moved AT ALL, which is a different question from
+   * `overHero` and needs its own answer.
+   *
+   * `overHero` asks "is the hero still behind the navbar's band", and stays
+   * true for the whole 800-odd pixels of it. The navbar's blur is keyed on
+   * something much earlier: at rest it is nothing, and the moment the page
+   * moves it becomes a plate over whatever is sliding under it (Gabe,
+   * 2026-09-17: "when the navbar is scrolled, blur appears. No scroll, no
+   * blur"). Keyed on `overHero` the blur appeared only once the hero had gone,
+   * which is most of a screen too late.
+   *
+   * Starts false so the first paint is the bare bar; `read()` runs on mount,
+   * so arriving deep-linked or restored mid-page corrects it in the same frame.
+   */
+  const [scrolled, setScrolled] = React.useState(false)
 
   // Measured, not computed from a pin height: the hero is pinned on desktop
   // and in normal flow on mobile and under reduced motion, so a computed
@@ -104,6 +120,10 @@ export function Landing({
       // Half the viewport, because that is where the rail is anchored
       // (top-1/2). Same tested function, a different band.
       setRailOverHero(navOverHero(window.scrollY, heroBottom, window.innerHeight / 2))
+      // Not a threshold. "Scrolled" means the page is not at its origin, and a
+      // tolerance here would be a band where the bar is bare over moving
+      // content -- the exact state the blur exists to prevent.
+      setScrolled(window.scrollY > 0)
     }
     read()
     window.addEventListener('scroll', read, { passive: true })
@@ -140,7 +160,7 @@ export function Landing({
 
   return (
     <>
-      <LandingNavbar overHero={overHero} />
+      <LandingNavbar overHero={overHero} scrolled={scrolled} />
       {/*
         6.1a: when the pinned sequence lands, `progress` should come from it
         rather than from page scroll -- a thousand pixels of scroll inside a

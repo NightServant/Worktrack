@@ -84,9 +84,19 @@ import { NAV_LINKS } from './content'
 export interface LandingNavbarProps {
   /** True while the hero still covers the band the bar occupies. */
   overHero: boolean
+  /**
+   * Whether the page has moved at all. Drives the blur, and only the blur.
+   *
+   * SEPARATE FROM `overHero` BECAUSE THEY ANSWER DIFFERENT QUESTIONS, and
+   * keying the blur on the wrong one is what made it arrive a screen late.
+   * `overHero` decides the bar's COLOURS -- light links on footage, themed
+   * links on the page -- and stays true for the length of the hero. This
+   * decides whether there is a plate at all.
+   */
+  scrolled?: boolean
 }
 
-export function LandingNavbar({ overHero }: LandingNavbarProps) {
+export function LandingNavbar({ overHero, scrolled = false }: LandingNavbarProps) {
   const prefersReducedMotion = usePrefersReducedMotion()
   const [menuOpen, setMenuOpen] = React.useState(false)
 
@@ -143,29 +153,46 @@ export function LandingNavbar({ overHero }: LandingNavbarProps) {
         'transition-[background-color,border-color,color] duration-150',
         'motion-reduce:transition-none',
         /*
-          THE BLUR IS GONE, AND THE OTHER HALF OF THE ORIGINAL REQUEST IS TAKEN
-          INSTEAD (Gabe, 2026-09-17: "remove the backdrop-blur of the navbar but
-          increase the z-index to avoid element overlapping").
-          His 2026-09-15 note offered two remedies -- "implement backdrop blur
-          OR increase the z-index" -- and blur was the branch taken then. This
-          is the same instruction choosing the other branch, so the blur, the
-          translucency it paid for and the `supports-` guards that protected it
-          all come out together. Half-removing it is the one outcome nobody
-          wants: an 80% bar with no blur is sharp text sliding under sharp text,
-          which the previous comment here called strictly worse than a flat bar
-          and was right about.
-          OFF THE HERO IS THEREFORE FULLY OPAQUE. `bg-bg-canvas`, no `/80`. The
-          softened edge the blur bought is not available any more, so the bar
-          goes back to being a plate that content passes behind.
-          OVER THE HERO KEEPS `bg-ink-950/30` and leans on the gradient scrim
-          below (`from-ink-950/55`), which was always the thing carrying the
-          links -- the blur was the plate, the scrim is the shadow. Worth
-          watching: SectionRail's docblock argues that light marks at low
-          opacity over bright moving footage drift in and out of legibility as
-          the clip plays. The hero footage is now tinted to this same
-          `ink-950`, which narrows that gap, but if the links ever flicker
-          against a bright frame the answer is more opacity here, not the blur
-          coming back.
+          THE BAR IS NOTHING UNTIL YOU SCROLL (Gabe, 2026-09-17, settled across
+          four messages and quoted at the end: "when the navbar is scrolled,
+          blur appears. No scroll, no blur").
+          So the two states are not two weights of the same treatment, they are
+          presence and absence. AT REST, over the hero, there is no plate, no
+          blur and no border -- the footage runs edge to edge and the links sit
+          on it, carried by the gradient scrim below. ONCE SCROLLED, the bar
+          becomes a frosted plate over ordinary page content.
+          THE PLATE AND THE BLUR ARE SEPARABLE, which is the thing worth
+          recording: they were introduced together on 2026-09-15 and read as
+          one treatment. The plate supplies contrast by adding colour, the blur
+          supplies it by destroying detail. Neither is wanted over the footage,
+          because both put a visible band across the picture -- which is what
+          every message in this sequence was pointing at.
+          OVER THE HERO HAS NO BACKGROUND AND NO BLUR. What carries the links
+          is the gradient scrim below (`from-ink-950/55` to transparent), which
+          was always doing the real work -- the plate and the blur were both
+          additions on top of it, and only the scrim was ever load-bearing.
+          THE SCRIM IS NOW THE ONLY THING between the links and moving footage,
+          so it cannot be removed as "unused" by the next reader. SectionRail's
+          docblock argues that light marks at low opacity over a bright moving
+          frame drift in and out of legibility as the clip plays -- worse than
+          being consistently wrong, because it reads as a flicker. The hero
+          footage is tinted to `ink-950` now, which narrows that gap, and the
+          scrim covers the top of the frame where the bar sits. If the links
+          ever do flicker against a bright cut, the answer is a stronger scrim,
+          not a plate coming back.
+
+          OFF THE HERO KEEPS ITS PLATE, and that is the one place "remove the
+          background" is not applied. There the bar sits over ordinary page
+          content in the page's own colours, and a transparent bar means dark
+          links with dark text sliding through them -- not a softer version of
+          the same look, simply unreadable. With the blur back it returns to
+          `bg-bg-canvas/80`, the translucency the blur pays for.
+          SUPPORTS-GUARDED AGAIN, and that is not decoration: without the guard
+          a browser with no `backdrop-filter` gets a bar that is 80% opaque and
+          NOT blurred, which is text sliding through legible text. The
+          translucency is bought only where the blur that justifies it exists;
+          everywhere else the bar stays opaque. Over the hero there is nothing
+          to guard, because there is nothing there to fall back from.
           THE Z-INDEX WAS ALREADY WINNING, and is raised anyway because it was
           asked for. Measured in the browser on both 2026-09-15 and 2026-09-17,
           the second time at six scroll positions: this bar took every probe,
@@ -178,8 +205,25 @@ export function LandingNavbar({ overHero }: LandingNavbarProps) {
           dialog ever lands on the landing page this number comes back down.
         */
         overHero
-          ? 'bg-ink-950/30 text-ink-50'
-          : 'border-b border-border-subtle bg-bg-canvas text-text-primary'
+          ? cn('text-ink-50', scrolled ? 'bg-ink-950/30' : 'bg-transparent')
+          : 'border-b border-border-subtle bg-bg-canvas text-text-primary',
+        // EVERYTHING BELONGS TO THE SCROLL, NOT TO THE HERO, and that is the
+        // whole rule: at the top of the page the bar is absent -- no plate, no
+        // blur, no border, the footage running edge to edge under the links --
+        // and the moment the page moves it becomes a bar again.
+        //
+        // `overHero` decides only WHICH bar: `ink-950/30` over the footage,
+        // the themed canvas plate over the page. It does not decide whether
+        // there is one, which is the mistake that shipped once -- keyed on
+        // `overHero`, the blur arrived only after the whole hero had gone, a
+        // screen later than asked for.
+        scrolled && 'supports-[backdrop-filter]:backdrop-blur-md',
+        // Off the hero the blur also buys the `/80` translucency, guarded
+        // together: without `backdrop-filter` an 80% bar is NOT blurred, which
+        // is text sliding through legible text, so that plate stays opaque.
+        // Over the hero the tint needs no guard -- it is doing the work alone,
+        // with the gradient scrim beneath it.
+        scrolled && !overHero && 'supports-[backdrop-filter]:bg-bg-canvas/80'
       )}
     >
       {overHero && (

@@ -7,8 +7,8 @@ vi.mock('next-themes', () => ({
   useTheme: () => ({ resolvedTheme: 'light', setTheme: vi.fn() }),
 }))
 
-function renderNav(overHero: boolean) {
-  const { container } = render(<LandingNavbar overHero={overHero} />)
+function renderNav(overHero: boolean, scrolled = false) {
+  const { container } = render(<LandingNavbar overHero={overHero} scrolled={scrolled} />)
   const bar = container.querySelector('[data-landing-nav]')
   expect(bar).not.toBeNull()
   return bar as HTMLElement
@@ -168,5 +168,49 @@ describe('LandingNavbar at mobile widths', () => {
     const wrapper = toggle!.closest('[data-nav-toggle]') as HTMLElement
     expect(wrapper.className).not.toContain('hidden')
     expect(wrapper.className).not.toContain('md:block')
+  })
+
+  describe('the blur belongs to the scroll, not to the hero', () => {
+    // Gabe, 2026-09-17, after it was keyed on the wrong one: "when the navbar
+    // is scrolled, blur appears. No scroll, no blur", then "when the navbar is
+    // scrolled through hero section, blur applies".
+    //
+    // THE BUG THIS LOCKS OUT is subtle and was shipped once: `overHero` stays
+    // true for the WHOLE hero, so a blur keyed on it arrived only after ~800px
+    // of scrolling -- most of a screen late, and never during the part of the
+    // journey the request is actually about.
+
+    it('has nothing at all at rest', () => {
+      const bar = renderNav(true, false)
+      expect(bar.className).toContain('bg-transparent')
+      expect(bar.className).not.toContain('backdrop-blur')
+    })
+
+    it('becomes a bar again as soon as the page moves, still inside the hero', () => {
+      const bar = renderNav(true, true)
+      expect(bar.className).toContain('backdrop-blur')
+      // The tint comes back WITH the scroll (Gabe: "restore the background
+      // when the scroll is applied"). What it must not be is the themed plate
+      // -- over footage the bar is `ink-950`, not the page's canvas.
+      expect(bar.className).toContain('bg-ink-950/30')
+      expect(bar.className).not.toContain('bg-transparent')
+      expect(bar.className).not.toContain('bg-bg-canvas/80')
+    })
+
+    it('adds the plate only once the hero is behind it', () => {
+      const bar = renderNav(false, true)
+      expect(bar.className).toContain('backdrop-blur')
+      expect(bar.className).toContain('bg-bg-canvas/80')
+    })
+
+    it('leaves the off-hero plate opaque where there is no blur to justify it', () => {
+      // Without `backdrop-filter` an 80% bar is not blurred, which is text
+      // sliding through legible text. Both translucency and blur are bought
+      // together behind the same `supports-` guard, or neither is.
+      const bar = renderNav(false, true)
+      const translucent = bar.className.includes('supports-[backdrop-filter]:bg-bg-canvas/80')
+      const blurred = bar.className.includes('supports-[backdrop-filter]:backdrop-blur')
+      expect(translucent && blurred, 'translucency and blur are guarded together').toBe(true)
+    })
   })
 })
