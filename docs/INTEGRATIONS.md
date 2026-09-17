@@ -352,16 +352,18 @@ would be a worse screen than one drawn without holidays.
 
 ---
 
-## Job posting extraction — Scrapling (planned, M7)
+## Job posting extraction — Scrapling (shipped, M7)
 
-**Status: chosen, not installed.** Nothing imports it and no route calls it.
-Plan: `docs/superpowers/plans/2026-09-05-m7-scrapy-autofill.md`.
+**Status: shipped.** `scrapling==0.4.15` is a dependency of the Python
+extractor in `scraper/`, which runs as its own Vercel service with no public
+route; `/api/autofill` reaches it over a binding. Plan:
+`docs/superpowers/plans/2026-09-05-m7-scrapy-autofill.md`.
 
-Today the Auto-fill button is a Deno edge function
-(`supabase/functions/job-url-autofill/`) that fetches the page and runs
-**regexes over the HTML string** — `<title>` is found with
-`/<title[^>]*>([\s\S]*?)<\/title>/i`, because the Deno edge runtime has no DOM.
-It works on pages with JSON-LD and degrades badly on everything else.
+It replaced a Deno edge function (`job-url-autofill`, deleted 2026-09-17 having
+never been deployed) that fetched the page and ran **regexes over the HTML
+string** — `<title>` was found with `/<title[^>]*>([\s\S]*?)<\/title>/i`,
+because the Deno edge runtime has no DOM. That worked on pages carrying JSON-LD
+and degraded badly on everything else, which is the comparison below.
 
 ### Why Scrapling and not Scrapy
 

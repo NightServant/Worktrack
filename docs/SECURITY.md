@@ -23,13 +23,19 @@ Never put the service-role key behind that prefix; it bypasses RLS entirely.
 
 Twelve tables, twelve `ENABLE ROW LEVEL SECURITY`. No table is missing it.
 
-### Edge functions — one was open, now fixed
+### Edge functions — one was open; all four are now gone
 
-`analytics-cache-proxy`, `resume-export-pdf` and `cv-render` each read the
-`Authorization` header and call `getUser()` before doing any work.
-**`job-url-autofill` did neither.** It fetches an arbitrary external URL
-server-side, so an unauthenticated caller had a fetch proxy running inside our
-infrastructure, on our egress IP, against our rate budget.
+**The functions no longer exist** (deleted 2026-09-15 and 2026-09-17, none ever
+deployed) and the work runs as Next.js routes behind `lib/apiAuth`. The finding
+is kept because the trap it names is not specific to Deno, and the route that
+replaced the open one inherited the whole design: see `/api/autofill`.
+
+As found in the 2026-09-02 audit: `analytics-cache-proxy`, `resume-export-pdf`
+and `cv-render` each read the `Authorization` header and called `getUser()`
+before doing any work. **`job-url-autofill` did neither.** It fetches an
+arbitrary external URL server-side, so an unauthenticated caller had a fetch
+proxy running inside our infrastructure, on our egress IP, against our rate
+budget.
 
 The trap worth naming: Supabase's `verify_jwt` gate is *not* sufficient by
 itself, because the anon key **is** a valid JWT and it is public. A gateway that
@@ -42,11 +48,19 @@ Its SSRF defences were already strong and are untouched: non-HTTP protocols,
 `localhost`, `.local`, `.internal`, single-label hosts, private IPv4 ranges and
 IPv6 literals are all refused.
 
-**The hole is now gated, not just patched.**
-`src/__tests__/edgeFunctionAuth.test.ts` reads every function under
-`supabase/functions/` and fails if one lacks `getUser()`, reads a service-role
-key, or builds its client without forwarding the caller's `Authorization`
-header. It was proved to have teeth by removing the fix and watching it fail.
+**The hole is gated, not just patched — and the gate outlived the functions.**
+`src/__tests__/edgeFunctionAuth.test.ts` read every function under
+`supabase/functions/` and failed if one lacked `getUser()`, read a service-role
+key, or built its client without forwarding the caller's `Authorization` header.
+It was proved to have teeth by removing the fix and watching it fail, and it
+went when the last function did (2026-09-17).
+
+Its successor is `src/app/api/__tests__/routesAreGuarded.test.ts`, which asks
+the same question of the routes that replaced them: it reads every file under
+`src/app/api` and fails if one does not call `authenticate`. The invariant is a
+property of the SET of files, not of any one handler, which is why both are
+source-reading tests rather than behavioural ones — a per-route test only ever
+covers the routes somebody remembered to write one for.
 The point is function number five: this defect existed because "check who is
 calling" was a habit three files happened to share, and a habit is not a
 control. The gate reads source text rather than running the functions — they

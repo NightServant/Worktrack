@@ -7,8 +7,6 @@
 - [ ] Production build works: `npm run build`
 - [ ] Supabase project created and credentials saved
 - [ ] Database migrations applied (see [Database Migrations](#step-1-database-migrations))
-- [ ] Edge functions deployed (job-url-autofill, resume-export-pdf, analytics-cache-proxy)
-- [ ] Analytics cache table created
 - [ ] Environment variables set in Vercel
 - [ ] Smoke tests passed on production URL
 
@@ -142,32 +140,11 @@ supabase link --project-ref YOUR_PROJECT_REF
 
 ### Deploy Functions
 
-Deploy all 3 edge functions to Supabase:
-
-```bash
-supabase functions deploy job-url-autofill
-supabase functions deploy resume-export-pdf
-supabase functions deploy analytics-cache-proxy
-```
-
-You should see:
-```
-✓ Function deployed successfully
-✓ Available at: https://YOUR_PROJECT.functions.supabase.co/job-url-autofill
-```
-
-### Optional: Set Supabase Secrets
-
-For error monitoring on edge functions:
-
-```bash
-supabase secrets set EDGE_SENTRY_DSN=https://your-sentry-key@sentry.io/project
-supabase secrets set EDGE_SENTRY_ENVIRONMENT=production
-```
-
-Or set via Supabase Dashboard:
-1. Go to **Settings > Edge Functions > Secrets**
-2. Add `EDGE_SENTRY_DSN` and `EDGE_SENTRY_ENVIRONMENT`
+**There is nothing to deploy.** This project has no edge functions: all four
+were deleted on 2026-09-15 and 2026-09-17, none of them having ever been
+deployed. The work runs as Next.js routes — `/api/cv/pdf`, `/api/cv/docx`,
+`/api/cv/latex`, `/api/autofill`, `/api/tailor` — which ship with the Vercel
+deployment and need no separate step. See the README for why each one moved.
 
 ---
 
@@ -267,36 +244,29 @@ Visit: https://your-project.vercel.app
 **Check Job Auto-fill:**
 1. In dashboard, add a new job
 2. Paste a LinkedIn or Indeed URL in the URL field
-3. Click **"Auto-fill from URL"** (if button appears)
+3. Click **"Auto-fill from URL"**
 4. Job fields should populate automatically
-5. If error: Edge function `job-url-autofill` may not have deployed
+5. If error: `/api/autofill` reaches the extractor over a Vercel service
+   binding, so check that `EXTRACTOR_URL` is bound and the extractor is
+   deployed — locally it is a separate process, and `npm run dev` does not
+   start it
 
-**Check Edge Logs:**
-```bash
-# View function invocations in real-time
-supabase functions logs job-url-autofill
-
-# Or in Supabase Dashboard: Functions → Select function → Logs tab
-```
+**Check the logs:** Vercel → the project → Logs, filtered to `/api/autofill`.
+That is this app's whole logging story; see `lib/securityLog`.
 
 ### 🎯 Monitor Performance
 
 **Optional: Set Up Sentry Alerts**
 - If you configured `VITE_SENTRY_DSN` in Vercel:
   1. Go to [sentry.io/organizations/your-org/issues](https://sentry.io)
-  2. You should see errors (if any) from edge functions and browser
+  2. You should see errors (if any) from the API routes and the browser
   3. Click an error to see stack trace and affected users
 
-**View Analytics Cache Hits:**
-- In Supabase dashboard:
-  1. Go to **SQL Editor**
-  2. Run:
-     ```sql
-     SELECT metric_name, COUNT(*), MAX(updated_at)
-     FROM analytics_cache
-     GROUP BY metric_name;
-     ```
-  3. Should show cached metrics with recent `updated_at` timestamps
+**Analytics are not cached server-side.** `analytics_cache` is still in the
+schema and is empty: the function that filled it was never deployed, and it was
+deleted rather than deployed on 2026-09-17 because its numbers no longer
+matched the ones the charts read. Every metric is computed per request and held
+in the browser by TanStack Query for 5–10 minutes.
 
 ---
 
@@ -316,12 +286,11 @@ supabase functions logs job-url-autofill
 2. Try export again
 
 ### Issue: Resume PDF export fails
-**Cause**: Edge function not deployed  
-**Solution**:
-```bash
-supabase functions deploy resume-export-pdf
-# Verify it's deployed in Supabase console
-```
+**Cause**: `/api/cv/pdf` returned an error, or the session token was missing  
+**Solution**: read the toast. `Export failed (500)` means the route answered and
+the Vercel log for `/api/cv/pdf` has the reason; `Failed to fetch` means the
+request never completed at all, which is CORS, DNS or a dropped connection —
+never a 500.
 
 ### Issue: Jobs from other accounts visible
 **Cause**: RLS not enabled  
@@ -359,7 +328,7 @@ If deployment breaks production:
 ## Post-Launch Checklist
 
 - [ ] Monitor Sentry for errors (24 hours)
-- [ ] Confirm edge function telemetry is flowing to logs/Sentry
+- [ ] Confirm API route telemetry is flowing to logs/Sentry
 - [ ] Verify database backups run daily
 - [ ] Set up Vercel analytics alerts
 - [ ] Update user documentation

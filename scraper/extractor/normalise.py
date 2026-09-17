@@ -1,4 +1,5 @@
-"""Text normalisers, ported from `supabase/functions/job-url-autofill/parser.ts`.
+"""Text normalisers, ported from the `job-url-autofill` edge function's
+parser.ts (deleted 2026-09-17, in git history).
 
 PORTED RATHER THAN REWRITTEN. Each of these encodes a decision someone made
 against a real posting -- stripping "| LinkedIn" off a title, dropping a

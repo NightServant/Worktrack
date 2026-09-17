@@ -7,9 +7,10 @@
  * `getSession()` dance, and the one that forgets does not fail loudly, it
  * just starts 401ing after a change nobody connected to it.
  *
- * The header name and shape match what `WordResumeEditor` already sends to
- * the `cv-render` edge function, so the app has one answer to "how does a
- * request prove who it is".
+ * The header name and shape are the ones the app has always used -- the Deno
+ * functions these routes replaced read the same `Authorization: Bearer
+ * <token>` -- so the app has one answer to "how does a request prove who it
+ * is". Those functions are gone (2026-09-17); the convention outlived them.
  *
  * THE SUPABASE CLIENT IS IMPORTED LAZILY. `@/lib/supabase` constructs a real
  * client at module load and throws on an invalid URL, so a static import here

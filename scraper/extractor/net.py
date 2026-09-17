@@ -7,7 +7,8 @@ what was typed, and only the thing performing the fetch can see where it landed.
 The Deno function made exactly this check after `redirect: 'follow'` for the
 same reason.
 
-Ported from `supabase/functions/job-url-autofill/index.ts`, including the
+Ported from the `job-url-autofill` edge function (deleted 2026-09-17, in git
+history), including the
 ranges it chose: RFC1918, loopback, link-local, carrier-grade NAT and
 multicast, plus IPv6 loopback, link-local and unique-local. Single-label hosts
 are refused because `http://intranet/` is the shape of an internal target.

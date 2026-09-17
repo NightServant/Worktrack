@@ -1,7 +1,9 @@
 /**
  * Which URLs `/api/autofill` is allowed to hand to the extractor.
  *
- * PORTED FROM `supabase/functions/job-url-autofill/index.ts`, not re-derived.
+ * PORTED FROM the `job-url-autofill` edge function, not re-derived. (That
+ * function was deleted on 2026-09-17, never having been deployed; the original
+ * list is in git history.)
  * These ranges were settled once, under review, and re-deriving them from
  * memory is how one gets dropped -- which is not hypothetical: the Python copy
  * of this same gate initially leaned on the standard library and silently let

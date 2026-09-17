@@ -1,33 +1,32 @@
+/**
+ * EVERY METRIC IS COMPUTED LIVE, and each of these queries used to ask an edge
+ * cache first.
+ *
+ * `analytics-cache-proxy` WAS NEVER DEPLOYED. `list_edge_functions` returns an
+ * empty list for this project, so the hit never happened: the invoke failed,
+ * the `catch` swallowed it, and the only thing the branch achieved was a
+ * doomed round trip in front of five dashboard queries. It reported nothing,
+ * because a cache that misses is indistinguishable from a cache that is not
+ * there.
+ *
+ * IT WAS REMOVED RATHER THAN DEPLOYED (2026-09-17), and the reason is in the
+ * function rather than in its deployment. It computed each metric a second
+ * time, in Deno, against a shape the app has since moved past -- its funnel
+ * returned three stages with `avgDaysToStage: 0` and no `isExit` flag, which
+ * is not the `ConversionFunnelMetric` these charts read. Its read path also
+ * had no expiry, so the first payload it stored would have been served
+ * forever. Deploying it would have replaced correct numbers with frozen,
+ * coarser ones: worse than the empty request it was making.
+ *
+ * `analytics_cache` and `upsert_analytics_cache` are still in the schema,
+ * holding nothing, because nothing ever wrote to them.
+ */
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '@/contexts/AuthContext'
 import { analyticsService } from '@/services/analyticsService'
 
-/**
- * What `analytics-cache-proxy` returns.
- *
- * IT IS CHECKED, NOT ASSERTED. The function is ours but the response crosses a
- * network boundary, so `cached` is read before `payload` is trusted -- a warm
- * entry and an error both come back as a 200 with a body.
- */
-type CachedEnvelope<T> = { cached?: boolean; payload?: T }
-import { supabase } from '@/lib/supabase'
-
-/**
- * THE RANGE IS PART OF THE CACHE KEY, and it has to be: two windows over the
- * same account are two different answers, and sharing a key would serve
- * whichever was fetched first for both.
- *
- * IT ALSO TURNS THE EDGE CACHE OFF. `analytics-cache-proxy` stores one
- * all-time payload per metric; consulting it for a narrowed window would
- * return the all-time numbers under a "last 3 months" heading -- which is a
- * more convincing version of the bug this change exists to fix. So the cache
- * is read only when there is no window (`since === null`), and every other
- * range is computed live.
- */
-const cacheable = (since: string | null) => since === null
 import type {
-
   TimeInStageMetric,
   ConversionFunnelMetric,
   SourceConversionTrend,
@@ -38,22 +37,7 @@ import type {
 export function useTimeInStage(userId?: string, since: string | null = null) {
   return useQuery<TimeInStageMetric[]>({
     queryKey: ['analytics', 'timeInStage', userId, since],
-    queryFn: async () => {
-      // The cache holds one ALL-TIME payload per metric, so it is only
-      // consulted when no window is set. See `cacheable` above.
-      if (cacheable(since)) {
-        try {
-          const { data, error } = await supabase.functions.invoke('analytics-cache-proxy', { body: { metric: 'timeInStage' } })
-          const envelope = data as CachedEnvelope<TimeInStageMetric[]> | null
-            if (!error && envelope?.cached && envelope.payload) {
-              return envelope.payload
-          }
-        } catch {
-          // ignore cache errors and fall back to live compute
-        }
-      }
-      return analyticsService.getTimeInStageMetrics(userId!, since)
-    },
+    queryFn: () => analyticsService.getTimeInStageMetrics(userId!, since),
     enabled: !!userId,
     staleTime: 5 * 60_000,
     gcTime: 30 * 60_000,
@@ -65,22 +49,7 @@ export function useTimeInStage(userId?: string, since: string | null = null) {
 export function useConversionFunnel(userId?: string, since: string | null = null) {
   return useQuery<ConversionFunnelMetric[]>({
     queryKey: ['analytics', 'conversionFunnel', userId, since],
-    queryFn: async () => {
-      // The cache holds one ALL-TIME payload per metric, so it is only
-      // consulted when no window is set. See `cacheable` above.
-      if (cacheable(since)) {
-        try {
-          const { data, error } = await supabase.functions.invoke('analytics-cache-proxy', { body: { metric: 'conversionFunnel' } })
-          const envelope = data as CachedEnvelope<ConversionFunnelMetric[]> | null
-            if (!error && envelope?.cached && envelope.payload) {
-              return envelope.payload
-          }
-        } catch {
-          // ignore cache errors and fall back to live compute
-        }
-      }
-      return analyticsService.getConversionFunnel(userId!, since)
-    },
+    queryFn: () => analyticsService.getConversionFunnel(userId!, since),
     enabled: !!userId,
     staleTime: 5 * 60_000,
     gcTime: 30 * 60_000,
@@ -92,22 +61,7 @@ export function useConversionFunnel(userId?: string, since: string | null = null
 export function useSourceConversionTrends(userId?: string, since: string | null = null) {
   return useQuery<SourceConversionTrend[]>({
     queryKey: ['analytics', 'sourceConversionTrends', userId, since],
-    queryFn: async () => {
-      // The cache holds one ALL-TIME payload per metric, so it is only
-      // consulted when no window is set. See `cacheable` above.
-      if (cacheable(since)) {
-        try {
-          const { data, error } = await supabase.functions.invoke('analytics-cache-proxy', { body: { metric: 'sourceConversionTrends' } })
-          const envelope = data as CachedEnvelope<SourceConversionTrend[]> | null
-            if (!error && envelope?.cached && envelope.payload) {
-              return envelope.payload
-          }
-        } catch {
-          // ignore cache errors and fall back to live compute
-        }
-      }
-      return analyticsService.getSourceConversionTrends(userId!, since)
-    },
+    queryFn: () => analyticsService.getSourceConversionTrends(userId!, since),
     enabled: !!userId,
     staleTime: 10 * 60_000,
     gcTime: 60 * 60_000,
@@ -119,22 +73,7 @@ export function useSourceConversionTrends(userId?: string, since: string | null 
 export function useCohortAnalysis(userId?: string, since: string | null = null) {
   return useQuery<CohortAnalysis[]>({
     queryKey: ['analytics', 'cohortAnalysis', userId, since],
-    queryFn: async () => {
-      // The cache holds one ALL-TIME payload per metric, so it is only
-      // consulted when no window is set. See `cacheable` above.
-      if (cacheable(since)) {
-        try {
-          const { data, error } = await supabase.functions.invoke('analytics-cache-proxy', { body: { metric: 'cohortAnalysis' } })
-          const envelope = data as CachedEnvelope<CohortAnalysis[]> | null
-            if (!error && envelope?.cached && envelope.payload) {
-              return envelope.payload
-          }
-        } catch {
-          // ignore cache errors and fall back to live compute
-        }
-      }
-      return analyticsService.getCohortAnalysis(userId!, since)
-    },
+    queryFn: () => analyticsService.getCohortAnalysis(userId!, since),
     enabled: !!userId,
     staleTime: 10 * 60_000,
     gcTime: 60 * 60_000,
@@ -146,22 +85,7 @@ export function useCohortAnalysis(userId?: string, since: string | null = null) 
 export function useConversionMetrics(userId?: string, since: string | null = null) {
   return useQuery<ConversionMetrics>({
     queryKey: ['analytics', 'conversionMetrics', userId, since],
-    queryFn: async () => {
-      // The cache holds one ALL-TIME payload per metric, so it is only
-      // consulted when no window is set. See `cacheable` above.
-      if (cacheable(since)) {
-        try {
-          const { data, error } = await supabase.functions.invoke('analytics-cache-proxy', { body: { metric: 'conversionMetrics' } })
-          const envelope = data as CachedEnvelope<ConversionMetrics> | null
-          if (!error && envelope?.cached && envelope.payload) {
-            return envelope.payload
-          }
-        } catch {
-          // ignore cache errors and fall back to live compute
-        }
-      }
-      return analyticsService.getConversionMetrics(userId!, since)
-    },
+    queryFn: () => analyticsService.getConversionMetrics(userId!, since),
     enabled: !!userId,
     staleTime: 5 * 60_000,
     gcTime: 30 * 60_000,

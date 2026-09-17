@@ -13,10 +13,10 @@ import { logSecurityEvent } from './securityLog'
  * CV -- so the gate is simply the one that was missing.
  *
  * THE SCHEME IS THE ONE THE APP ALREADY USES, not a new one. `WordResumeEditor`
- * has always sent `Authorization: Bearer <session.access_token>` to the
- * `cv-render` edge function. These routes read the same header and validate it
- * the same way, so there is one answer to "how does a Worktrack request prove
- * who it is" rather than two.
+ * has always sent `Authorization: Bearer <session.access_token>`, first to the
+ * Deno functions these routes replaced and now to the routes themselves, which
+ * read the same header and validate it the same way -- so there is one answer
+ * to "how does a Worktrack request prove who it is" rather than two.
  *
  * VALIDATED, NOT DECODED. `getUser(token)` asks Supabase to verify the
  * signature and expiry. Reading the JWT's claims locally would accept any

@@ -178,7 +178,7 @@ describe('jobService', () => {
       })
 
       Sentry.captureException(error, {
-        tags: { function: 'job-url-autofill', requestId },
+        tags: { function: 'api-autofill', requestId },
         extra: { requestId },
       })
 

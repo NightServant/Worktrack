@@ -102,7 +102,7 @@ The dates move with the clock. A fixture pinned to literal dates would say "appl
 - Conversion and offer rates, applications over time, status distribution
 - Time-in-stage metrics, conversion funnels, and source trends
 - A date range that narrows every panel on the screen, not just one
-- Precomputed metrics cached in Postgres behind an edge function (stale-while-revalidate)
+- Every panel is computed from your rows on request, then held by TanStack Query for 5–10 minutes (stale-while-revalidate)
 - Every figure is computed from your own rows, so it is only ever as good as what you put in
 
 ### CV builder
@@ -110,7 +110,7 @@ The dates move with the clock. A fixture pinned to literal dates would say "appl
 - LaTeX source editor with live side-by-side preview
 - Template presets for both modes, browsable on their own screen
 - Version history — snapshots capped at 10 per CV
-- PDF export via edge function; `.docx` export headlessly
+- Export to `.tex`, `.docx` or PDF — three Next.js routes, with no headless browser between you and the file
 - An ATS check that reads the document rather than guessing at it, and names both the matched and the missing keywords
 
 ### Profile
@@ -190,7 +190,7 @@ The figures above are quoted with the date they were read, because somebody else
 | Test suite, TypeScript | `npm test` |
 | Test suite, Python extractor | `npm run test:scraper` |
 | Database migrations | `ls supabase/migrations/*.sql` |
-| Edge functions | `ls supabase/functions` |
+| API routes (there are no edge functions) | `find src/app/api -name route.ts` |
 | Routes behind authentication | `find "src/app/(app)" -name page.tsx` |
 | CV templates, per mode | [`src/services/resumeTemplateService.ts`](src/services/resumeTemplateService.ts) |
 | Supported currencies | [`src/services/userPreferences.ts`](src/services/userPreferences.ts) |
@@ -278,7 +278,7 @@ Vercel. Import the repository, set the two `NEXT_PUBLIC_SUPABASE_*` variables, a
 
 **Row-level security on every table.** Twelve tables, twelve `ENABLE ROW LEVEL SECURITY`, and every policy scoped to `auth.uid()`.
 
-**Every edge function authenticates its caller.** Three of the four did; `job-url-autofill` did not, while fetching arbitrary external URLs server-side — a fetch proxy on our infrastructure open to anyone who found the URL. The trap worth naming is that Supabase's platform-level `verify_jwt` would not have caught it: **the anon key is itself a valid JWT and it is public by design**, so a gate that only asks "is this a valid JWT" admits the entire internet. Only `getUser()` separates a signed-in person from anyone who has read the client bundle. `src/__tests__/edgeFunctionAuth.test.ts` now fails any function that omits it.
+**Every route that costs something authenticates its caller.** This was found in the edge functions the app used to have: three of the four checked, and `job-url-autofill` did not — while fetching arbitrary external URLs server-side, which is a fetch proxy on our infrastructure open to anyone who found the URL. The trap worth naming is that Supabase's platform-level `verify_jwt` would not have caught it: **the anon key is itself a valid JWT and it is public by design**, so a gate that only asks "is this a valid JWT" admits the entire internet. Only `getUser()` separates a signed-in person from anyone who has read the client bundle. Those functions are gone; the rule moved to `lib/apiAuth`, which every `/api` route calls before it reads a body, and which logs each refusal.
 
 **Tests are written before the code, and proved to have teeth.** The habit that matters is not the count but the check: a test that cannot fail is worse than no test, so a new guard is verified by reverting the fix and watching it go red. Several tests in this repository exist because an earlier version passed against broken code.
 
@@ -320,7 +320,6 @@ src/
 ├── lib/            Supabase client, credentials, rate limiting, helpers
 └── services/       data access, validation, templates, analytics
 supabase/
-├── functions/      Deno edge functions
 ├── migrations/     ordered SQL migrations
 ├── templates/      auth email templates
 └── config.toml     auth configuration, applied with `supabase config push`
@@ -364,16 +363,27 @@ Twelve tables, RLS enabled on all of them:
 | `analytics_cache` | Precomputed per-user metrics, service-role only |
 | `demo_accounts` | Read-only demo users, enforced by RLS |
 
-### Edge functions
+### Edge functions — there are none
 
-Deno, in `supabase/functions/`:
+Four Deno functions used to live in `supabase/functions/`. **Not one of them
+was ever deployed**: `list_edge_functions` returns an empty list for this
+project, which is also why a call to one surfaced as `TypeError: Failed to
+fetch` rather than a 404 — Supabase's platform 404 answers the CORS preflight
+without `content-type`, so the browser drops the request before there is a
+status to report.
 
-| Function | Purpose |
+They were removed rather than deployed, each for its own reason:
+
+| Function | Gone because |
 |---|---|
-| `job-url-autofill` | Fetches and parses job postings into form fields |
-| `analytics-cache-proxy` | Reads cache, computes on miss, upserts result |
-| `resume-export-pdf` | Renders a CV to PDF |
-| `_shared` | Common headers and telemetry helpers |
+| `resume-export-pdf` | Bundled Chromium against a 256MB runtime and a 20MB bundle cap. Now `/api/cv/pdf` |
+| `cv-render` | The same, for the same reason |
+| `job-url-autofill` | Superseded by `/api/autofill` and the extractor service (M7) |
+| `analytics-cache-proxy` | Superseded by live compute in `analyticsService` — see `useAnalytics` for why deploying it would have been worse than deleting it |
+
+The work they were meant to do runs where it can be tested from a laptop:
+`/api/cv/pdf`, `/api/cv/docx`, `/api/cv/latex`, `/api/autofill` and
+`/api/tailor`.
 
 ## 12. Limitations
 

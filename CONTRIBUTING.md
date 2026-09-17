@@ -43,20 +43,17 @@ Need Supabase credentials? Create a free account at [supabase.com](https://supab
 
 Follow the step-by-step checklist in [**texts/database_migrations.md**](texts/database_migrations.md) to set up your database schema in Supabase.
 
-### 4. (Optional) Deploy Edge Functions Locally
+### 4. (Optional) Run the extractor
 
-If you want to test auto-fill or PDF export:
+There are no edge functions to deploy — every one of them was deleted in
+September 2026 without ever having been deployed, and the work moved to
+Next.js routes that ship with the app.
 
-```bash
-npm install -g supabase  # Install Supabase CLI
-
-supabase login           # Authenticate (opens browser)
-supabase link --project-ref YOUR_PROJECT_REF  # Link to your project
-
-supabase functions deploy job-url-autofill
-supabase functions deploy resume-export-pdf
-supabase functions deploy analytics-cache-proxy
-```
+PDF, `.docx` and `.tex` export therefore work as soon as `npm run dev` is up.
+**Auto-fill does not**: `/api/autofill` hands the URL to the Python extractor
+in `scraper/`, which is a separate process that `npm run dev` does not start.
+Without it the button reports the posting as unreadable, which looks like a bad
+posting rather than a missing service.
 
 ## 🚀 Development Workflow
 
@@ -144,7 +141,6 @@ src/
   types/            # TypeScript type definitions
 
 supabase/
-  functions/        # Deno edge functions (serverless)
   migrations/       # SQL migration files
 
 texts/              # Non-code documentation
@@ -155,7 +151,8 @@ texts/              # Non-code documentation
 ## 🔍 Common Tasks
 
 ### Add a New Analytics Metric
-1. Create compute function in `supabase/functions/analytics-cache-proxy/index.ts`
+1. Add the computation to `src/services/analyticsService.ts` — every metric is
+   computed per request from the user's own rows; there is no server-side cache
 2. Add hook in `src/hooks/useAnalytics.ts`
 3. Render in `src/components/dashboard/AnalyticsSections.tsx`
 4. Add test case to verify computation

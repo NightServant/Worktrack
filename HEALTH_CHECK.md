@@ -3,6 +3,14 @@
 **Generated**: May 7, 2026  
 **Status**: ✅ **HEALTHY** (Production-ready)
 
+> ⚠️ **SUPERSEDED — this is a snapshot of 7 May 2026, not the current state.**
+> It is kept as a record of that date and has not been rewritten. Two things in
+> it are now actively wrong: the edge functions it lists as "Ready to Deploy"
+> were never deployed and no longer exist (all four were deleted in September
+> 2026), and the analytics caching it describes was removed on 17 September
+> 2026 — every metric is computed per request and held in the browser by
+> TanStack Query. The README describes what is true today.
+
 ---
 
 ## Build & Test Status

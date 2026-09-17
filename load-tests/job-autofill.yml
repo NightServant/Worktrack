@@ -1,5 +1,5 @@
 config:
-  target: "https://<PROJECT_REF>.supabase.co"
+  target: "https://worktrack-jobs.vercel.app"
   phases:
     - duration: 60 # seconds
       arrivalRate: 5 # new virtual users per second
@@ -11,9 +11,16 @@ scenarios:
   - name: Job autofill smoke
     flow:
       - post:
-          url: "/functions/v1/job-url-autofill"
+          url: "/api/autofill"
           json:
             url: "https://www.example.com/job/example"
 
-# NOTE: Replace <PROJECT_REF> in `target` with your Supabase project host (e.g. https://abc123.supabase.co)
+# AUTOFILL IS A NEXT.JS ROUTE, NOT AN EDGE FUNCTION (M7). This pointed at
+# `/functions/v1/job-url-autofill` on the Supabase host, which has never been
+# deployed -- so every run of this file measured how fast a 404 comes back.
+#
+# `/api/autofill` authenticates before it does anything, so an unauthenticated
+# flood is rejected at the door: expect 401s unless the scenario carries a
+# bearer token. That IS the first thing worth load-testing here.
+#
 # Run locally: `npx artillery run load-tests/job-autofill.yml`
