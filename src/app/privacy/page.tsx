@@ -233,6 +233,28 @@ export default function Page() {
                 This page does not state a hosting region, because stating one that
                 later turns out to be wrong would be worse than saying nothing.
               </p>
+              {/*
+                ADDED 2026-09-17, WITH THE CACHES THAT MADE IT TRUE. The editor
+                began storing its last spelling-and-grammar check and its last
+                tailoring analysis in the browser, so a reopened document does
+                not spend another request on text that has not changed. Both
+                payloads quote the document -- the grammar cache keys on the
+                whole text, and a tailoring suggestion carries its own before
+                and after lines.
+
+                That is a new PLACE a CV is held, and this section is the one
+                that answers "where". A page that enumerates twelve tables and
+                silently omits the copy sitting in local storage is accurate
+                about the database and misleading about the question.
+              */}
+              <p className="text-body-m font-normal text-text-secondary">
+                Some of it is also held in your own browser. The editor keeps your
+                last spelling and grammar check and your last tailoring analysis in
+                local storage, so reopening a document does not spend another
+                request on text you have not changed &mdash; and both of those
+                quote the document itself. It stays on that device, it is never
+                sent anywhere, and clearing your browser data removes it.
+              </p>
             </section>
 
             <section id="analytics" className="flex scroll-mt-16 flex-col gap-4">
