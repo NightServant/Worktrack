@@ -204,6 +204,9 @@ export function useDeleteJob() {
  */
 export function useAutofillJobFromUrl() {
   return useMutation({
-    mutationFn: (url: string) => jobService.autofillFromUrl(url),
+    // `html` is the bookmarklet's captured page source; without it this is
+    // the fetch path it has always been.
+    mutationFn: ({ url, html }: { url: string; html?: string }) =>
+      jobService.autofillFromUrl(url, html),
   })
 }

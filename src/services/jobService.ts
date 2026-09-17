@@ -307,7 +307,12 @@ export const jobService = {
   /**
    * Attempt to auto-fill job form fields from a public posting URL.
    */
-  async autofillFromUrl(url: string): Promise<JobAutofillResult> {
+  /**
+   * `html` IS THE BOOKMARKLET'S PAYLOAD, and it changes what the server does
+   * rather than merely adding a hint: supplied, the extractor parses it and
+   * never fetches anything. Absent, this behaves exactly as it always has.
+   */
+  async autofillFromUrl(url: string, html?: string): Promise<JobAutofillResult> {
     const requestId = `autofill-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
     
     Sentry.addBreadcrumb({
@@ -341,7 +346,7 @@ export const jobService = {
             ? { Authorization: `Bearer ${session.access_token}` }
             : {}),
         },
-        body: JSON.stringify({ url }),
+        body: JSON.stringify(html ? { url, html } : { url }),
       })
 
       const data = await response.json().catch(() => null)

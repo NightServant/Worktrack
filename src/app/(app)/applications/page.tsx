@@ -13,6 +13,7 @@ import {
 } from '@/hooks/useJobs'
 import { useToast } from '@/contexts/ToastContext'
 import { ApplicationsPage } from '@/components/applications/ApplicationsPage'
+import { useBookmarkletImport } from '@/components/applications/useBookmarkletImport'
 import { useApplicationRecord } from '@/hooks/useApplicationRecord'
 import { RouteSkeleton } from '@/components/ui/loading-skeletons'
 import { RouteError } from '@/components/ui/route-states'
@@ -89,7 +90,7 @@ function ApplicationsRoute() {
     ? (jobs.find((candidate) => candidate.id === openJob.id) ?? openJob)
     : null
   const record = useApplicationRecord(liveOpenJob?.id, liveOpenJob?.description)
-  // The CVs offered by the form's "CV submitted" field, and whichever one is
+  // The CVs offered by the form's "cv used" field, and whichever one is
   // already pinned to the row that is open.
   const { data: resumes = [] } = useResumes()
   const { data: openLinks = [] } = useDocumentLinks(liveOpenJob?.id)
@@ -105,6 +106,15 @@ function ApplicationsRoute() {
   // `?add=<url>` is how the calendar's job feed hands a posting to the add
   // wizard. It carries no id because there is no row yet.
   const addParam = params.get('add')
+  /**
+   * The bookmarklet's payload, if the reader arrived from one.
+   *
+   * The URL rides `addParam` above -- the same parameter the calendar's
+   * `track it` uses -- because only the page SOURCE is too big for a query
+   * string. See `useBookmarkletImport` for why any origin may send it and what
+   * stops that mattering.
+   */
+  const importedHtml = useBookmarkletImport(params.get('import') === 'bookmarklet')
 
   if (isLoading) {
     return <RouteSkeleton variant="table" />
@@ -272,7 +282,7 @@ function ApplicationsRoute() {
         onUpdate={handleUpdate}
         onDelete={handleDelete}
         onImport={handleImport}
-        onAutofill={(url) => autofill.mutateAsync(url)}
+        onAutofill={(url, html) => autofill.mutateAsync({ url, html })}
         onCsvError={(msg) => showError('CSV import failed', msg)}
         saving={createJob.isPending || updateJob.isPending}
         importing={createJobsBulk.isPending}
@@ -281,6 +291,7 @@ function ApplicationsRoute() {
         onOpenJobChange={setOpenJob}
         initialOpenId={openParam}
         initialAddUrl={addParam}
+        initialAddHtml={importedHtml}
       />
       <ConfirmDialog
         open={pendingDelete !== null}

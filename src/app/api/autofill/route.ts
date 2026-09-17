@@ -31,6 +31,17 @@ const RATE_LIMIT_WINDOW_MS = 60_000
 const RATE_LIMIT_MAX_REQUESTS = 8
 
 /**
+ * The most page source this route will carry, in characters.
+ *
+ * A REAL POSTING IS WELL UNDER THIS. Indeed's `viewjob` document measured
+ * about 1.7MB on 2026-09-17, and it is one of the heavier ones; 3MB leaves
+ * room for a fatter page without becoming a place to post arbitrary bulk.
+ * Refused rather than truncated: half a document parses into fields that are
+ * quietly wrong, which is worse than a message saying it was too big.
+ */
+const MAX_HTML_CHARS = 3_000_000
+
+/**
  * An affordance, not a boundary -- the same words `lib/authRateLimit.ts` uses
  * about itself, and true for the same reason. It is per-instance memory, and
  * Fluid Compute reuses instances rather than guaranteeing one, so a determined
@@ -88,7 +99,7 @@ export async function POST(request: Request) {
     )
   }
 
-  let body: { url?: unknown }
+  let body: { url?: unknown; html?: unknown }
   try {
     body = await request.json()
   } catch {
@@ -114,6 +125,30 @@ export async function POST(request: Request) {
   }
 
 
+  /**
+   * PAGE SOURCE THE CALLER ALREADY HAS, which is the bookmarklet's whole point.
+   *
+   * The extractor has accepted `html` since M7 and this route has never sent
+   * it, so the capability sat half-built: `ExtractRequest.html` skips the fetch
+   * entirely and parses what it is given. That is the one route to a posting
+   * behind an anti-bot wall that involves no proxy, no vendor and no key --
+   * a browser already looking at the page is not a scraper, and Indeed cannot
+   * tell it apart from a reader because it IS one.
+   *
+   * THE SSRF GATE ABOVE STILL RUNS, deliberately, even though nothing is
+   * fetched on this path. The URL is still recorded on the application and
+   * still shown to the user, and a gate that applies only sometimes is a gate
+   * whose behaviour nobody can state. It costs one regex against a string the
+   * caller sent anyway.
+   */
+  const html = typeof body?.html === 'string' ? body.html : ''
+  if (html.length > MAX_HTML_CHARS) {
+    return NextResponse.json(
+      { error: 'That page is too large to import. Paste the description instead.' },
+      { status: 413 }
+    )
+  }
+
   const extractor = process.env.EXTRACTOR_URL
   if (!extractor) {
     logSecurityEvent({
@@ -135,7 +170,12 @@ export async function POST(request: Request) {
     const response = await fetch(new URL('extract', extractor), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url: normalizeTargetUrl(String(body.url)) }),
+      // `html` omitted rather than sent empty: the extractor's field is
+      // `str | None`, and an empty string is a page it would try to parse.
+      body: JSON.stringify({
+        url: normalizeTargetUrl(String(body.url)),
+        ...(html ? { html } : {}),
+      }),
     })
     const payload = await response.json()
     return NextResponse.json(payload, { status: response.status })
