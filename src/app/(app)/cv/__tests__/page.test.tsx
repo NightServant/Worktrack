@@ -218,6 +218,31 @@ describe('/cv?draft=<id> opens the right editor', () => {
    * `kind`, and the prop's default is `'word'`. A component test cannot catch
    * that; the omission is at the call site. This is the call site.
    */
+  /**
+   * THE STARTER IS A TEMPLATE NOW, AND THIS IS THE PATH THAT SHOWS IT RAW.
+   *
+   * `DEFAULT_WORD_CONTENT` carries `{{name}}` tokens since 2026-09-17 so that
+   * creating a CV from scratch fills in the LinkedIn profile. "Reset to the
+   * template" is the one place that puts it straight into the editor rather
+   * than through the create path, so it is the one place a literal `{{` could
+   * reach a person -- which is the failure the whole personalisation milestone
+   * exists to prevent. This renders the real route and presses the real
+   * button.
+   */
+  it('resets to the starter without showing a single template token', async () => {
+    params('cv-1')
+    resolved(wordDraft())
+    const user = userEvent.setup()
+    const { container } = render(<Page />)
+
+    await user.click(screen.getByRole('button', { name: /document actions/i }))
+    await user.click(screen.getByRole('button', { name: /reset to the template/i }))
+
+    const text = container.querySelector('.ProseMirror')?.textContent ?? ''
+    expect(text).not.toContain('{{')
+    expect(text).toContain('Your name')
+  })
+
   it('opens a cover letter AS a cover letter, not as the CV editor', () => {
     params('cv-2')
     resolved(wordDraft({ id: 'cv-2', title: 'Initech letter', mode: 'cover_letter' }))
