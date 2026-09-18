@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  addSection,
   parsePosting,
   removeSection,
   replaceSectionBody,
@@ -102,5 +103,30 @@ describe('removeSection', () => {
     // Which puts the surface back into its paste state rather than leaving an
     // editor with nothing to edit.
     expect(removeSection(parsePosting('Benefits:\n- Coffee'), 0)).toBe('')
+  })
+})
+
+describe('addSection', () => {
+  it('adds a named, empty section and leaves the rest byte-identical', () => {
+    const sections = parsePosting(POSTING)
+    const next = parsePosting(addSection(sections, 'Benefits'))
+
+    expect(next).toHaveLength(sections.length + 1)
+    expect(next.slice(0, sections.length)).toEqual(sections)
+    expect(next[sections.length]).toEqual({ heading: 'Benefits:', body: '' })
+  })
+
+  it('takes the name as typed, colon or no colon', () => {
+    expect(parsePosting(addSection([], 'How to apply:'))[0].heading).toBe('How to apply:')
+    expect(parsePosting(addSection([], '  how to   apply  '))[0].heading).toBe('how to apply:')
+  })
+
+  it('keeps a long name short enough to still parse as a heading', () => {
+    // A heading is only a heading below 80 characters, so a name typed past
+    // the cap would come back as a paragraph and the section would vanish
+    // into the one above it.
+    const sections = parsePosting(addSection([], 'x'.repeat(200)))
+    expect(sections).toHaveLength(1)
+    expect(sections[0].heading).toBe(`${'x'.repeat(79)}:`)
   })
 })

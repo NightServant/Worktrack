@@ -1,12 +1,17 @@
 'use client'
 
 import * as React from 'react'
+import { flushSync } from 'react-dom'
+import { AppDialog } from '@/components/ui/app-dialog'
 import { Button } from '@/components/ui/button'
+import { Field } from '@/components/ui/field'
+import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import {
   ArrowRightIcon,
   CheckIcon,
   ChevronLeftIcon,
+  CloseIcon,
   DocumentsIcon,
   ExternalIcon,
   PencilIcon,
@@ -16,11 +21,11 @@ import {
 import { ICON_MOTION_GROUP, iconMotion } from '@/components/icons/motion'
 import { cn } from '@/lib/utils'
 import {
+  addSection,
   parsePosting,
   removeSection,
   replaceSectionBody,
   sectionTitle,
-  serializePosting,
   type PostingSection,
 } from './postingSections'
 
@@ -287,6 +292,132 @@ function Section({
   )
 }
 
+/**
+ * NAMING THE SECTION BEFORE IT EXISTS (Gabe, 2026-09-18: "no pop-up dialog for
+ * naming a section ... this dialog must be used to name a particular section").
+ *
+ * WHAT IT REPLACES. `add a new section` appended a section literally called
+ * `New section` and dropped the reader straight into its body field, so every
+ * posting that used the control ended up with a heading nobody had asked for
+ * and no way to change it -- the edit control opens the BODY, never the
+ * heading, which is the one thing this screen cannot rename. A placeholder
+ * heading in a document that cannot rename headings is a permanent placeholder.
+ *
+ * A DIALOG RATHER THAN AN INLINE FIELD, and that is the ask rather than a
+ * preference -- but it is also the shape that survives the surface it opens
+ * over: the posting is a scrolling document eight hundred words long, and an
+ * inline row at the end of it is a field somebody has to scroll to find after
+ * pressing a control at the top.
+ *
+ * IT IS A SECOND MODAL OVER THE RECORD, which this file's neighbours are
+ * careful about: `AddApplicationDialog` says plainly that a failed read must
+ * not open one, because that failure arrived unasked. This one is asked for --
+ * it opens on a press, it holds one field, and closing it puts the reader back
+ * exactly where they were. Base UI stacks it above the record and gives the
+ * inner dialog Escape first, so the posting's own `Escape means back` is
+ * untouched while this is open.
+ */
+function NameSectionDialog({
+  open,
+  onOpenChange,
+  onAdd,
+  fieldId,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onAdd: (name: string) => void
+  /** The field this dialog is about to create, for focus on the way out. */
+  fieldId: string
+}) {
+  const [name, setName] = React.useState('')
+  const [error, setError] = React.useState('')
+
+  // Empty on every open, not on every close: a dialog that clears as it
+  // animates out is a field blanking in front of the reader.
+  React.useEffect(() => {
+    if (open) {
+      setName('')
+      setError('')
+    }
+  }, [open])
+
+  const submit = () => {
+    // THE ONE RULE WORTH ENFORCING. Everything else about a heading is
+    // normalised by `addSection`; a heading with no text in it is the one
+    // thing it cannot fix, and it would render as a rule with nothing above
+    // it and an edit control belonging to whatever came before.
+    if (!name.trim()) {
+      setError('Give the section a name.')
+      return
+    }
+    // FLUSHED, SO THE FIELD EXISTS BEFORE THE DIALOG ASKS WHERE FOCUS GOES.
+    // Base UI reads `finalFocus` while handling this very click, and React
+    // would otherwise batch the new section into the same commit as the close
+    // -- so the lookup ran against a DOM that did not have the section yet,
+    // returned null, and focus fell back to the record's own trigger, a
+    // control BEHIND the dialog. Measured in the browser, twice.
+    flushSync(() => onAdd(name))
+    onOpenChange(false)
+  }
+
+  return (
+    <AppDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="name the section"
+      icon="Documents"
+      description="It becomes the heading above the text you are about to write."
+      // INTO THE FIELD IT JUST CREATED, not back to the control that opened
+      // this. Base UI's default returns focus to what the record had before
+      // the dialog, which is a control BEHIND the record dialog -- measured in
+      // the browser, it landed on the applications table's row button. Cancel
+      // finds nothing under this id and falls back to that default, which is
+      // correct there: nothing was created, so there is nowhere else to be.
+      finalFocus={() => document.getElementById(fieldId)}
+    >
+      <div className="flex flex-col gap-4" data-posting-name-dialog>
+        <Field
+          id="posting-section-name"
+          label="section name"
+          hint="what this part of the posting is about — responsibilities, benefits, how to apply."
+        >
+          <Input
+            id="posting-section-name"
+            value={name}
+            autoFocus
+            onChange={(event) => {
+              setName(event.target.value)
+              setError('')
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                submit()
+              }
+            }}
+            error={error || undefined}
+            placeholder="benefits"
+          />
+        </Field>
+
+        {/* THE ORDER THE REST OF THE APP USES: the way out on the left, the
+            thing this dialog is for on the right, and only the second one is
+            filled. See ConfirmDialog. */}
+        <div className="flex items-center justify-end gap-2">
+          <Button type="button" variant="secondary" size="s" onClick={() => onOpenChange(false)}>
+            <CloseIcon size={16} aria-hidden className={iconMotion('none')} />
+            cancel
+          </Button>
+          <Button type="button" size="s" onClick={submit} data-posting-name-confirm>
+            <PlusIcon size={16} aria-hidden className={iconMotion('open')} />
+            add section
+          </Button>
+        </div>
+      </div>
+    </AppDialog>
+  )
+}
+
 export function RecordDescription({
   value,
   onChange,
@@ -335,8 +466,23 @@ export function RecordDescription({
 
   const blocks = preview && value.trim() ? postingBlocks(value) : []
 
-  const addSection = () => {
-    onChange(serializePosting([...sections, { heading: 'New section:', body: '' }]))
+  /**
+   * WHICH INDEX the naming dialog is about to fill, or `null` when it is shut.
+   *
+   * AN INDEX RATHER THAN A BOOLEAN, and that is not tidiness: the field the
+   * dialog hands focus to is `posting-section-<index>`, and the section is
+   * added while the dialog is still closing -- so a `fieldId` derived from
+   * `sections.length` becomes the NEXT index mid-close, and focus was handed to
+   * a field that will not exist until somebody adds another section. Measured
+   * in the browser: the lookup asked for `posting-section-2` immediately after
+   * creating `posting-section-1`. Captured at open, it cannot move.
+   */
+  const [naming, setNaming] = React.useState<number | null>(null)
+
+  const add = (name: string) => {
+    onChange(addSection(sections, name))
+    // Straight into the body of the section just named: the heading is
+    // settled, so the only thing left to do with it is write under it.
     setEditing(sections.length)
   }
 
@@ -413,7 +559,8 @@ export function RecordDescription({
               variant="ghost"
               size="s"
               className="px-0"
-              onClick={addSection}
+              onClick={() => setNaming(sections.length)}
+              data-posting-add-section
             >
               <PlusIcon size={16} aria-hidden className={iconMotion('open')} />
               add a new section
@@ -538,6 +685,18 @@ export function RecordDescription({
           {blocks.length === 0 ? 'add a description' : clipped ? 'read more…' : 'open the posting'}
           <ArrowRightIcon size={16} aria-hidden className={iconMotion('forward')} />
         </Button>
+      )}
+
+      {/* MOUNTED ONLY WHILE IT IS OPEN. Base UI unmounts a closed dialog's
+          children anyway, but the whole component is cheaper to leave out of
+          the preview's tree entirely -- and the preview can never open it. */}
+      {!preview && naming !== null && (
+        <NameSectionDialog
+          open
+          onOpenChange={(open) => setNaming(open ? naming : null)}
+          onAdd={add}
+          fieldId={`posting-section-${naming}`}
+        />
       )}
     </div>
   )

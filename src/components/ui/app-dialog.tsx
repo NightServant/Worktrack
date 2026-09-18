@@ -9,6 +9,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Separator } from '@/components/ui/separator'
+import type { Dialog as DialogPrimitive } from '@base-ui/react/dialog'
 import type { DialogRootChangeEventReason } from '@base-ui/react/dialog'
 import { icons, type IconName } from '@/components/icons'
 import { cn } from '@/lib/utils'
@@ -128,6 +129,21 @@ export interface AppDialogProps {
    * above it drew two parallel lines a few millimetres apart.
    */
   headerSeparator?: boolean
+  /**
+   * Where focus goes when this dialog closes, passed straight to Base UI.
+   *
+   * IT EXISTS FOR A DIALOG THAT CREATES THE THING YOU THEN WORK IN. Base UI's
+   * default is right nearly everywhere -- focus returns to whatever opened the
+   * dialog -- and wrong for the posting's `name the section` step, whose whole
+   * result is a new field that mounts as this closes. There the default put
+   * focus on a control BEHIND the record dialog, which is a keyboard user
+   * outside the modal they are still in.
+   *
+   * A function rather than a ref, because the element it names does not exist
+   * until the close commits it. Returning `null` falls back to the default,
+   * which is the honest answer when the thing was not created after all.
+   */
+  finalFocus?: DialogPrimitive.Popup.Props['finalFocus']
   children: React.ReactNode
 }
 
@@ -148,12 +164,14 @@ export function AppDialog({
   size = 'm',
   bodyScroll = true,
   headerSeparator = true,
+  finalFocus,
   children,
 }: AppDialogProps) {
   const Icon = icon ? icons[icon] : null
   return (
     <Dialog open={open} onOpenChange={(next, details) => onOpenChange(next, details.reason)}>
       <DialogContent
+        finalFocus={finalFocus}
         className={cn(
           'gap-0 border border-border-subtle bg-bg-canvas p-0 ring-0',
           // BOTTOM SHEET below 640. A centred dialog inset 16px each side is

@@ -186,3 +186,53 @@ describe('reading the whole posting', () => {
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 })
+
+/**
+ * NAMING A SECTION BEFORE IT EXISTS.
+ *
+ * The control used to append a section called `New section` and open its body
+ * field -- and nothing on this screen can rename a heading, so the placeholder
+ * was permanent. These cover the two halves that matter: the posting is
+ * untouched until the name is given, and the name given is the heading stored.
+ */
+describe('adding a section', () => {
+  async function openSectionDialog(user: ReturnType<typeof userEvent.setup>) {
+    renderDialog()
+    await user.click(openPosting())
+    await user.click(screen.getByRole('button', { name: /add a new section/i }))
+  }
+
+  it('asks for a name and writes it as the heading', async () => {
+    const user = userEvent.setup()
+    await openSectionDialog(user)
+
+    expect(screen.getByRole('dialog', { name: /name the section/i })).toBeTruthy()
+    // NOTHING HAS BEEN ADDED YET, which is the point of the step: an abandoned
+    // dialog must leave the posting exactly as it was.
+    expect(document.querySelectorAll('[data-posting-section]')).toHaveLength(2)
+
+    await user.type(screen.getByLabelText(/section name/i), 'How to apply')
+    await user.click(screen.getByRole('button', { name: /^add section$/i }))
+
+    const sections = [...document.querySelectorAll('[data-posting-section]')]
+    expect(sections).toHaveLength(3)
+    expect(sections[2].getAttribute('aria-label')).toBe('How to apply')
+    // And it opens as a field, because the heading is settled and the body is
+    // the only thing left to write.
+    expect(screen.getByRole('textbox', { name: 'How to apply text' })).toBeTruthy()
+  })
+
+  it('will not add a section with no name, and adds nothing when cancelled', async () => {
+    const user = userEvent.setup()
+    await openSectionDialog(user)
+
+    await user.click(screen.getByRole('button', { name: /^add section$/i }))
+    expect(screen.getByText(/give the section a name/i)).toBeTruthy()
+    expect(document.querySelectorAll('[data-posting-section]')).toHaveLength(2)
+
+    await user.click(screen.getByRole('button', { name: /^cancel$/i }))
+    expect(screen.queryByRole('dialog', { name: /name the section/i })).toBeNull()
+    expect(document.querySelectorAll('[data-posting-section]')).toHaveLength(2)
+  })
+})
+

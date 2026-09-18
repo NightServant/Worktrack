@@ -117,3 +117,31 @@ export function replaceSectionBody(
     sections.map((section, i) => (i === index ? { ...section, body } : section))
   )
 }
+
+/**
+ * The longest a heading may be and still parse back as one.
+ *
+ * `isHeading` caps a heading at 80 characters INCLUDING the colon it ends in,
+ * so a name typed to the cap would serialise and then come back as a
+ * paragraph -- the section would vanish into the one above it the moment the
+ * draft round-tripped. Truncating here is the only place that cannot happen.
+ */
+const MAX_HEADING = 79
+
+/**
+ * One new section, named, at the end.
+ *
+ * THE NAME IS NORMALISED RATHER THAN VALIDATED, because the only rule a
+ * heading has to obey is the parser's own -- short, and ending in a colon --
+ * and a person typing `Benefits` or `Benefits:` means the same section either
+ * way. Whitespace collapses for the same reason `parsePosting` trims: a
+ * heading with a line break in it is two lines, and only the first would be
+ * read as the heading.
+ *
+ * Returns the whole posting, like its neighbours here, so the caller keeps
+ * writing one string back.
+ */
+export function addSection(sections: PostingSection[], name: string): string {
+  const cleaned = name.replace(/\s+/g, ' ').trim().replace(/:+$/, '').slice(0, MAX_HEADING)
+  return serializePosting([...sections, { heading: `${cleaned}:`, body: '' }])
+}
