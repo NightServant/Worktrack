@@ -4,8 +4,8 @@ import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/re
 import userEvent from '@testing-library/user-event'
 import { SettingsPage } from '../SettingsPage'
 import {
-  ProfileFetch,
-  ProfileFetchSteps,
+  ProfileSources,
+  ProfileSourceSteps,
   ProfileImport,
   ProfileImportSteps,
 } from '../ProfileImport'
@@ -39,6 +39,9 @@ const FILLED = {
   certifications: [],
   languages: ['Filipino (Native)'],
   projects: [],
+  sources: [
+    { url: 'https://www.linkedin.com/in/example', site: 'LinkedIn', ok: true, note: null },
+  ],
   fetchedAt: '2026-09-06T00:00:00.000Z',
 }
 
@@ -348,12 +351,15 @@ describe('the profile panel’s layout', () => {
   })
 })
 
-describe('building a profile from a LinkedIn URL', () => {
-  it('asks for an address and nothing else -- no file, no credential', () => {
-    const { container } = render(<ProfileFetch onFetch={vi.fn()} />)
+describe('building a profile from several addresses', () => {
+  it('asks for addresses and nothing else -- no file, no credential', () => {
+    const { container } = render(<ProfileSources onFetch={vi.fn()} />)
     expect(container.querySelector('input[type="file"]')).toBeNull()
     expect(container.querySelector('input[type="password"]')).toBeNull()
-    expect(screen.getByLabelText(/linkedin profile url/i)).toBeTruthy()
+    expect(screen.getByLabelText(/linkedin profile/i)).toBeTruthy()
+    expect(screen.getByLabelText(/github/i)).toBeTruthy()
+    expect(screen.getByLabelText(/jobstreet/i)).toBeTruthy()
+    expect(screen.getByLabelText(/glassdoor/i)).toBeTruthy()
     expect(screen.getByRole('button', { name: /build my profile/i })).toBeTruthy()
   })
 
@@ -363,43 +369,88 @@ describe('building a profile from a LinkedIn URL', () => {
     // spending a Firecrawl credit on "linkedin" is a round trip nobody wanted.
     const onFetch = vi.fn()
     const user = userEvent.setup({ delay: null })
-    render(<ProfileFetch onFetch={onFetch} />)
-    await user.type(screen.getByLabelText(/linkedin profile url/i), 'linkedin')
+    render(<ProfileSources onFetch={onFetch} />)
+    await user.type(screen.getByLabelText(/linkedin profile/i), 'linkedin')
     await user.click(screen.getByRole('button', { name: /build my profile/i }))
     expect(onFetch).not.toHaveBeenCalled()
-    expect(screen.getByText(/starting with https/i)).toBeTruthy()
+    // It says WHICH address, because there are four of them.
+    expect(screen.getByText(/LinkedIn profile address must start with https/i)).toBeTruthy()
   })
 
-  it('hands the trimmed address up when it is a real one', async () => {
+  it('will not fetch with every row empty', () => {
+    const onFetch = vi.fn()
+    render(<ProfileSources onFetch={onFetch} />)
+    fireEvent.click(screen.getByRole('button', { name: /build my profile/i }))
+    expect(onFetch).not.toHaveBeenCalled()
+    expect(screen.getByText(/add at least one address/i)).toBeTruthy()
+  })
+
+  it('sends only the rows that were filled, in order of authority', async () => {
+    // THE ORDER IS THE MERGE'S AUTHORITY: the extractor takes the first
+    // non-empty value for every single field, so LinkedIn leading is what
+    // decides whose name and headline win.
     const onFetch = vi.fn()
     const user = userEvent.setup({ delay: null })
-    render(<ProfileFetch onFetch={onFetch} />)
+    render(<ProfileSources onFetch={onFetch} />)
+    await user.type(screen.getByLabelText(/github/i), 'https://github.com/octocat')
     await user.type(
-      screen.getByLabelText(/linkedin profile url/i),
+      screen.getByLabelText(/linkedin profile/i),
       'https://www.linkedin.com/in/example  '
     )
     await user.click(screen.getByRole('button', { name: /build my profile/i }))
-    expect(onFetch).toHaveBeenCalledWith('https://www.linkedin.com/in/example')
+    expect(onFetch).toHaveBeenCalledWith([
+      'https://www.linkedin.com/in/example',
+      'https://github.com/octocat',
+    ])
   })
 
-  it('offers a re-fetch and a removal once a profile exists, and pre-fills the address', () => {
-    // The stored `url` comes back so a re-fetch is one click rather than a
-    // trip to LinkedIn to copy the same address again.
+  it('offers a re-fetch and a removal once a profile exists, and pre-fills each row', () => {
+    // The stored addresses come back so a re-fetch is one click rather than a
+    // trip to four sites to copy the same links again. BY HOST, not by
+    // position: the stored list holds only the addresses that were sent.
     render(
-      <ProfileFetch
+      <ProfileSources
         onFetch={vi.fn()}
         onClear={vi.fn()}
         hasProfile
-        defaultUrl="https://www.linkedin.com/in/example"
+        sources={[
+          { url: 'https://github.com/octocat', site: 'GitHub', ok: true, note: null },
+          { url: 'https://www.linkedin.com/in/example', site: 'LinkedIn', ok: true, note: null },
+        ]}
       />
     )
     expect(screen.getByRole('button', { name: /fetch again/i })).toBeTruthy()
     expect(screen.getByRole('button', { name: /remove profile/i })).toBeTruthy()
-    expect(screen.getByDisplayValue('https://www.linkedin.com/in/example')).toBeTruthy()
+    expect(screen.getByLabelText(/linkedin profile/i)).toHaveValue(
+      'https://www.linkedin.com/in/example'
+    )
+    expect(screen.getByLabelText(/github/i)).toHaveValue('https://github.com/octocat')
+  })
+
+  it('says on the row itself which address could not be read', () => {
+    // With four addresses in one request, one sentence under the button cannot
+    // say which link failed -- and the fix is always to a particular link.
+    const { container } = render(
+      <ProfileSources
+        onFetch={vi.fn()}
+        hasProfile
+        sources={[
+          { url: 'https://www.linkedin.com/in/example', site: 'LinkedIn', ok: true, note: null },
+          {
+            url: 'https://www.glassdoor.com/member/home',
+            site: 'Glassdoor',
+            ok: false,
+            note: 'Glassdoor showed nothing to a signed-out visitor.',
+          },
+        ]}
+      />
+    )
+    expect(container.querySelectorAll('[data-profile-source-state="read"]')).toHaveLength(1)
+    expect(screen.getByText(/Glassdoor showed nothing/i)).toBeTruthy()
   })
 
   it('has nothing to remove before the first fetch', () => {
-    render(<ProfileFetch onFetch={vi.fn()} onClear={vi.fn()} />)
+    render(<ProfileSources onFetch={vi.fn()} onClear={vi.fn()} />)
     expect(screen.queryByRole('button', { name: /remove profile/i })).toBeNull()
   })
 
@@ -408,7 +459,7 @@ describe('building a profile from a LinkedIn URL', () => {
     // import that quietly returns titles without them reads as a bug rather
     // than a limit. See scraper/extractor/profile.py.
     render(
-      <ProfileFetch
+      <ProfileSources
         onFetch={vi.fn()}
         note="The bullet text under each role is not on a public profile page."
       />
@@ -417,8 +468,8 @@ describe('building a profile from a LinkedIn URL', () => {
   })
 
   it('explains the fetch in its own steps, for the empty state', () => {
-    render(<ProfileFetchSteps />)
-    expect(screen.getByText(/copy the address from the browser bar/i)).toBeTruthy()
+    render(<ProfileSourceSteps />)
+    expect(screen.getByText(/combines them into one profile/i)).toBeTruthy()
   })
 })
 

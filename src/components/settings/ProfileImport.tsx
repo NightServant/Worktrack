@@ -11,11 +11,20 @@ import {
   assertBatchWithinSizeLimit,
   assertContentMatchesExtension,
 } from '@/lib/uploadSafety'
-import { DownloadIcon, UploadIcon, TrashIcon } from '@/components/icons'
+import {
+  AlertCircleIcon,
+  CheckIcon,
+  DownloadIcon,
+  UploadIcon,
+  TrashIcon,
+  type IconName,
+} from '@/components/icons'
 import { iconMotion } from '@/components/icons/motion'
+import { cn } from '@/lib/utils'
+import type { ProfileSource } from '@/services/profile'
 
 /**
- * SUPERSEDED BY `ProfileFetch` BELOW, and kept rather than deleted (Gabe,
+ * SUPERSEDED BY `ProfileSources` BELOW, and kept rather than deleted (Gabe,
  * Worktrack Revisions item 8: "Do not remove the unused variables in the
  * codebase"). It is still the only source that has ever carried the bullet
  * text under a role, which is the part a CV is written from, so it is worth
@@ -191,109 +200,239 @@ export function ProfileImportSteps() {
 }
 
 /**
- * How a profile gets in NOW: its public address, read through Firecrawl.
+ * How a profile gets in NOW: a list of public addresses, read and merged.
  *
- * WHY A LINK AND NOT A FILE. The export is a good source and a bad ask -- it
- * means opening LinkedIn's settings, requesting an archive, waiting for an
- * email that can take a day, unzipping it and picking the right CSVs before
- * this screen shows anything at all. A profile URL is one paste.
+ * WHY A LIST AND NOT A LINK (Gabe, 2026-09-18: "I need the profile section to
+ * fetch more information from other websites such as glassdoor, linkedin, and
+ * jobstreet -- kindly also consider github ... aggregate data sources and
+ * combine them into one large single profile"). One source is one half of a
+ * person: a signed-out LinkedIn page carries roles and dates and NO skills at
+ * all, while GitHub carries what somebody actually built and in which
+ * languages and has no concept of employment. Merged, they are a CV; alone,
+ * neither is.
  *
- * WHY IT CAN WORK THIS TIME, given that a page scraper was built and removed
- * on 2026-09-06: that one fetched the page from our own servers and got an
- * authentication wall. Firecrawl runs the page and proxies it, so what comes
- * back is the logged-out profile as a browser sees it -- including the JSON-LD
- * graph in `<head>`, which carries the positions and schools as structured
- * data rather than as text to be scraped off a rendering.
+ * WHY A LINK AND NOT A FILE, which is the older decision and still holds. The
+ * LinkedIn export is a better source and a worse ask -- open settings, request
+ * an archive, wait for an email that can take a day, unzip it, pick the right
+ * CSVs. `ProfileImport` above is still there for the day that trade is worth
+ * making.
  *
- * WHAT IT STILL WILL NOT GET is said in the warnings the fetch returns rather
- * than promised here: a public profile does not render the paragraph under
- * each role. See `scraper/extractor/profile.py`.
+ * EVERY ROW IS OPTIONAL AND THE ORDER IS AUTHORITY. The addresses are sent in
+ * the order they are drawn here, and the extractor takes the first non-empty
+ * value for every single field -- so LinkedIn leads because a CV is written
+ * from it, and GitHub fills the gaps it leaves rather than overwriting them.
+ *
+ * WHAT EACH SOURCE CANNOT GIVE IS SAID PER ROW, after the read. Two of these
+ * four sites do not publish a candidate profile to a signed-out visitor at all
+ * -- JobStreet is a SEEK account behind a login and Glassdoor is a reviews
+ * account -- so the honest thing is to let somebody try their own link and
+ * then say, on that row, what came back. A panel that silently added nothing
+ * for half its fields would look broken instead.
  */
-export interface ProfileFetchProps {
-  onFetch: (url: string) => void
+
+/** One row: what to call it, what it looks like, and how to recognise its address. */
+interface ProfileSourceField {
+  id: string
+  label: string
+  icon: IconName
+  placeholder: string
+  hint: string
+  /** Which stored address belongs in this row. */
+  host: RegExp
+}
+
+const PROFILE_SOURCES: ProfileSourceField[] = [
+  {
+    id: 'linkedin',
+    label: 'LinkedIn profile',
+    icon: 'Briefcase',
+    placeholder: 'https://www.linkedin.com/in/your-name',
+    hint: 'roles, dates, education. the public address — the one you would send to someone.',
+    host: /(^|\.)linkedin\.com$/i,
+  },
+  {
+    id: 'github',
+    label: 'GitHub',
+    icon: 'Code',
+    placeholder: 'https://github.com/your-username',
+    hint: 'what you have built, and the languages you built it in. free and always available.',
+    host: /(^|\.)github\.com$/i,
+  },
+  {
+    id: 'jobstreet',
+    label: 'JobStreet',
+    icon: 'Globe',
+    placeholder: 'https://ph.jobstreet.com/profile/...',
+    hint: 'only a page that is public to a signed-out visitor can be read.',
+    host: /jobstreet/i,
+  },
+  {
+    id: 'glassdoor',
+    label: 'Glassdoor',
+    icon: 'Building',
+    placeholder: 'https://www.glassdoor.com/member/profile/...',
+    hint: 'only a page that is public to a signed-out visitor can be read.',
+    host: /glassdoor/i,
+  },
+]
+
+export interface ProfileSourcesProps {
+  onFetch: (urls: string[]) => void
   onClear?: () => void
   fetching?: boolean
   clearing?: boolean
   hasProfile?: boolean
   /** What went wrong, or what landed, from the last attempt. */
   note?: string | null
-  /** The address already stored, so a re-fetch does not need retyping. */
-  defaultUrl?: string | null
+  /** The addresses already stored, so a re-fetch does not need retyping. */
+  sources?: ProfileSource[]
 }
 
-export function ProfileFetch({
+/** The host of an address, or '' -- used to put a stored source in its row. */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '')
+  } catch {
+    return ''
+  }
+}
+
+export function ProfileSources({
   onFetch,
   onClear,
   fetching = false,
   clearing = false,
   hasProfile = false,
   note = null,
-  defaultUrl = null,
-}: ProfileFetchProps) {
-  const [url, setUrl] = React.useState(defaultUrl ?? '')
-  const [error, setError] = React.useState('')
+  sources = [],
+}: ProfileSourcesProps) {
   const busy = fetching || clearing
 
-  // A stored profile arriving after first render should fill the box. Typing
-  // wins from then on -- the effect only runs when the stored value changes.
+  /** One address per row, keyed by row id. */
+  const [urls, setUrls] = React.useState<Record<string, string>>({})
+  const [error, setError] = React.useState<string | null>(null)
+
+  // Stored addresses arriving after first render fill their own rows. Typing
+  // wins from then on -- this only runs when the stored list changes.
+  //
+  // MATCHED BY HOST rather than by position, because the list that comes back
+  // holds only the addresses that were sent: with LinkedIn left blank, its
+  // first entry is GitHub's, and filling rows in order would put a GitHub
+  // address in the LinkedIn field.
   React.useEffect(() => {
-    if (defaultUrl) setUrl(defaultUrl)
-  }, [defaultUrl])
+    if (sources.length === 0) return
+    setUrls((current) => {
+      const next = { ...current }
+      for (const source of sources) {
+        const host = hostOf(source.url)
+        const row =
+          PROFILE_SOURCES.find((candidate) => candidate.host.test(host)) ?? PROFILE_SOURCES[0]
+        if (!next[row.id]) next[row.id] = source.url
+      }
+      return next
+    })
+  }, [sources])
+
+  /** The last reading of each row's address, for the line under it. */
+  const outcome = (id: string): ProfileSource | null => {
+    const typed = urls[id]?.trim()
+    if (!typed) return null
+    return sources.find((source) => source.url === typed) ?? null
+  }
 
   const submit = () => {
-    const trimmed = url.trim()
-    if (!/^https?:\/\/.+/i.test(trimmed)) {
-      setError('Paste the full address, starting with https://.')
+    const chosen = PROFILE_SOURCES.map((source) => ({
+      source,
+      url: (urls[source.id] ?? '').trim(),
+    })).filter((row) => row.url)
+
+    if (chosen.length === 0) {
+      setError('Add at least one address.')
       return
     }
-    setError('')
-    onFetch(trimmed)
+    const malformed = chosen.find((row) => !/^https?:\/\/.+/i.test(row.url))
+    if (malformed) {
+      setError(`The ${malformed.source.label} address must start with https://.`)
+      return
+    }
+    setError(null)
+    onFetch(chosen.map((row) => row.url))
   }
 
   return (
-    <div className="flex flex-col gap-3" data-profile-fetch>
-      {/* A MEASURE, NOT THE WHOLE ROW (Gabe, 2026-09-10). A profile address is
-          about 50 characters and the box was running the full width of a
-          1400px card, so the field looked like it wanted an essay and the
-          caret sat alone in a quarter of a screen. `max-w-md` is roughly one
-          and a half times the longest address anyone will paste here. */}
-      <div className="max-w-md">
-        <Field
-          id="profile-url"
-          label="LinkedIn profile URL"
-          hint="the public address of your profile — the one you would send to someone."
-        >
-          <Input
-            id="profile-url"
-            type="url"
-            icon="Link"
-            value={url}
-            onChange={(event) => {
-              setUrl(event.target.value)
-              setError('')
-            }}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault()
-                submit()
-              }
-            }}
-            error={error || undefined}
-            placeholder="https://www.linkedin.com/in/your-name"
-            disabled={busy}
-          />
-        </Field>
+    <div className="flex flex-col gap-4" data-profile-fetch>
+      {/* ONE PER ROW, AND NARROW. A profile address is about 50 characters and
+          these sit in a card that can run to 1400px; unconstrained, each field
+          looked like it wanted an essay (Gabe, 2026-09-10). Two columns once
+          the CARD has the width for them -- the query is `@container/profile`,
+          declared by ProfileGroup, because this panel's width has nothing to do
+          with the window's. */}
+      <div className="grid gap-4 @2xl/profile:grid-cols-2">
+        {PROFILE_SOURCES.map((source) => {
+          const read = outcome(source.id)
+          return (
+            <div key={source.id} className="flex max-w-md flex-col gap-1.5">
+              <Field id={`profile-url-${source.id}`} label={source.label} hint={source.hint}>
+                <Input
+                  id={`profile-url-${source.id}`}
+                  type="url"
+                  icon={source.icon}
+                  value={urls[source.id] ?? ''}
+                  onChange={(event) => {
+                    setUrls((current) => ({ ...current, [source.id]: event.target.value }))
+                    setError(null)
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault()
+                      submit()
+                    }
+                  }}
+                  placeholder={source.placeholder}
+                  disabled={busy}
+                />
+              </Field>
+              {/* WHAT THIS ROW'S LAST READ DID, on the row itself. With four
+                  addresses in one request, a single sentence under the button
+                  cannot say which link failed -- and the fix is always to a
+                  particular link. */}
+              {read && (
+                // A DIV, NOT A `<p>`. These glyphs render a wrapping element of
+                // their own, and a block inside a paragraph is invalid markup
+                // that React reports and browsers silently restructure.
+                <div
+                  data-profile-source-state={read.ok ? 'read' : 'failed'}
+                  className={cn(
+                    'flex items-start gap-1.5 text-body-s',
+                    read.ok ? 'text-text-muted' : 'text-status-rejected-mark'
+                  )}
+                >
+                  {read.ok ? (
+                    <CheckIcon size={14} aria-hidden className="mt-0.5 shrink-0" />
+                  ) : (
+                    <AlertCircleIcon size={14} aria-hidden className="mt-0.5 shrink-0" />
+                  )}
+                  {read.ok ? 'read' : read.note || 'could not be read'}
+                </div>
+              )}
+            </div>
+          )
+        })}
       </div>
 
+      {error && (
+        <p role="alert" className="text-body-s text-status-rejected-mark" data-profile-rejected>
+          {error}
+        </p>
+      )}
+
       {note && (
-        <p className="text-body-s text-text-muted" data-profile-note>
+        <p className="max-w-prose text-body-s text-text-muted" data-profile-note>
           {note}
         </p>
       )}
 
-      {/* Full width on a narrow panel, natural once the card has room. The
-          query is on `@container/profile`, declared by ProfileGroup: these
-          live inside a card whose width has nothing to do with the window's. */}
+      {/* Full width on a narrow panel, natural once the card has room. */}
       <div className="flex flex-col gap-2 @sm/profile:flex-row @sm/profile:items-center">
         <Button
           type="button"
@@ -325,18 +464,24 @@ export function ProfileFetch({
   )
 }
 
-/** What the fetch does, in one paragraph, for the empty state. */
-export function ProfileFetchSteps() {
+/** What the fetch does, in three lines, for the empty state. */
+export function ProfileSourceSteps() {
   return (
     <ol
       className="flex list-decimal flex-col gap-1 pl-5 text-body-s text-text-muted"
       data-profile-steps
     >
-      <li>Open your LinkedIn profile and copy the address from the browser bar.</li>
-      <li>Paste it above. Worktrack reads the public page and fills in what it finds.</li>
       <li>
-        Anything the public page does not show — the detail under each role, usually — you
-        can write in yourself afterwards.
+        Paste the address of any profile you already have — LinkedIn, GitHub, a job board.
+        One is enough; more makes a fuller profile.
+      </li>
+      <li>
+        Worktrack reads each public page and combines them into one profile, with LinkedIn
+        leading where two sources disagree.
+      </li>
+      <li>
+        Anything no public page shows — the detail under each role, usually — you can write
+        in yourself afterwards.
       </li>
     </ol>
   )

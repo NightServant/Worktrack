@@ -205,7 +205,7 @@ def _websites(person: dict[str, Any]) -> list[str]:
     return seen
 
 
-def extract_profile(url: str, html: str) -> dict[str, Any]:
+def extract_profile(url: str, html: str, site: str = "LinkedIn") -> dict[str, Any]:
     """A `UserProfile`-shaped dict plus the warnings worth showing.
 
     THE JSON-LD IS THE SOURCE and the meta tags are the fallback. A profile
@@ -213,6 +213,13 @@ def extract_profile(url: str, html: str) -> dict[str, Any]:
     the name and the headline -- so a partial answer is possible even when the
     graph is missing, and it is honestly labelled as partial rather than
     returned as a success.
+
+    `site` NAMES THE SITE IN THE WARNINGS, and it is there because this parser
+    stopped being LinkedIn's on 2026-09-18: schema.org `Person` is the same
+    graph wherever it is published, so the same code reads a JobStreet or
+    Glassdoor page, and only the sentences explaining what did NOT come back
+    were LinkedIn-specific. A warning that says "LinkedIn" about a Glassdoor
+    page sends the reader to fix the wrong link.
     """
     page = Page(html, url=url)
     person = _person(page)
@@ -233,10 +240,20 @@ def extract_profile(url: str, html: str) -> dict[str, Any]:
             profile["name"] = _clean(name)
         profile["summary"] = _clean(page.meta("og:description"))
         profile["pictureUrl"] = _clean(page.meta("og:image"))
-        warnings.append(
-            "LinkedIn did not return the structured half of this profile — only the name "
-            "and headline could be read. Fill in the rest by hand."
-        )
+        if profile["name"] or profile["summary"]:
+            warnings.append(
+                f"{site} did not return the structured half of this profile — only the name "
+                "and headline could be read. Fill in the rest by hand."
+            )
+        else:
+            # NOTHING AT ALL, said as its own fact. A page that carries neither
+            # a graph nor an `og:title` is not a partial profile, it is a sign-
+            # in wall or a search page -- and "fill in the rest by hand" over an
+            # empty panel reads as an app that lost the data it fetched.
+            warnings.append(
+                f"{site} showed no profile to a signed-out visitor, so nothing could be read "
+                "from that link."
+            )
         return {"profile": profile, "warnings": warnings}
 
     profile["name"] = _clean(person.get("name"))
@@ -271,7 +288,7 @@ def extract_profile(url: str, html: str) -> dict[str, Any]:
     if not profile["experiences"]:
         warnings.append("No work history was on the page. Add your roles by hand.")
     if not profile["skills"]:
-        warnings.append("LinkedIn does not publish skills on a logged-out profile.")
+        warnings.append(f"{site} does not publish skills on a logged-out profile.")
     if profile["experiences"] and all(e["description"] is None for e in profile["experiences"]):
         warnings.append(
             "The bullet text under each role is not on a public profile page — "

@@ -46,6 +46,28 @@ export interface ProfileEducation {
   period: string | null
 }
 
+/**
+ * One address the profile was built from, and how that reading went.
+ *
+ * STORED WITH THE PROFILE, not held in the panel's state, and that is what
+ * makes the screen usable a second time: the four addresses a person typed are
+ * the expensive part of this import, and a panel that forgot them on reload
+ * would ask for them again every visit. It is also the only honest way to
+ * answer "where did this come from" about a merged profile.
+ *
+ * `ok: false` IS KEPT TOO. A source that could not be read is a fact about
+ * that link -- a Glassdoor page shows nothing to a signed-out visitor -- and
+ * dropping the row would leave the reader typing it in again to find out.
+ */
+export interface ProfileSource {
+  url: string
+  /** What to call it: `LinkedIn`, `GitHub`, `JobStreet`, or the host. */
+  site: string
+  ok: boolean
+  /** Why it did not read, when it did not. */
+  note: string | null
+}
+
 export interface UserProfile {
   name: string | null
   /** The one-line professional headline. */
@@ -77,6 +99,8 @@ export interface UserProfile {
   certifications: ProfileCertification[]
   languages: string[]
   projects: ProfileProject[]
+  /** Where this profile came from. See `ProfileSource`. */
+  sources: ProfileSource[]
   /** When this snapshot was taken, ISO. Profiles go stale silently otherwise. */
   fetchedAt: string | null
 }
@@ -99,6 +123,7 @@ export const EMPTY_PROFILE: UserProfile = {
   certifications: [],
   languages: [],
   projects: [],
+  sources: [],
   fetchedAt: null,
 }
 

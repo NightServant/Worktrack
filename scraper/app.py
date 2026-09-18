@@ -31,6 +31,8 @@ from extractor.challenge import (
 from extractor.core import extract
 from extractor.net import normalize_target_url, reject_reason
 from extractor.apify_profile import profile_from_apify
+from extractor.github_profile import _login, profile_from_github
+from extractor.merge_profile import merge_profiles
 from extractor.profile import extract_profile
 
 REQUEST_TIMEOUT_S = 12.0
@@ -75,6 +77,20 @@ APIFY_PROFILE_ACTOR = "crawlerbros~linkedin-profile-scraper"
 APIFY_ENDPOINT = "https://api.apify.com/v2/acts/{actor}/run-sync-get-dataset-items"
 APIFY_TIMEOUT_S = 180.0
 APIFY_MEMORY_MB = 1024
+
+#: GitHub's own API, which needs no fetcher and no key.
+#:
+#: 60 requests an hour per address unauthenticated, which is far more than a
+#: person importing their own profile will ever use, and `GITHUB_TOKEN` raises
+#: it to 5,000 where a deployment has one. The alternative -- putting
+#: github.com through Firecrawl -- would spend a credit to parse a rendering of
+#: data that is published as JSON.
+GITHUB_API = "https://api.github.com"
+GITHUB_TIMEOUT_S = 12.0
+
+#: How many repositories to look at. The API caps `per_page` at 100, and a
+#: second page would be somebody's archive rather than their best work.
+GITHUB_REPO_PAGE = 100
 
 FIRECRAWL_ENDPOINT = "https://api.firecrawl.dev/v2/scrape"
 FIRECRAWL_TIMEOUT_S = 60.0
@@ -138,7 +154,26 @@ app = FastAPI(title="worktrack-extractor", docs_url=None, redoc_url=None)
 
 
 class ProfileRequest(BaseModel):
-    url: str
+    """One profile address, or several to be read and merged.
+
+    `url` IS KEPT because it is what one deployed client sends, and a request
+    model is a wire contract rather than an internal shape. `urls` is the form
+    the aggregating panel uses (Gabe, 2026-09-18: read LinkedIn, GitHub,
+    JobStreet and Glassdoor and "combine them into one large single profile").
+    Either may be sent; both is the same list.
+    """
+
+    url: str | None = None
+    urls: list[str] | None = None
+
+    def addresses(self) -> list[str]:
+        """The requested addresses, in order, without duplicates."""
+        raw = [*(self.urls or []), *([self.url] if self.url else [])]
+        seen: list[str] = []
+        for value in raw:
+            if isinstance(value, str) and value.strip() and value not in seen:
+                seen.append(value.strip())
+        return seen
 
 
 class ExtractRequest(BaseModel):
@@ -328,6 +363,7 @@ def _apify_message(reason: str) -> str:
         return "The profile reader is rate limiting us. Try again in a minute."
     return {
         "no-token": "Profile import is not configured for this deployment.",
+        "no-key": "Profile import is not configured for this deployment.",
         "timeout": "That profile took too long to read. Try again.",
         "unreachable": "Could not reach the profile reader. Try again shortly.",
         "no-rows": (
@@ -401,15 +437,105 @@ async def _apify_profile(url: str) -> tuple[dict[str, Any] | None, str]:
     return row, "ok"
 
 
-@app.post("/profile")
-async def profile_endpoint(body: ProfileRequest) -> JSONResponse:
-    """A public LinkedIn profile, read through Apify, then Firecrawl.
+#: The most addresses one request may carry.
+#:
+#: Four is the panel's own list -- LinkedIn, GitHub, JobStreet, Glassdoor --
+#: and the cap is here rather than only in the web route because this service
+#: is the thing that spends money: every non-GitHub address is a hosted fetch.
+MAX_PROFILE_URLS = 6
 
-    NO ORDINARY FETCH, unlike `/extract`. A plain GET of a LinkedIn profile
-    from a datacenter address gets an authentication wall or a 999, every time
-    -- so the ordinary attempt would be a guaranteed round trip to a page that
-    cannot be parsed, and a local headless browser would work on a laptop and
-    never in a deployment.
+
+def _profile_site(url: str) -> tuple[str, str]:
+    """`(route, label)` for an address: how to read it, and what to call it.
+
+    THE ROUTE IS CHOSEN BY HOST because the sites genuinely differ in kind, not
+    in difficulty. LinkedIn answers a signed-out request with a challenge and
+    needs the actor. GitHub publishes JSON and needs no fetcher at all.
+    Everything else is a rendered page with, at best, a schema.org `Person` in
+    its head -- which is the same parser whoever wrote the page.
+
+    THE LABEL IS FOR THE READER. A warning has to name the site it is about, or
+    somebody with four links has no idea which one to fix.
+    """
+    from urllib.parse import urlparse
+
+    host = (urlparse(url).hostname or "").lower()
+    host = host[4:] if host.startswith("www.") else host
+    if host == "linkedin.com" or host.endswith(".linkedin.com"):
+        return "linkedin", "LinkedIn"
+    if host == "github.com" or host.endswith(".github.com"):
+        return "github", "GitHub"
+    if "jobstreet" in host:
+        return "page", "JobStreet"
+    if "glassdoor" in host:
+        return "page", "Glassdoor"
+    return "page", host or "That site"
+
+
+async def _github_profile(url: str) -> tuple[dict[str, Any] | None, str]:
+    """A GitHub profile and its repositories. Returns `(payload, reason)`.
+
+    NO KEY REQUIRED, and that is why this source is always available while the
+    others depend on a deployment's credit. `GITHUB_TOKEN` is used when the
+    deployment has one, purely for the rate limit.
+
+    THE REPOSITORIES ARE NOT FATAL. A user that reads and repositories that do
+    not is still a profile -- name, bio, location, photo -- so a failed second
+    call costs the projects and the languages rather than the import.
+    """
+    login = _login(url)
+    if not login:
+        return None, "not-a-profile"
+
+    headers = {"Accept": "application/vnd.github+json"}
+    token = os.environ.get("GITHUB_TOKEN", "").strip()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    try:
+        async with httpx.AsyncClient(timeout=GITHUB_TIMEOUT_S) as client:
+            user_response = await client.get(
+                f"{GITHUB_API}/users/{login}", headers=headers
+            )
+            if user_response.status_code == 404:
+                return None, "no-such-user"
+            if user_response.status_code == 403:
+                return None, "rate-limited"
+            if user_response.status_code != 200:
+                return None, f"http-{user_response.status_code}"
+            user = user_response.json()
+            if not isinstance(user, dict):
+                return None, "unreadable-response"
+            # An organisation is not a person, and mapping one would put a
+            # company's repositories into somebody's CV as their own work.
+            if str(user.get("type", "User")).lower() != "user":
+                return None, "not-a-person"
+
+            repos: Any = []
+            try:
+                repo_response = await client.get(
+                    f"{GITHUB_API}/users/{login}/repos",
+                    headers=headers,
+                    params={
+                        "per_page": GITHUB_REPO_PAGE,
+                        "sort": "updated",
+                        "type": "owner",
+                    },
+                )
+                if repo_response.status_code == 200:
+                    repos = repo_response.json()
+            except Exception:
+                repos = []
+    except httpx.TimeoutException:
+        return None, "timeout"
+    except Exception:
+        return None, "unreachable"
+
+    return profile_from_github(user, repos, url), "ok"
+
+
+async def _linkedin_profile(url: str) -> tuple[dict[str, Any] | None, str]:
+    """A LinkedIn profile through Apify, then Firecrawl. `(payload, reason)`.
 
     APIFY FIRST SINCE 2026-09-10. Firecrawl shipped as the only route and did
     not get a page on the first real test: it is a fetcher, and what LinkedIn
@@ -422,86 +548,217 @@ async def profile_endpoint(body: ProfileRequest) -> JSONResponse:
     much, it is already configured, and on a profile it CAN read it produces
     the same fields -- so when the Apify credit runs out this is the difference
     between a partial import and none.
-
-    The same SSRF gate as every other fetch in this service, and Firecrawl's
-    landed URL is re-checked because a hosted fetcher follows redirects on our
-    behalf.
     """
-    url = normalize_target_url(body.url)
-    reason = reject_reason(url)
-    if reason:
-        return JSONResponse({"error": reason}, status_code=400)
-
-    has_apify = bool(os.environ.get("APIFY_TOKEN", "").strip())
-    has_firecrawl = bool(os.environ.get("FIRECRAWL_API_KEY", "").strip())
-    if not has_apify and not has_firecrawl:
-        # 503, not 500: the deployment is missing both keys, which is a
-        # configuration fact rather than a failure of this request.
-        return JSONResponse(
-            {"error": "Profile import is not configured for this deployment."},
-            status_code=503,
-        )
-
-    # APIFY FIRST, because it is the one that gets a page. Firecrawl stays as
-    # the fallback rather than being deleted: it is already paid for, it costs
-    # a fraction as much, and on a profile it CAN read it produces the same
-    # fields from the JSON-LD. When Apify is unavailable this is the difference
-    # between a partial import and none.
     reasons: dict[str, str] = {}
-    if has_apify:
+    if os.environ.get("APIFY_TOKEN", "").strip():
         row, reason = await _apify_profile(url)
         reasons["apify"] = reason
         if row is not None:
-            payload = profile_from_apify(row, url)
-            return JSONResponse({**payload, "source": "apify"}, status_code=200)
+            return {**profile_from_apify(row, url), "via": "apify"}, "ok"
 
-    if not has_firecrawl:
-        return JSONResponse(
-            {
-                "error": _apify_message(reasons.get("apify", "")),
-                "reason": reasons.get("apify", ""),
-            },
-            status_code=422,
-        )
+    if not os.environ.get("FIRECRAWL_API_KEY", "").strip():
+        return None, ", ".join(f"{k}: {v}" for k, v in reasons.items()) or "no-key"
 
     html, reason = await _firecrawl_fetch(url, firecrawl_profile_payload(url))
     reasons["firecrawl"] = reason
     if not html:
-        # THE REASON REACHES THE USER, because there is no fallback route here
-        # and a generic message sends them to check a link that is fine.
-        friendly = {
-            "timeout": "The profile page took too long to load. Try again.",
-            "unreachable": "Could not reach the page reader. Try again shortly.",
-            "empty-body": (
-                "That page came back empty. LinkedIn shows a sign-in wall to "
-                "visitors for some profiles; only a public one can be read."
-            ),
-            "redirected-to-blocked-host": "That link redirected somewhere it should not.",
-            "unreadable-response": "The page reader returned something unexpected.",
-        }.get(reason)
-        if friendly is None and reason.startswith("http-402"):
-            friendly = "The page reader's monthly quota is used up."
-        if friendly is None and reason.startswith("http-401"):
-            friendly = "The page reader rejected our credentials."
-        if friendly is None and reason.startswith("http-403"):
-            friendly = "The page reader will not fetch that site."
-        if friendly is None and reason.startswith("http-429"):
-            friendly = "The page reader is rate limiting us. Try again in a minute."
+        return None, ", ".join(f"{k}: {v}" for k, v in reasons.items())
+    if len(html.encode("utf-8", "ignore")) > MAX_HTML_BYTES:
+        return None, "too-large"
+    return {**extract_profile(url, html, "LinkedIn"), "via": "firecrawl"}, "ok"
+
+
+async def _page_profile(url: str, label: str) -> tuple[dict[str, Any] | None, str]:
+    """Any other profile page, read through Firecrawl. `(payload, reason)`.
+
+    ONE PARSER FOR EVERY SITE THAT IS NOT LINKEDIN OR GITHUB, and that is a
+    decision about honesty rather than laziness. JobStreet and Glassdoor do not
+    publish a candidate profile to a signed-out visitor at all -- the first is
+    a SEEK account behind a login, the second is a reviews account -- so there
+    is no site-specific structure to write a parser against. What CAN be read
+    is whatever schema.org `Person` or Open Graph data the page carries, which
+    is exactly what `extract_profile` already does.
+
+    WHEN THERE IS NOTHING, THE WARNING SAYS SO, naming the site. A panel that
+    silently added nothing for two of four links would look broken; one that
+    says Glassdoor showed no profile is telling the reader something true about
+    Glassdoor.
+    """
+    if not os.environ.get("FIRECRAWL_API_KEY", "").strip():
+        return None, "no-key"
+    html, reason = await _firecrawl_fetch(url, firecrawl_profile_payload(url))
+    if not html:
+        return None, reason
+    if len(html.encode("utf-8", "ignore")) > MAX_HTML_BYTES:
+        return None, "too-large"
+    return {**extract_profile(url, html, label), "via": "firecrawl"}, "ok"
+
+
+async def _one_profile(url: str) -> dict[str, Any]:
+    """One address, read by whichever route fits it.
+
+    NEVER RAISES. Every source reports its own outcome and the endpoint decides
+    what a partial set of failures means -- one dead link out of four must not
+    cost the other three, which is the entire reason this returns a record
+    rather than a payload.
+    """
+    route, label = _profile_site(url)
+    if route == "github":
+        payload, reason = await _github_profile(url)
+        message = _github_message(reason)
+    elif route == "linkedin":
+        payload, reason = await _linkedin_profile(url)
+        message = _linkedin_message(reason)
+    else:
+        payload, reason = await _page_profile(url, label)
+        message = _page_message(reason, label)
+
+    record: dict[str, Any] = {
+        "url": url,
+        "site": label,
+        "ok": payload is not None,
+        "reason": reason,
+    }
+    if payload is None:
+        record["error"] = message
+        return record
+    record["via"] = payload.get("via", route)
+    record["profile"] = payload["profile"]
+    record["warnings"] = payload.get("warnings", [])
+    return record
+
+
+def _linkedin_message(reason: str) -> str:
+    """The sentence for a LinkedIn read that did not work.
+
+    THE REASON IS COMPOUND when both routes ran -- `apify: no-rows, firecrawl:
+    http-402` -- and the LAST one decided the outcome, because Firecrawl only
+    runs once Apify has already failed. Naming the first would send somebody to
+    top up a credit balance that is fine.
+    """
+    last = reason.split(", ")[-1]
+    route, _, detail = last.partition(": ")
+    if not detail:
+        return _apify_message(last)
+    return _page_message(detail, "LinkedIn") if route == "firecrawl" else _apify_message(detail)
+
+
+def _github_message(reason: str) -> str:
+    return {
+        "not-a-profile": "That GitHub link does not point at a person's profile.",
+        "no-such-user": "GitHub has no account at that address.",
+        "not-a-person": "That GitHub account is an organisation, not a person.",
+        "rate-limited": "GitHub is rate limiting us. Try again in a few minutes.",
+        "timeout": "GitHub took too long to answer. Try again.",
+        "unreachable": "Could not reach GitHub. Try again shortly.",
+    }.get(reason, "Could not read that GitHub profile.")
+
+
+def _page_message(reason: str, label: str) -> str:
+    if reason.startswith("http-402"):
+        return "The page reader's monthly quota is used up."
+    if reason.startswith("http-401"):
+        return "The page reader rejected our credentials."
+    if reason.startswith("http-403"):
+        return f"The page reader will not fetch {label}."
+    if reason.startswith("http-429"):
+        return "The page reader is rate limiting us. Try again in a minute."
+    return {
+        "no-key": "Reading that site is not configured for this deployment.",
+        "timeout": f"The {label} page took too long to load. Try again.",
+        "unreachable": "Could not reach the page reader. Try again shortly.",
+        "empty-body": (
+            f"{label} showed nothing to a signed-out visitor — most job boards keep a "
+            "candidate profile behind a login, and only a public page can be read."
+        ),
+        "redirected-to-blocked-host": "That link redirected somewhere it should not.",
+        "unreadable-response": "The page reader returned something unexpected.",
+        "too-large": f"That {label} page is too large to read.",
+    }.get(reason, f"Could not read that {label} page.")
+
+
+@app.post("/profile")
+async def profile_endpoint(body: ProfileRequest) -> JSONResponse:
+    """One person, from every address the caller gave, merged.
+
+    THE ORDER IS AUTHORITY, NOT PREFERENCE. `merge_profiles` takes the first
+    non-empty value for every single field, so the caller's order decides whose
+    name and headline win; lists are the union whatever the order. The panel
+    sends LinkedIn first because it is the source a CV is written from.
+
+    IN PARALLEL, because they are independent reads of different services and
+    one of them (LinkedIn's actor) takes 30-90 seconds of real challenge
+    solving. Run in series, four addresses would be four minutes.
+
+    A PARTIAL SET IS A SUCCESS. Three sources that read and one that did not is
+    a profile plus a sentence about the fourth -- refusing the whole import
+    because Glassdoor has no public profile would make the best case impossible.
+    Every outcome is reported per address in `sources`, so the panel can say
+    which link worked without guessing.
+
+    NO ORDINARY FETCH ANYWHERE, unlike `/extract`. A plain GET of a LinkedIn or
+    a JobStreet profile from a datacenter address gets an authentication wall,
+    and a local headless browser would work on a laptop and never in a
+    deployment. GitHub is the exception that needs no fetcher at all.
+
+    The same SSRF gate as every other fetch in this service, applied to each
+    address, and Firecrawl's landed URL is re-checked because a hosted fetcher
+    follows redirects on our behalf.
+    """
+    urls = [normalize_target_url(value) for value in body.addresses()]
+    if not urls:
+        return JSONResponse({"error": "No profile address was sent"}, status_code=400)
+    if len(urls) > MAX_PROFILE_URLS:
+        return JSONResponse(
+            {"error": f"Send at most {MAX_PROFILE_URLS} profile addresses"},
+            status_code=400,
+        )
+    for url in urls:
+        reason = reject_reason(url)
+        if reason:
+            return JSONResponse({"error": reason}, status_code=400)
+
+    # CONFIGURATION IS CHECKED PER ROUTE, not once for the request: GitHub
+    # needs no key, so a deployment with no Firecrawl and no Apify can still
+    # read a GitHub profile, and refusing the whole request would hide that.
+    results = await asyncio.gather(*[_one_profile(url) for url in urls])
+
+    read = [result for result in results if result["ok"]]
+    sources = [
+        {key: value for key, value in result.items() if key not in ("profile", "warnings")}
+        for result in results
+    ]
+
+    if not read:
+        # THE REASONS REACH THE USER, because there is no fallback left and a
+        # generic message sends them to check links that are fine.
         return JSONResponse(
             {
-                "error": friendly or "Could not read that profile page.",
-                # The raw reasons, so a failure can be diagnosed from the
-                # response instead of from a log nobody kept. Both routes are
-                # named: "apify said no-token, firecrawl said http-402" is a
-                # complete answer and neither half alone is.
-                "reason": ", ".join(f"{k}: {v}" for k, v in reasons.items()) or reason,
+                "error": results[0].get("error") or "Could not read that profile.",
+                "reason": "; ".join(
+                    f"{result['site']}: {result['reason']}" for result in results
+                ),
+                "sources": sources,
             },
             status_code=422,
         )
-    if len(html.encode("utf-8", "ignore")) > MAX_HTML_BYTES:
-        return JSONResponse({"error": "Profile page is too large"}, status_code=422)
 
-    return JSONResponse({**extract_profile(url, html), "source": "firecrawl"}, status_code=200)
+    profile = merge_profiles([result["profile"] for result in read])
+    warnings: list[str] = []
+    for result in read:
+        for warning in result.get("warnings", []):
+            if warning not in warnings:
+                warnings.append(warning)
+    # A SOURCE THAT FAILED IS A WARNING TOO. It is the only place the reader
+    # sees it if they are not looking at the per-source list.
+    for result in results:
+        if not result["ok"] and result.get("error"):
+            warnings.append(result["error"])
+
+    return JSONResponse(
+        {"profile": profile, "warnings": warnings, "sources": sources},
+        status_code=200,
+    )
 
 
 @app.post("/extract")

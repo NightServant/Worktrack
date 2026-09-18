@@ -64,11 +64,13 @@ export type ProfileState =
 export interface ProfileGroupProps {
   state: ProfileState
   /**
-   * The import control.
+   * The import control -- now a list of addresses rather than one field.
    *
    * It moves: in the empty state it IS the call to action and sits under the
-   * steps; once a profile exists it drops under the identity, where a
-   * re-fetch reads as maintenance rather than as the next thing to do.
+   * steps; once a profile exists it becomes the last card in the stack, where
+   * a re-fetch reads as maintenance rather than as the next thing to do. It
+   * sat inside the identity banner until 2026-09-18, which stopped working the
+   * moment it grew from one field to four -- see the ready branch.
    */
   source?: React.ReactNode
   /** How to get a profile. Shown only when there is none yet. */
@@ -114,7 +116,7 @@ export function ProfileGroup({ state, source, steps }: ProfileGroupProps) {
 
       {ready && (
       <div className="flex flex-col gap-6" data-profile-state="ready">
-        <Identity profile={profile} action={source} />
+        <Identity profile={profile} />
 
         {/* ABOUT IS ITS OWN SECTION, as it is on LinkedIn, rather than a
             paragraph welded to the identity block. It is prose about a
@@ -256,6 +258,22 @@ export function ProfileGroup({ state, source, steps }: ProfileGroupProps) {
 
         {!hasProfileContent(profile) && (
           <p className="text-body-s text-text-muted">This import came back empty.</p>
+        )}
+
+        {/* THE SOURCES, AT THE FOOT, IN A CARD OF THEIR OWN (2026-09-18).
+            They used to sit INSIDE the identity banner, which was right while
+            the form was one field and a button: a re-fetch read as maintenance
+            under the person it maintains. With four addresses it became the
+            largest thing on the banner, so the first block of a profile was a
+            form rather than a person.
+
+            LAST, because that is the order of the reading: who this is, what
+            they have done, and then -- for anyone who came to fix a link --
+            where it all came from. */}
+        {source && (
+          <Section title="sources" icon="Link">
+            {source}
+          </Section>
         )}
 
         {profile.fetchedAt && (

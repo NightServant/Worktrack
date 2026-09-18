@@ -7,7 +7,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/contexts/ToastContext'
 import { useUserPreferences, useSetDefaultCurrency } from '@/hooks/useUserPreferences'
 import { SettingsPage } from '@/components/settings/SettingsPage'
-import { ProfileFetch, ProfileFetchSteps } from '@/components/settings/ProfileImport'
+import { ProfileSources, ProfileSourceSteps } from '@/components/settings/ProfileImport'
 import type { ProfileState } from '@/components/settings/ProfileGroup'
 import {
   useUserProfile,
@@ -130,10 +130,10 @@ export default function Page() {
 
 
 
-  const handleFetchProfile = async (url: string) => {
+  const handleFetchProfile = async (urls: string[]) => {
     setProfileNote(null)
     try {
-      const result = await fetchProfile.mutateAsync(url)
+      const result = await fetchProfile.mutateAsync(urls)
       success('Profile updated')
       // WHAT THE PAGE DID NOT CARRY IS SAID OUT LOUD. A public profile does
       // not render the paragraph under each role, and an import that quietly
@@ -162,9 +162,9 @@ export default function Page() {
       : {
           status: 'empty',
           message:
-            'No profile yet. Paste your LinkedIn profile address and Worktrack reads the ' +
-            'public page — headline, summary, roles, education — into a profile that feeds ' +
-            'CV tailoring.',
+            'No profile yet. Paste the addresses of the profiles you already have — LinkedIn, ' +
+            'GitHub, a job board — and Worktrack reads each public page and combines them into ' +
+            'one profile that feeds CV tailoring.',
         }
 
   return (
@@ -172,17 +172,17 @@ export default function Page() {
       prefs={prefs}
       profile={profileState}
       profileSource={
-        <ProfileFetch
-          onFetch={(url) => void handleFetchProfile(url)}
+        <ProfileSources
+          onFetch={(urls) => void handleFetchProfile(urls)}
           onClear={() => void handleClearProfile()}
           fetching={fetchProfile.isPending}
           clearing={clearProfile.isPending}
           hasProfile={!!stored?.profile}
           note={profileNote}
-          defaultUrl={stored?.profile?.url ?? null}
+          sources={stored?.profile?.sources ?? []}
         />
       }
-      profileSteps={<ProfileFetchSteps />}
+      profileSteps={<ProfileSourceSteps />}
       email={user?.email ?? null}
       onDefaultCurrencyChange={(code) => void handleDefaultCurrencyChange(code)}
       savingCurrency={setDefaultCurrency.isPending}

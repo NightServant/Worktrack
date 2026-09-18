@@ -948,3 +948,184 @@ def test_a_real_about_section_survives():
     out = profile_from_apify(row, "x")
     assert out["profile"]["summary"] == "I build job-search tooling.\nCurrently learning Rust."
     assert not any("No About section" in w for w in out["warnings"])
+
+
+# --- GitHub, the source that needs no fetcher --------------------------------
+
+from extractor.github_profile import profile_from_github  # noqa: E402
+from extractor.merge_profile import merge_profiles  # noqa: E402
+
+GH_USER = {
+    "login": "octocat",
+    "type": "User",
+    "name": "Mona Lisa",
+    "company": "@github",
+    "blog": "monalisa.dev",
+    "location": "San Francisco",
+    "bio": "I build things and write about them.",
+    "avatar_url": "https://avatars.githubusercontent.com/u/1",
+    "html_url": "https://github.com/octocat",
+}
+
+GH_REPOS = [
+    {
+        "name": "worktrack",
+        "description": "A job search tracker.",
+        "html_url": "https://github.com/octocat/worktrack",
+        "language": "TypeScript",
+        "stargazers_count": 40,
+        "fork": False,
+    },
+    {
+        "name": "notes",
+        "description": None,
+        "html_url": "https://github.com/octocat/notes",
+        "language": "TypeScript",
+        "stargazers_count": 90,
+        "fork": False,
+    },
+    {
+        "name": "somebody-elses",
+        "description": "A fork of someone else's work.",
+        "html_url": "https://github.com/octocat/somebody-elses",
+        "language": "Go",
+        "stargazers_count": 900,
+        "fork": True,
+    },
+    {
+        "name": "extractor",
+        "description": "Reads a job posting.",
+        "html_url": "https://github.com/octocat/extractor",
+        "language": "Python",
+        "stargazers_count": 5,
+        "fork": False,
+    },
+]
+
+
+def test_a_github_account_maps_onto_the_profile_the_app_stores():
+    p = profile_from_github(GH_USER, GH_REPOS, "https://github.com/octocat")["profile"]
+    assert p["name"] == "Mona Lisa"
+    assert p["summary"] == "I build things and write about them."
+    assert p["location"] == "San Francisco"
+    assert p["headline"] == "@github"
+    # A bare host is what GitHub stores; the panel needs something openable.
+    assert p["websites"] == ["https://monalisa.dev"]
+
+
+def test_forks_and_nameless_repositories_are_not_projects():
+    # A fork is somebody else's work, and a repository with no description is
+    # a name a reader cannot judge -- the 900-star fork and the 90-star
+    # undescribed repo are both out, however well they would have ranked.
+    projects = profile_from_github(GH_USER, GH_REPOS, "x")["profile"]["projects"]
+    assert [item["title"] for item in projects] == ["worktrack", "extractor"]
+
+
+def test_languages_become_skills_counted_over_repositories():
+    # Counted per repository rather than by bytes: one enormous vendored file
+    # should not outrank ten projects. The fork's Go does not count.
+    skills = profile_from_github(GH_USER, GH_REPOS, "x")["profile"]["skills"]
+    assert skills == ["TypeScript", "Python"]
+
+
+def test_github_says_it_carries_no_work_history():
+    # Structural, not a failed read: a profile that imports with no roles looks
+    # broken unless something says GitHub never had any.
+    warnings = profile_from_github(GH_USER, GH_REPOS, "x")["warnings"]
+    assert any("no work history" in w for w in warnings)
+    assert profile_from_github(GH_USER, GH_REPOS, "x")["profile"]["experiences"] == []
+
+
+# --- Merging several sources into one person ---------------------------------
+
+
+def test_the_first_source_wins_a_single_value_and_later_ones_fill_the_gaps():
+    linkedin = {"name": "Elijah Gabe Cervantes", "headline": "Frontend Engineer", "location": None}
+    github = {"name": "gabe", "headline": "@worktrack", "location": "Bamban, Philippines"}
+    merged = merge_profiles([linkedin, github])
+    assert merged["name"] == "Elijah Gabe Cervantes"
+    assert merged["headline"] == "Frontend Engineer"
+    # The gap LinkedIn left is the whole point of the second source.
+    assert merged["location"] == "Bamban, Philippines"
+
+
+def test_an_empty_source_cannot_blank_a_field_another_source_filled():
+    merged = merge_profiles([{"name": None, "skills": []}, {"name": "Mona", "skills": ["Go"]}])
+    assert merged["name"] == "Mona"
+    assert merged["skills"] == ["Go"]
+
+
+def test_lists_are_the_union_without_duplicates():
+    merged = merge_profiles(
+        [
+            {"skills": ["TypeScript", "React"], "languages": ["English"]},
+            {"skills": ["typescript", "Python"], "languages": ["English", "Filipino"]},
+        ]
+    )
+    assert merged["skills"] == ["TypeScript", "React", "Python"]
+    assert merged["languages"] == ["English", "Filipino"]
+
+
+def test_the_same_role_from_two_sources_becomes_one_complete_role():
+    # THE MOST VALUABLE THING THIS MERGE DOES. A signed-out LinkedIn page gives
+    # the title and the dates and never the bullet text; an export gives the
+    # bullet text. Two half-entries under one employer is what a reader would
+    # otherwise have to reconcile by hand.
+    page = {
+        "experiences": [
+            {"title": "Frontend Engineer", "company": "Worktrack", "period": "2024 – Present",
+             "location": None, "description": None}
+        ]
+    }
+    export = {
+        "experiences": [
+            {"title": "frontend engineer", "company": "worktrack", "period": None,
+             "location": "Remote", "description": "- Shipped the editor"}
+        ]
+    }
+    roles = merge_profiles([page, export])["experiences"]
+    assert len(roles) == 1
+    assert roles[0]["period"] == "2024 – Present"
+    assert roles[0]["description"] == "- Shipped the editor"
+    assert roles[0]["location"] == "Remote"
+
+
+def test_different_roles_are_kept_apart():
+    roles = merge_profiles(
+        [
+            {"experiences": [{"title": "Frontend Engineer", "company": "Worktrack"}]},
+            {"experiences": [{"title": "Intern", "company": "Worktrack"}]},
+        ]
+    )["experiences"]
+    assert len(roles) == 2
+
+
+# --- Which route reads which address -----------------------------------------
+
+from app import ProfileRequest, _profile_site  # noqa: E402
+
+
+def test_each_profile_host_picks_its_own_route():
+    assert _profile_site("https://www.linkedin.com/in/someone") == ("linkedin", "LinkedIn")
+    assert _profile_site("https://github.com/octocat") == ("github", "GitHub")
+    assert _profile_site("https://ph.jobstreet.com/profile/x")[1] == "JobStreet"
+    assert _profile_site("https://www.glassdoor.com/member/home")[1] == "Glassdoor"
+    # Everything else is a page, named after itself so a warning can say which.
+    assert _profile_site("https://monalisa.dev/about") == ("page", "monalisa.dev")
+
+
+def test_a_lookalike_host_is_not_the_site_it_imitates():
+    # `linkedin.com.evil.test` ends with neither `linkedin.com` nor
+    # `.linkedin.com`, and routing it to the LinkedIn reader would spend an
+    # Apify run on somebody else's page.
+    assert _profile_site("https://linkedin.com.evil.test/in/x")[0] == "page"
+    assert _profile_site("https://notgithub.com/octocat")[0] == "page"
+
+
+def test_one_address_or_many_arrive_as_one_ordered_list():
+    assert ProfileRequest(url="https://github.com/a").addresses() == ["https://github.com/a"]
+    both = ProfileRequest(
+        url="https://github.com/a", urls=["https://linkedin.com/in/b", "https://github.com/a"]
+    )
+    # Order is authority for the merge, and a repeat is not a second source.
+    assert both.addresses() == ["https://linkedin.com/in/b", "https://github.com/a"]

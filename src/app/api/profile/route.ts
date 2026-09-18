@@ -4,7 +4,13 @@ import { rejectReason, normalizeTargetUrl } from '@/lib/jobUrl'
 import { logSecurityEvent } from '@/lib/securityLog'
 
 /**
- * The public door to LinkedIn profile extraction.
+ * The public door to profile extraction, for every source the panel reads.
+ *
+ * IT WAS LINKEDIN'S ALONE until 2026-09-18. It now takes a LIST of addresses --
+ * a LinkedIn profile, a GitHub account, a job board, a personal site -- and the
+ * extractor reads each by whichever route fits it and merges the results. The
+ * gate below is unchanged in kind and now walks the list: one bad address
+ * refuses the request, because a partial SSRF check is not one.
  *
  * IT IS `/api/autofill` FOR A PERSON INSTEAD OF A POSTING, and it is
  * deliberately the same shape: the extractor service has no top-level rewrite,
@@ -33,6 +39,15 @@ export const runtime = 'nodejs'
 
 const RATE_LIMIT_WINDOW_MS = 60_000
 const RATE_LIMIT_MAX_REQUESTS = 3
+
+/**
+ * How many addresses one import may carry.
+ *
+ * Four is the panel's own list -- LinkedIn, GitHub, JobStreet, Glassdoor --
+ * and six leaves room for a personal site and one more without turning a
+ * single throttle tick into an unbounded number of paid fetches.
+ */
+const MAX_PROFILE_URLS = 6
 
 /**
  * An affordance, not a boundary -- per-instance memory, and Fluid Compute
@@ -84,29 +99,58 @@ export async function POST(request: Request) {
     )
   }
 
-  let body: { url?: unknown }
+  let body: { url?: unknown; urls?: unknown }
   try {
     body = await request.json()
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  const reason = rejectReason(body?.url)
-  if (reason) {
-    // THE SSRF GATE REFUSING SOMETHING. A URL this route will not fetch is the
-    // single most interesting rejection in the app: it is either a mistake or
-    // somebody probing what the server will reach on their behalf, and the two
-    // are told apart by how many there are. `reason` is our own closed set of
-    // strings, never the caller's URL -- logging an attacker-supplied URL is
-    // how a log drain becomes a place to inject.
-    logSecurityEvent({
-      kind: 'request.rejected',
-      route: '/api/profile',
-      userId: auth.user.id,
-      reason,
-      status: 400,
-    })
-    return NextResponse.json({ error: reason }, { status: 400 })
+  /**
+   * THE ADDRESSES, AND THERE MAY NOW BE SEVERAL (Gabe, 2026-09-18: the profile
+   * panel reads LinkedIn, GitHub, JobStreet and Glassdoor and merges them).
+   *
+   * `url` STAYS because a request body is a wire contract; anything still
+   * sending one keeps working. Both forms land in the same list, which is what
+   * the gate below walks.
+   *
+   * THE CAP IS HERE AS WELL AS IN THE EXTRACTOR, and that is not belt and
+   * braces for its own sake: this route is the one that knows WHO is asking,
+   * and the throttle above counts REQUESTS. Without a cap on addresses, one
+   * request is one throttle tick and a hundred hosted fetches.
+   */
+  const requested = [
+    ...(Array.isArray(body?.urls) ? body.urls : []),
+    ...(body?.url === undefined ? [] : [body.url]),
+  ]
+  if (requested.length === 0) {
+    return NextResponse.json({ error: 'No profile address was sent' }, { status: 400 })
+  }
+  if (requested.length > MAX_PROFILE_URLS) {
+    return NextResponse.json(
+      { error: `Send at most ${MAX_PROFILE_URLS} profile addresses` },
+      { status: 400 }
+    )
+  }
+
+  for (const candidate of requested) {
+    const reason = rejectReason(candidate)
+    if (reason) {
+      // THE SSRF GATE REFUSING SOMETHING. A URL this route will not fetch is
+      // the single most interesting rejection in the app: it is either a
+      // mistake or somebody probing what the server will reach on their
+      // behalf, and the two are told apart by how many there are. `reason` is
+      // our own closed set of strings, never the caller's URL -- logging an
+      // attacker-supplied URL is how a log drain becomes a place to inject.
+      logSecurityEvent({
+        kind: 'request.rejected',
+        route: '/api/profile',
+        userId: auth.user.id,
+        reason,
+        status: 400,
+      })
+      return NextResponse.json({ error: reason }, { status: 400 })
+    }
   }
 
   const extractor = process.env.EXTRACTOR_URL
@@ -127,7 +171,9 @@ export async function POST(request: Request) {
     const response = await fetch(new URL('profile', extractor), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url: normalizeTargetUrl(String(body.url)) }),
+      body: JSON.stringify({
+        urls: requested.map((candidate) => normalizeTargetUrl(String(candidate))),
+      }),
     })
     const payload = await response.json()
     return NextResponse.json(payload, { status: response.status })
