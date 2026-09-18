@@ -1466,3 +1466,110 @@ def test_a_captured_page_the_reader_cannot_parse_still_reads_as_a_profile():
     )
     assert record["ok"] is True
     assert record["profile"]["name"] == "Ada Lovelace"
+
+
+# --- The second actor's shape, mapped by the same reader ---------------------
+
+#: `supreme_coder/linkedin-profile-scraper`, which replaced `crawlerbros` on
+#: 2026-09-18: a hundredth of the price and it publishes skills and languages,
+#: which the old one never returned at all.
+#:
+#: SHAPED FROM ITS PUBLISHED INPUT SCHEMA, ITS CHANGELOG AND ITS FIELD LIST --
+#: `positions/employmentType` and `positions/totalDuration` are named in the
+#: changelog, `firstName`/`lastName`/`about`/`occupation` in the README's table
+#: -- because the actor documents no output schema. So this proves the MAPPER
+#: reads that shape, not that the actor still writes it. The net under a wrong
+#: guess is in `app._linkedin_profile`: a row that maps to no name and no roles
+#: is treated as a failed read and Firecrawl takes over.
+SUPREME_ROW = {
+    "firstName": "Elijah Gabe",
+    "lastName": "Cervantes",
+    "occupation": "Frontend Developer and UI/UX Designer",
+    "about": "I build job-search tooling in Next.js and Supabase.",
+    "geoLocationName": "Bamban, Central Luzon, Philippines",
+    "profilePicHighQuality": "https://media.licdn.com/dms/image/x",
+    "linkedinUrl": "https://www.linkedin.com/in/elijah-gabe-cervantes-0252b4340/",
+    "positions": [
+        {
+            "title": "Frontend Developer and UI/UX Designer",
+            "companyName": "Dominican College of Tarlac",
+            "totalDuration": "Jan 2025 - Present · 9 mos",
+            "locationName": "Capas, Central Luzon, Philippines",
+            "description": "Rebuilt the college intranet in Next.js.",
+            "employmentType": "Part-time",
+        }
+    ],
+    "educations": [
+        {
+            "schoolName": "Tarlac State University",
+            "degreeName": "Bachelor of Science",
+            "fieldOfStudy": "Information Technology",
+            "dateRange": "2022 - 2026",
+        }
+    ],
+    "certifications": [
+        {"name": "Introduction to Networks", "issuer": "Cisco Networking Academy", "issueDate": "Jan 2024"}
+    ],
+    "skills": [{"name": "React"}, {"name": "TypeScript"}, "Figma"],
+    "languages": [{"name": "English", "proficiency": "Professional"}, {"name": "Filipino"}],
+}
+
+
+def test_the_new_actor_row_maps_onto_the_same_profile():
+    p = profile_from_apify(SUPREME_ROW, "https://www.linkedin.com/in/x/")["profile"]
+    assert p["name"] == "Elijah Gabe Cervantes"
+    assert p["headline"] == "Frontend Developer and UI/UX Designer"
+    assert p["summary"] == "I build job-search tooling in Next.js and Supabase."
+    assert p["location"] == "Bamban, Central Luzon, Philippines"
+    assert p["url"] == "https://www.linkedin.com/in/elijah-gabe-cervantes-0252b4340/"
+
+
+def test_the_new_actor_brings_skills_and_languages_the_old_one_never_had():
+    # The two things every warning on the profile screen was about. Strings or
+    # `{name}` objects, because the actor mixes both.
+    p = profile_from_apify(SUPREME_ROW, "x")["profile"]
+    assert p["skills"] == ["React", "TypeScript", "Figma"]
+    assert p["languages"] == ["English", "Filipino"]
+
+
+def test_a_flat_positions_list_reads_like_the_split_one():
+    roles = profile_from_apify(SUPREME_ROW, "x")["profile"]["experiences"]
+    assert roles == [
+        {
+            "title": "Frontend Developer and UI/UX Designer",
+            "company": "Dominican College of Tarlac",
+            "period": "Jan 2025 - Present · 9 mos",
+            "location": "Capas, Central Luzon, Philippines",
+            "description": "Rebuilt the college intranet in Next.js.",
+        }
+    ]
+
+
+def test_educations_and_issuer_spellings_both_read():
+    p = profile_from_apify(SUPREME_ROW, "x")["profile"]
+    assert p["education"] == [
+        {
+            "school": "Tarlac State University",
+            "degree": "Bachelor of Science, Information Technology",
+            "period": "2022 - 2026",
+        }
+    ]
+    assert p["certifications"][0]["authority"] == "Cisco Networking Academy"
+
+
+def test_the_skills_warning_is_not_printed_over_skills():
+    # It was unconditional, because the old actor could never return any.
+    # Claiming it now would be the app arguing with what is on screen beside it.
+    warnings = profile_from_apify(SUPREME_ROW, "x")["warnings"]
+    assert not any("Skills and languages did not come through" in w for w in warnings)
+    assert any(
+        "Skills and languages did not come through" in w
+        for w in profile_from_apify({"name": "Nobody"}, "x")["warnings"]
+    )
+
+
+def test_the_old_actor_row_still_maps():
+    # One mapper, two actors: the row that shipped for eight days still reads.
+    p = profile_from_apify(ROW, "x")["profile"]
+    assert p["name"] == "Satya Nadella"
+    assert p["experiences"]

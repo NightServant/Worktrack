@@ -65,21 +65,38 @@ RENDER_TIMEOUT_MS = 45_000
 #: FIRECRAWL COULD NOT DO THIS ONE. It is a fetcher, and LinkedIn answers a
 #: signed-out profile request with an anti-bot challenge rather than a page --
 #: so the JSON-LD parser in `extractor/profile.py` had nothing to parse (Gabe's
-#: first real test, 2026-09-10). This actor solves the challenge server-side
-#: and returns structured JSON.
+#: first real test, 2026-09-10). An actor solves the challenge server-side and
+#: returns structured JSON.
+#:
+#: IT IS `supreme_coder` SINCE 2026-09-18 (Gabe: "use this one as a scraper"),
+#: and the numbers make the case on their own. Read off Apify's own store API
+#: the day of the swap:
+#:
+#:   crawlerbros    $0.50 per GIGABYTE at start (minimum one event) + $0.01 per
+#:                  result. Pinned to 1024MB that is $0.51 to read one profile,
+#:                  and it returns NO skills and NO languages -- the two things
+#:                  every warning on the profile screen was about.
+#:   supreme_coder  PAY_PER_EVENT: $0.005 per profile, plus $0.00005 per GB at
+#:                  start. About half a cent, or a HUNDREDTH of the above, and
+#:                  its own field list names skills, languages, certifications
+#:                  and honours.
+#:
+#: THE INPUT SHAPE IS DIFFERENT AND THAT IS THE WHOLE MIGRATION: `urls` takes
+#: `{"url": ...}` objects rather than `profileUrls` taking strings. The output
+#: is read defensively by `apify_profile`, which now carries both actors'
+#: spellings -- see its docblock.
 #:
 #: `run-sync-get-dataset-items` runs the actor and returns the rows in one
 #: call, which is right for one profile and wrong for a hundred. Per-profile
-#: latency is 30-90s of real challenge-solving, so the timeout is generous.
+#: latency is real challenge-solving, so the timeout stays generous.
 #:
-#: MEMORY IS PINNED, and it is a cost decision rather than a performance one.
-#: The actor bills $0.50 per GIGABYTE at start (minimum one event), and its own
-#: default is 4096MB -- so an unpinned run is $2.00 to read one profile. At
-#: 1024MB it is $0.50 plus $0.01 for the result.
-APIFY_PROFILE_ACTOR = "crawlerbros~linkedin-profile-scraper"
+#: MEMORY IS PINNED TO THE ACTOR'S OWN CEILING. `maxMemoryMbytes` on its build
+#: is 512, so asking for the old 1024 is asking for a run it will refuse; the
+#: start event is charged per gigabyte, so the smaller number is also cheaper.
+APIFY_PROFILE_ACTOR = "supreme_coder~linkedin-profile-scraper"
 APIFY_ENDPOINT = "https://api.apify.com/v2/acts/{actor}/run-sync-get-dataset-items"
 APIFY_TIMEOUT_S = 180.0
-APIFY_MEMORY_MB = 1024
+APIFY_MEMORY_MB = 512
 
 #: GitHub's own API, which needs no fetcher and no key.
 #:
@@ -390,6 +407,10 @@ def _apify_message(reason: str) -> str:
             "public LinkedIn profile — a private one cannot be read."
         ),
         "empty-row": "That profile came back empty.",
+        "unmapped-row": (
+            "The profile reader returned a shape this app does not recognise — its "
+            "fields may have been renamed."
+        ),
         "unreadable-response": "The profile reader returned something unexpected.",
     }.get(reason, "Could not read that profile page.")
 
@@ -415,12 +436,18 @@ async def _apify_profile(url: str) -> tuple[dict[str, Any] | None, str]:
                 headers={"Authorization": f"Bearer {token}"},
                 params={"memory": APIFY_MEMORY_MB, "timeout": int(APIFY_TIMEOUT_S)},
                 json={
-                    "profileUrls": [url],
-                    # OFF. It fetches the current employer's own company page
-                    # for headcount and industry -- 30-90 seconds more, for
-                    # facts a CV does not carry. `industry` is the only one
-                    # mapped, and it is not worth doubling the wait.
-                    "enrichCompany": False,
+                    # `[{"url": ...}]`, not a list of strings: the actor's own
+                    # input schema declares `urls` as a request list, and a
+                    # bare string is not one.
+                    "urls": [{"url": url}],
+                    # OFF, BOTH OF THEM, and both are money. `scrapeCompany`
+                    # fetches the current employer's own page for headcount and
+                    # industry -- another $0.001 and another wait, for facts a
+                    # CV does not carry. `findContacts` bills $0.002 to guess
+                    # somebody's email from a third-party service, which is not
+                    # a thing this app should be doing to anyone.
+                    "scrapeCompany": False,
+                    "findContacts": False,
                 },
             )
     except httpx.TimeoutException:
@@ -573,7 +600,16 @@ async def _linkedin_profile(url: str) -> tuple[dict[str, Any] | None, str]:
         row, reason = await _apify_profile(url)
         reasons["apify"] = reason
         if row is not None:
-            return {**profile_from_apify(row, url), "via": "apify"}, "ok"
+            payload = profile_from_apify(row, url)
+            # A ROW THAT MAPS TO NOTHING IS NOT A READ. The actor changed on
+            # 2026-09-18 and its field names are published only as a feature
+            # list, so the mapper carries both spellings -- and this is the net
+            # under it. No name and no roles means the shape moved again;
+            # Firecrawl below still gets the JSON-LD, and storing a blank over
+            # a good profile would be the worse failure by far.
+            if payload["profile"]["name"] or payload["profile"]["experiences"]:
+                return {**payload, "via": "apify"}, "ok"
+            reasons["apify"] = "unmapped-row"
 
     if not os.environ.get("FIRECRAWL_API_KEY", "").strip():
         return None, ", ".join(f"{k}: {v}" for k, v in reasons.items()) or "no-key"

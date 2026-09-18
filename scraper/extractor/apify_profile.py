@@ -97,7 +97,7 @@ def _period(node: Any, *, start: str = "startDate", end: str = "endDate") -> str
     """
     if not isinstance(node, dict):
         return None
-    ready = _pick(node, "dateRange", "duration")
+    ready = _pick(node, "dateRange", "duration", "totalDuration", "date_range")
     if ready:
         return ready
     first = _clean(node.get(start))
@@ -133,6 +133,15 @@ def _experiences(row: dict[str, Any]) -> list[dict[str, Any]]:
     positions: list[dict[str, Any]] = []
     for key in ("currentPositions", "pastPositions"):
         positions.extend(p for p in _listed(row.get(key)) if isinstance(p, dict))
+    if not positions:
+        # A FLAT LIST IS THE OTHER SHAPE (2026-09-18). `crawlerbros` splits
+        # current from past; `supreme_coder` returns one `positions` array in
+        # LinkedIn's own order, which is already most-recent-first. Read second
+        # so the two-list actor keeps its ordering guarantee.
+        for key in ("positions", "experiences", "experience", "workExperience"):
+            positions.extend(p for p in _listed(row.get(key)) if isinstance(p, dict))
+            if positions:
+                break
 
     all_titles = [t for t in (_clean(x) for x in _listed(row.get("allTitles"))) if t]
     aligned = all_titles if len(all_titles) == len(positions) else []
@@ -149,7 +158,9 @@ def _experiences(row: dict[str, Any]) -> list[dict[str, Any]]:
         # employer it does not belong to.
         if not title and current_title and index == 0 and current_count == 1:
             title = current_title
-        company = _pick(position, "company", "companyName", "organisation")
+        company = _pick(
+            position, "company", "companyName", "organisation", "companyLinkedinName"
+        )
         if not title and not company:
             continue
         out.append(
@@ -157,7 +168,7 @@ def _experiences(row: dict[str, Any]) -> list[dict[str, Any]]:
                 "title": title or "",
                 "company": company,
                 "period": _period(position),
-                "location": _pick(position, "location"),
+                "location": _pick(position, "location", "locationName"),
                 # The bullet text under a role is what a CV is written from.
                 # LinkedIn does not serve it to a signed-out visitor, so this
                 # is usually None and the warning says so -- the export
@@ -170,15 +181,16 @@ def _experiences(row: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _education(row: dict[str, Any]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
-    for school in _listed(row.get("education")):
+    schools = _listed(row.get("education")) or _listed(row.get("educations"))
+    for school in schools:
         if not isinstance(school, dict):
             continue
-        name = _pick(school, "school", "schoolName", "name")
+        name = _pick(school, "school", "schoolName", "name", "title")
         if not name:
             continue
         # `degree` and `fieldOfStudy` are separate columns and both are
         # optional. "BSc, Computer Science" reads as one line on a CV.
-        degree = _pick(school, "degree", "degreeName")
+        degree = _pick(school, "degree", "degreeName", "subtitle")
         field = _pick(school, "fieldOfStudy", "field")
         parts = [part for part in (degree, field) if part]
         out.append(
@@ -193,7 +205,12 @@ def _education(row: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _certifications(row: dict[str, Any]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
-    for cert in _listed(row.get("certifications")):
+    certs = (
+        _listed(row.get("certifications"))
+        or _listed(row.get("licenses"))
+        or _listed(row.get("certificates"))
+    )
+    for cert in certs:
         if not isinstance(cert, dict):
             continue
         name = _pick(cert, "name", "title")
@@ -202,7 +219,9 @@ def _certifications(row: dict[str, Any]) -> list[dict[str, Any]]:
         out.append(
             {
                 "name": name,
-                "authority": _pick(cert, "issuer", "authority", "organization"),
+                "authority": _pick(
+                    cert, "issuer", "authority", "organization", "subtitle", "company"
+                ),
                 "period": _pick(cert, "issueDate", "date", "issued") or _period(cert),
             }
         )
@@ -224,6 +243,32 @@ def _projects(row: dict[str, Any]) -> list[dict[str, Any]]:
                 "url": _pick(project, "url", "link"),
             }
         )
+    return out
+
+
+def _named(row: dict[str, Any], *keys: str) -> list[str]:
+    """A list of names, whether the source writes strings or objects.
+
+    THE NEW ACTOR RETURNS THESE AND THE OLD ONE NEVER DID (2026-09-18), which
+    is most of the reason for the swap: skills and languages are the two things
+    every warning on this screen was about. `supreme_coder` publishes them;
+    `crawlerbros` had nothing to publish, so this app had no reader for them
+    at all.
+
+    Strings or `{name}` or `{title}`, de-duplicated case-insensitively and in
+    the order the profile lists them -- which on LinkedIn is the owner's own
+    ordering, most-endorsed first.
+    """
+    out: list[str] = []
+    seen: set[str] = set()
+    for key in keys:
+        for item in _listed(row.get(key)):
+            value = item if isinstance(item, str) else _pick(item, "name", "title", "skill")
+            cleaned = _clean(value)
+            if not cleaned or cleaned.lower() in seen:
+                continue
+            seen.add(cleaned.lower())
+            out.append(cleaned)
     return out
 
 
@@ -280,32 +325,55 @@ def profile_from_apify(row: dict[str, Any], requested_url: str) -> dict[str, Any
     profile = dict(EMPTY_PROFILE)
     warnings: list[str] = []
 
-    profile["name"] = _pick(row, "name", "fullName")
-    profile["headline"] = _pick(row, "headline")
-    profile["location"] = _pick(row, "location")
-    profile["summary"] = _real_summary(row.get("summary")) or _real_summary(row.get("about"))
-    profile["pictureUrl"] = _pick(row, "profilePicture", "profilePic", "photo")
-    profile["url"] = _pick(row, "profileUrl") or requested_url
+    # TWO ACTORS, ONE MAPPER, and every lookup below carries both spellings --
+    # `fullName` or `firstName`+`lastName`, `location` or `geoLocationName`.
+    # A second module would be a second place to fix the next field LinkedIn
+    # renames, and these rows are 80% the same shape.
+    name = _pick(row, "name", "fullName")
+    if not name:
+        parts = [_pick(row, "firstName"), _pick(row, "lastName")]
+        name = " ".join(part for part in parts if part) or None
+    profile["name"] = name
+    profile["headline"] = _pick(row, "headline", "occupation", "subtitle")
+    profile["location"] = _pick(
+        row, "location", "geoLocationName", "addressWithCountry", "locationName"
+    )
+    profile["summary"] = (
+        _real_summary(row.get("summary"))
+        or _real_summary(row.get("about"))
+        or _real_summary(row.get("bio"))
+    )
+    profile["pictureUrl"] = _pick(
+        row, "profilePicture", "profilePic", "photo", "pictureUrl", "profilePicHighQuality"
+    )
+    profile["url"] = _pick(row, "profileUrl", "linkedinUrl", "url", "inputUrl") or requested_url
 
     company = row.get("currentCompany")
-    profile["industry"] = _pick(company, "industry")
+    profile["industry"] = _pick(company, "industry") or _pick(row, "industry", "industryName")
 
     profile["experiences"] = _experiences(row)
     profile["education"] = _education(row)
     profile["certifications"] = _certifications(row)
     profile["projects"] = _projects(row)
     profile["websites"] = _websites(row)
+    profile["skills"] = _named(row, "skills", "topSkills", "skillsList")
+    profile["languages"] = _named(row, "languages", "languagesList")
 
     # WHAT THIS SOURCE CANNOT GIVE, said once rather than discovered later.
     # LinkedIn does not publish skills or languages to a signed-out visitor, so
     # no scraper of a guest profile can return them -- and a profile that
     # imports with an empty skills list looks like a broken import rather than
     # a limit of the source.
-    warnings.append(
-        "Skills and languages are not on a signed-out profile page, so they do not come "
-        "through. Open your own profile while signed in and use the Worktrack bookmarklet "
-        "— it reads the page you are looking at."
-    )
+    # SAID ONLY WHEN IT IS TRUE, WHICH IT NO LONGER ALWAYS IS (2026-09-18).
+    # This used to be unconditional, because the actor behind it could not
+    # return skills at all. `supreme_coder` does; when it has, claiming
+    # otherwise would be the app arguing with what is on screen beside it.
+    if not profile["skills"] and not profile["languages"]:
+        warnings.append(
+            "Skills and languages did not come through from the public page. Open your own "
+            "profile while signed in and use the Worktrack bookmarklet — it reads the page "
+            "you are looking at."
+        )
     if not profile["summary"]:
         warnings.append(
             "No About section came back — LinkedIn only shows one to signed-out visitors "
