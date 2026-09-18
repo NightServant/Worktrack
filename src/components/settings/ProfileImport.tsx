@@ -294,6 +294,15 @@ export interface ProfileSourcesProps {
   note?: string | null
   /** The addresses already stored, so a re-fetch does not need retyping. */
   sources?: ProfileSource[]
+  /**
+   * The LinkedIn data export, when the caller can take one.
+   *
+   * Absent hides that half of the card entirely -- a control with no handler
+   * is a button that lies.
+   */
+  onImport?: (files: { name: string; text: string }[]) => void
+  importing?: boolean
+  importNote?: string | null
 }
 
 /** The host of an address, or '' -- used to put a stored source in its row. */
@@ -313,6 +322,9 @@ export function ProfileSources({
   hasProfile = false,
   note = null,
   sources = [],
+  onImport,
+  importing = false,
+  importNote = null,
 }: ProfileSourcesProps) {
   const busy = fetching || clearing
 
@@ -423,6 +435,22 @@ export function ProfileSources({
                   {read.ok ? 'read' : read.note || 'could not be read'}
                 </div>
               )}
+              {/* WHAT THIS SOURCE COULD NOT GIVE, ON THIS SOURCE'S ROW (Gabe,
+                  2026-09-18). All of them used to be joined into one paragraph
+                  under the button -- seven sentences from five sites, each an
+                  instruction about a different link, in a wall nobody reads to
+                  the end of. Here each one sits under the address it is about,
+                  which is also the address you would change. */}
+              {read?.warnings?.length ? (
+                <ul
+                  data-profile-source-warnings
+                  className="flex list-disc flex-col gap-0.5 pl-4 text-caption text-text-muted"
+                >
+                  {read.warnings.map((warning) => (
+                    <li key={warning}>{warning}</li>
+                  ))}
+                </ul>
+              ) : null}
             </div>
           )
         })}
@@ -432,6 +460,46 @@ export function ProfileSources({
         <p role="alert" className="text-body-s text-status-rejected-mark" data-profile-rejected>
           {error}
         </p>
+      )}
+
+      {/* THE EXPORT, AS THE ANSWER TO EVERY WARNING ABOVE IT (Gabe,
+          2026-09-18: the wall of "add them by hand, or import a LinkedIn data
+          export" -- and his own suggestion of "a stronger scraper or a
+          bookmarklet").
+
+          IT IS NEITHER OF THOSE, DELIBERATELY. A stronger scraper is an
+          arms race against a site that has already said no to signed-out
+          visitors, and a bookmarklet for a LOGGED-IN LinkedIn page would need
+          a parser for markup LinkedIn rewrites at will -- the posting
+          bookmarklet works because a job advert is one document, while a
+          profile is a dozen lazy-loaded sections. The export is a file the
+          person already owns, it parses in the browser with no network, no
+          key and nothing to be blocked by, and it is the ONLY source that has
+          ever carried the bullet text under a role. See `ProfileImport`.
+
+          UNDER THE ADDRESSES, NOT INSTEAD OF THEM. The links are one paste and
+          arrive in seconds; the export is an email that can take a day. It is
+          the second half of the same card because that is when somebody wants
+          it: after reading what the links could not give. */}
+      {onImport && (
+        <div className="flex flex-col gap-3 border-t border-border-subtle pt-4">
+          <div className="flex flex-col gap-1">
+            <p className="text-label-caps uppercase text-text-secondary">
+              have the LinkedIn data export?
+            </p>
+            <p className="max-w-prose text-body-s text-text-muted">
+              It is the only source that carries your About, your skills and the bullet text
+              under each role — none of which a public profile page shows. Import it and those
+              fill in.
+            </p>
+          </div>
+          <ProfileImport
+            onImport={onImport}
+            importing={importing}
+            note={importNote}
+          />
+          {!hasProfile && <ProfileImportSteps />}
+        </div>
       )}
 
       {note && (

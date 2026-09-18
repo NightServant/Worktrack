@@ -66,6 +66,16 @@ export interface ProfileSource {
   ok: boolean
   /** Why it did not read, when it did not. */
   note: string | null
+  /**
+   * What this source could not give, in its own words.
+   *
+   * ON THE ROW RATHER THAN IN ONE PARAGRAPH (Gabe, 2026-09-18, pasting the
+   * result back: seven sentences from five sources run together, with nothing
+   * saying which link each was about). Every one of them is an instruction --
+   * "import a LinkedIn data export", "add them by hand" -- and an instruction
+   * you cannot attach to a source is one you cannot act on.
+   */
+  warnings: string[]
 }
 
 /**

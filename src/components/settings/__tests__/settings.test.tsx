@@ -44,7 +44,13 @@ const FILLED = {
   languages: ['Filipino (Native)'],
   projects: [],
   sources: [
-    { url: 'https://www.linkedin.com/in/example', site: 'LinkedIn', ok: true, note: null },
+    {
+      url: 'https://www.linkedin.com/in/example',
+      site: 'LinkedIn',
+      ok: true,
+      note: null,
+      warnings: ['Skills are not on a signed-out profile page.'],
+    },
   ],
   fetchedAt: '2026-09-06T00:00:00.000Z',
 }
@@ -318,12 +324,16 @@ describe('the profile panel’s layout', () => {
     expect(tiles).toEqual(['W', 'U'])
   })
 
-  it('sets certifications and projects as real bulleted lists', () => {
-    // Gabe asked for bullets on exactly these two, and they earn it while the
-    // other two do not: a role and a degree are dated records with bodies; a
-    // certificate is one line. A real `list-disc` list, not a stack of rows
-    // with a glyph in front -- a screen reader announces "list, N items",
-    // which a div wearing a bullet character does not.
+  it('sets certifications as a real bulleted list', () => {
+    // Gabe asked for bullets here and they earn it: a certificate is one line,
+    // while a role and a degree are dated records with bodies. A real
+    // `list-disc` list, not a stack of rows with a glyph in front -- a screen
+    // reader announces "list, N items", which a div wearing a bullet character
+    // does not.
+    //
+    // PROJECTS LEFT THIS SHAPE ON 2026-09-18: ten of them with a description
+    // each ran to about nine hundred pixels beside `experience`, so they are a
+    // carousel now (Gabe: "projects sits too tall at the right column").
     const withBoth = {
       ...FILLED,
       certifications: [{ name: 'Introduction to Networks', authority: 'Cisco', period: 'Jan 2024' }],
@@ -333,13 +343,26 @@ describe('the profile panel’s layout', () => {
       <SettingsPage prefs={null} profile={{ status: 'ready', profile: withBoth }} />
     )
     const bullets = [...container.querySelectorAll('[data-profile-bullet]')]
-    expect(bullets).toHaveLength(2)
-    for (const bullet of bullets) {
-      expect(bullet.tagName).toBe('LI')
-      expect(bullet.closest('ul')!.className).toContain('list-disc')
-    }
+    expect(bullets).toHaveLength(1)
+    expect(bullets[0].tagName).toBe('LI')
+    expect(bullets[0].closest('ul')!.className).toContain('list-disc')
     expect(screen.getByText(/Introduction to Networks/)).toBeTruthy()
-    expect(screen.getByRole('link', { name: 'Worktrack' })).toBeTruthy()
+  })
+
+  it('puts projects in a rail rather than a column of their own height', () => {
+    const many = Array.from({ length: 10 }, (_, i) => ({
+      title: `Project ${i}`,
+      description: 'A description long enough to take two lines in a card.',
+      url: `https://example.dev/${i}`,
+    }))
+    const { container } = render(
+      <SettingsPage prefs={null} profile={{ status: 'ready', profile: { ...FILLED, projects: many } }} />
+    )
+    expect(container.querySelectorAll('[data-profile-project]')).toHaveLength(10)
+    // One track, not ten stacked rows -- the same carousel `up next` uses.
+    const section = container.querySelector('[data-profile-section="projects"]')!
+    expect(section.querySelectorAll('[data-slot="carousel-content"]')).toHaveLength(1)
+    expect(screen.getByRole('link', { name: 'Project 0' })).toBeTruthy()
   })
 
   it('names every section it renders, and renders none it has nothing for', () => {
@@ -420,8 +443,14 @@ describe('building a profile from several addresses', () => {
         onClear={vi.fn()}
         hasProfile
         sources={[
-          { url: 'https://github.com/octocat', site: 'GitHub', ok: true, note: null },
-          { url: 'https://www.linkedin.com/in/example', site: 'LinkedIn', ok: true, note: null },
+          { url: 'https://github.com/octocat', site: 'GitHub', ok: true, note: null, warnings: [] },
+          {
+            url: 'https://www.linkedin.com/in/example',
+            site: 'LinkedIn',
+            ok: true,
+            note: null,
+            warnings: [],
+          },
         ]}
       />
     )
@@ -441,12 +470,19 @@ describe('building a profile from several addresses', () => {
         onFetch={vi.fn()}
         hasProfile
         sources={[
-          { url: 'https://www.linkedin.com/in/example', site: 'LinkedIn', ok: true, note: null },
+          {
+            url: 'https://www.linkedin.com/in/example',
+            site: 'LinkedIn',
+            ok: true,
+            note: null,
+            warnings: ['LinkedIn does not publish skills to a signed-out visitor.'],
+          },
           {
             url: 'https://www.glassdoor.com/member/home',
             site: 'Glassdoor',
             ok: false,
             note: 'Glassdoor showed nothing to a signed-out visitor.',
+            warnings: [],
           },
         ]}
       />

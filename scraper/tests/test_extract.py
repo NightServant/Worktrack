@@ -1282,3 +1282,69 @@ def test_the_same_about_from_two_sources_is_one_paragraph():
         ]
     )
     assert [entry["site"] for entry in about] == ["LinkedIn"]
+
+
+def test_an_employer_with_no_role_is_not_a_second_job():
+    # LinkedIn does not show job titles to signed-out visitors on some
+    # profiles, so it returns the company and the dates with an EMPTY title;
+    # JobStreet returns the same job with its title. The panel listed the
+    # employer twice -- once as a job with no name (Gabe, 2026-09-18).
+    partial = {
+        "experiences": [
+            {
+                "title": "",
+                "company": "Dominican College of Tarlac",
+                "period": "2025 – Present",
+                "location": "Capas, Central Luzon, Philippines",
+                "description": None,
+            }
+        ]
+    }
+    titled = {
+        "experiences": [
+            {
+                "title": "Frontend Developer and UI/UX Designer",
+                "company": "Dominican College of Tarlac",
+                "period": None,
+                "location": None,
+                "description": None,
+            }
+        ]
+    }
+    # BOTH DIRECTIONS. The real order is LinkedIn first, so the incomplete
+    # record arrives first -- which the first pass at this did not handle.
+    for order in ([partial, titled], [titled, partial]):
+        roles = merge_profiles(order)["experiences"]
+        assert len(roles) == 1
+        assert roles[0]["title"] == "Frontend Developer and UI/UX Designer"
+        assert roles[0]["period"] == "2025 – Present"
+        assert roles[0]["location"] == "Capas, Central Luzon, Philippines"
+
+
+def test_a_third_source_naming_the_same_job_does_not_add_a_duplicate():
+    # Filling a blank title changes the record's key, so the index has to be
+    # rewritten or the next source misses it.
+    partial = {"experiences": [{"title": "", "company": "Acme"}]}
+    titled = {"experiences": [{"title": "Engineer", "company": "Acme"}]}
+    assert len(merge_profiles([partial, titled, titled])["experiences"]) == 1
+
+
+def test_a_github_bio_never_outranks_a_real_about():
+    from app import _attributed_about
+
+    about = _attributed_about(
+        [
+            {"site": "GitHub", "profile": {"summary": "All will be well."}},
+            {"site": "LinkedIn", "profile": {"summary": "Frontend developer in Manila."}},
+        ]
+    )
+    # A 160-character tagline under an avatar is not the paragraph somebody
+    # wrote to be read by an employer, whatever order the sources were in.
+    assert [entry["site"] for entry in about] == ["LinkedIn", "GitHub"]
+
+
+def test_a_bio_is_still_better_than_an_empty_about():
+    from app import _attributed_about
+
+    about = _attributed_about([{"site": "GitHub", "profile": {"summary": "All will be well."}}])
+    assert [entry["site"] for entry in about] == ["GitHub"]

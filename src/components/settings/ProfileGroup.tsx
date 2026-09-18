@@ -3,6 +3,14 @@
 import * as React from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { EMPTY_PROFILE, hasProfileContent, type UserProfile } from '@/services/profile'
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+  CarouselRow,
+} from '@/components/ui/carousel'
 import { Bullets, Records } from './profileEntries'
 import { Detail, Facet, Identity, Loading, Section, Tag } from './profileChrome'
 
@@ -333,17 +341,59 @@ export function ProfileGroup({ state, source, steps }: ProfileGroupProps) {
           </Section>
         )}
 
+        {/* PROJECTS ARE A RAIL, NOT A LIST (Gabe, 2026-09-18: "projects sits
+            too tall at the right column -- my suggestion is to use carousel").
+            Ten of them with a description each ran to about nine hundred
+            pixels in a column beside `experience`, so the page ended in a
+            single tall box with nothing opposite it.
+
+            THE SAME CAROUSEL `up next` AND `fresh remote roles` USE, which is
+            what makes this a borrowing rather than a new pattern: one card
+            tall, the width doing the work, arrows flanking the track. A
+            project is exactly the shape that suits it -- a name, two lines,
+            and a link out. */}
         {profile.projects.length > 0 && (
           <Section title="projects" icon="Code" count={profile.projects.length}>
-            <Bullets
-              rows={profile.projects.map((p) => ({
-                lead: p.title,
-                detail: null,
-                period: null,
-                body: p.description,
-                href: p.url,
-              }))}
-            />
+            <Carousel
+              opts={{ align: 'start', dragFree: true, containScroll: 'trimSnaps' }}
+              className="flex flex-col gap-3"
+            >
+              <CarouselRow>
+                <CarouselPrevious />
+                <CarouselContent className="-ml-3">
+                  {profile.projects.map((project) => (
+                    <CarouselItem key={project.title} className="basis-auto pl-3">
+                      <article
+                        data-profile-project
+                        className="flex h-full w-60 flex-col gap-1.5 rounded-md border border-border-subtle bg-bg-surface p-3"
+                      >
+                        {project.url ? (
+                          <a
+                            href={project.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-body-s text-accent-default underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-default"
+                          >
+                            {project.title}
+                          </a>
+                        ) : (
+                          <p className="text-body-s text-text-primary">{project.title}</p>
+                        )}
+                        {project.description && (
+                          // FOUR LINES, then it stops. A repository description
+                          // runs to forty words and every card in a rail is one
+                          // height; the link is the way to read the rest.
+                          <p className="line-clamp-4 text-caption leading-[1.6] text-text-secondary">
+                            {project.description}
+                          </p>
+                        )}
+                      </article>
+                    </CarouselItem>
+                  ))}
+                </CarouselContent>
+                <CarouselNext />
+              </CarouselRow>
+            </Carousel>
           </Section>
         )}
 

@@ -68,6 +68,22 @@ _RECORD_LISTS = {
 #: difference, and it is not one.
 _NOISE = {"the", "a", "an", "of", "for", "and", "my", "app", "application", "project"}
 
+#: Record lists where a record identified by ONE field is a partial copy of a
+#: fuller one, keyed by the field that stands alone.
+#:
+#: AN EMPLOYER WITH NO ROLE IS NOT A SECOND JOB (Gabe, 2026-09-18: "there is
+#: redundant information from experience"). LinkedIn does not show job titles
+#: to a signed-out visitor on some profiles, so it returns the company and the
+#: dates with an empty title; JobStreet returns the same job WITH its title.
+#: Keyed on title+company those are two records, and the panel listed the same
+#: employer twice -- once as a job with no name.
+#:
+#: IT IS SAFE PRECISELY BECAUSE THE PARTIAL CARRIES NOTHING TO CONTRADICT. A
+#: record with no title cannot be "a different role at that company"; it is an
+#: incomplete copy of one of them, and folding it into the first is the only
+#: reading that does not invent a job.
+_PARTIAL_LISTS = {"experiences": "company"}
+
 #: Lists where two records may be the same thing under two names.
 #:
 #: PROJECTS ONLY, and the restriction is the safety (Gabe, 2026-09-18: "there
@@ -146,6 +162,7 @@ def _merge_records(
     fields: tuple[str, ...],
     *,
     fuzzy: bool = False,
+    partial_on: str | None = None,
 ) -> list[dict[str, Any]]:
     """One list of records, with duplicates filled in rather than repeated."""
     if not isinstance(incoming, list):
@@ -158,6 +175,8 @@ def _merge_records(
         if not key:
             continue
         existing = index.get(key)
+        if existing is None and partial_on:
+            existing = _partial_match(into, record, fields, partial_on)
         if existing is None and fuzzy:
             # THE SAME PROJECT UNDER TWO NAMES. Scanned rather than looked up,
             # because "is one name a slug of the other" is not a question a
@@ -178,7 +197,50 @@ def _merge_records(
         for field, value in record.items():
             if existing.get(field) in (None, "", []) and value not in (None, "", []):
                 existing[field] = value
+        # RE-KEYED, because filling a blank title CHANGES a record's identity:
+        # `|acme` becomes `engineer|acme`. Left stale, a third source naming
+        # the same job would miss it and add a duplicate -- the very thing this
+        # pass exists to stop.
+        index[_key(existing, fields)] = existing
     return into
+
+
+def _anchor(record: dict[str, Any], field: str) -> str | None:
+    value = _text(record.get(field))
+    return " ".join(value.split()).lower() if value else None
+
+
+def _is_partial(record: dict[str, Any], fields: tuple[str, ...], anchor_field: str) -> bool:
+    """Whether a record names only its anchor -- an employer with no role."""
+    return any(
+        field != anchor_field and not _text(record.get(field)) for field in fields
+    )
+
+
+def _partial_match(
+    into: list[dict[str, Any]],
+    record: dict[str, Any],
+    fields: tuple[str, ...],
+    anchor_field: str,
+) -> dict[str, Any] | None:
+    """A record already held that this one is a fuller or thinner copy of.
+
+    IT HAS TO WORK IN BOTH DIRECTIONS, and the first pass only did one. The
+    real order is LinkedIn first, which is the source that returns an employer
+    with an EMPTY title -- so the incomplete record arrives first and the
+    complete one second. Matching only when the incoming record is the partial
+    one left both in the list, which is the duplicate Gabe reported.
+    """
+    anchor = _anchor(record, anchor_field)
+    if not anchor:
+        return None
+    incoming_partial = _is_partial(record, fields, anchor_field)
+    for item in into:
+        if _anchor(item, anchor_field) != anchor:
+            continue
+        if incoming_partial or _is_partial(item, fields, anchor_field):
+            return item
+    return None
 
 
 def merge_profiles(profiles: list[dict[str, Any]]) -> dict[str, Any]:
@@ -221,7 +283,11 @@ def merge_profiles(profiles: list[dict[str, Any]]) -> dict[str, Any]:
 
         for field, identity in _RECORD_LISTS.items():
             _merge_records(
-                merged[field], profile.get(field), identity, fuzzy=field in _FUZZY_LISTS
+                merged[field],
+                profile.get(field),
+                identity,
+                fuzzy=field in _FUZZY_LISTS,
+                partial_on=_PARTIAL_LISTS.get(field),
             )
 
     return merged

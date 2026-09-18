@@ -54,10 +54,43 @@ export function useImportProfile() {
       // A file set that matched nothing is not written -- storing an empty
       // profile over a good one because someone picked the wrong CSV is a
       // worse outcome than an error message.
-      if (result.recognised.length) {
-        await userProfileService.saveProfile(supabase, result.profile)
+      if (!result.recognised.length) return result
+
+      /*
+       * MERGED OVER WHAT THE LINKS READ, NOT WRITTEN OVER IT (2026-09-18).
+       * This used to save the export's profile whole, which was right while
+       * the export was the ONLY way in: everything else was empty. Now that a
+       * profile is built from four addresses, saving it whole would delete the
+       * GitHub projects and the JobStreet role on the way to adding an About.
+       *
+       * THE EXPORT WINS FIELD BY FIELD WHERE IT HAS ANYTHING, which is the
+       * right precedence rather than a tie-break: it is the person's own data
+       * as LinkedIn holds it, and it is the only source that carries the
+       * bullet text under a role. Empty stays empty and never overwrites.
+       */
+      const stored = await userProfileService.get(supabase)
+      const merged: UserProfile = { ...EMPTY_PROFILE, ...(stored.profile ?? {}) }
+      for (const [key, value] of Object.entries(result.profile) as [
+        keyof UserProfile,
+        unknown,
+      ][]) {
+        if (value === null || value === undefined) continue
+        if (Array.isArray(value) && value.length === 0) continue
+        if (typeof value === 'string' && value.trim() === '') continue
+        ;(merged as unknown as Record<string, unknown>)[key] = value
       }
-      return result
+      // THE EXPORT'S ABOUT LEADS, ATTRIBUTED. It is the one the person wrote
+      // for an employer to read; a GitHub bio underneath it is context rather
+      // than competition. Keyed by site, so importing twice does not stack.
+      if (result.profile.summary) {
+        merged.about = [
+          { site: 'LinkedIn export', text: result.profile.summary },
+          ...merged.about.filter((entry) => entry.site !== 'LinkedIn export'),
+        ]
+      }
+      merged.fetchedAt = new Date().toISOString()
+      await userProfileService.saveProfile(supabase, merged)
+      return { ...result, profile: merged }
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['user-profile', user?.id] })
@@ -178,6 +211,9 @@ function readSources(value: unknown): ProfileSource[] {
         ok: source.ok === true,
         note:
           sentence && reason && reason !== 'ok' ? `${sentence} (${reason})` : sentence,
+        warnings: Array.isArray(source.warnings)
+          ? source.warnings.filter((warning): warning is string => typeof warning === 'string')
+          : [],
       },
     ]
   })

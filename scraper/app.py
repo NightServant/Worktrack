@@ -739,11 +739,23 @@ def _page_message(reason: str, label: str) -> str:
 
 
 def _attributed_about(read: list[dict[str, Any]]) -> list[dict[str, str]]:
-    """Every source's own About, in the order they were asked for.
+    """Every source's own About, best first.
 
     ONE PARAGRAPH PER SOURCE, DE-DUPLICATED ON ITS WORDS: two sites carrying
     the same text is one About written twice, and whitespace is not a
     difference.
+
+    A CODE HOST'S BIO GOES LAST, whatever order the sources were asked in
+    (Gabe, 2026-09-18: "about section fetched the wrong data"). A GitHub bio is
+    a one-line tagline by construction -- the field is 160 characters and sits
+    under an avatar -- while an About on a profile site is the paragraph
+    somebody wrote to be read by an employer. Ranking by the SOURCE rather than
+    by length is what keeps that honest: a short LinkedIn About is still the
+    one they wrote for this purpose.
+
+    It is a sort, not a filter. With nothing else to show, the bio is still
+    better than an empty section -- and it is labelled, so it cannot be
+    mistaken for a professional summary.
     """
     about: list[dict[str, str]] = []
     seen: set[str] = set()
@@ -754,6 +766,7 @@ def _attributed_about(read: list[dict[str, Any]]) -> list[dict[str, str]]:
             continue
         seen.add(fingerprint)
         about.append({"site": result["site"], "text": text})
+    about.sort(key=lambda entry: entry["site"].lower() == "github")
     return about
 
 
@@ -804,8 +817,13 @@ async def profile_endpoint(body: ProfileRequest) -> JSONResponse:
     results = await asyncio.gather(*[_one_profile(url) for url in urls])
 
     read = [result for result in results if result["ok"]]
+    # EACH SOURCE KEEPS ITS OWN WARNINGS (Gabe, 2026-09-18, pasting the wall
+    # back: seven sentences from five sources in one paragraph, with nothing
+    # saying which link each one was about). They stay in the flat `warnings`
+    # list too -- an older client reads that one -- but the row is where they
+    # can actually be acted on.
     sources = [
-        {key: value for key, value in result.items() if key not in ("profile", "warnings")}
+        {key: value for key, value in result.items() if key != "profile"}
         for result in results
     ]
 
@@ -840,7 +858,14 @@ async def profile_endpoint(body: ProfileRequest) -> JSONResponse:
     # BUILT HERE because a parser only ever sees its own source and cannot know
     # who else had one. `summary` is left exactly as it was, since the CV tools
     # read it as one string.
-    profile["about"] = _attributed_about(read)
+    about = _attributed_about(read)
+    profile["about"] = about
+    # AND THE SINGLE FIELD FOLLOWS THE SAME RANKING. `merge_profiles` takes the
+    # first non-empty summary in request order, which would leave a GitHub bio
+    # as the CV's opening paragraph while the panel showed a LinkedIn About
+    # above it -- two answers to one question on one screen.
+    if about:
+        profile["summary"] = about[0]["text"]
 
     warnings: list[str] = []
     for result in read:

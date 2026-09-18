@@ -11,6 +11,7 @@ import { ProfileSources, ProfileSourceSteps } from '@/components/settings/Profil
 import type { ProfileState } from '@/components/settings/ProfileGroup'
 import {
   useUserProfile,
+  useImportProfile,
   useImportProfileFromUrl,
   useClearUserProfile,
 } from '@/hooks/useUserProfile'
@@ -44,12 +45,14 @@ export default function Page() {
   const { data: prefs = null } = useUserPreferences()
   const { data: stored, isPending: profileLoading } = useUserProfile()
   const fetchProfile = useImportProfileFromUrl()
+  const importProfile = useImportProfile()
   const clearProfile = useClearUserProfile()
   // What the last fetch did, kept here rather than read off the mutation: a
   // page that returned only a name and a headline resolves SUCCESSFULLY with
   // warnings, so `mutation.error` is empty on exactly the case worth saying
   // something about.
   const [profileNote, setProfileNote] = React.useState<string | null>(null)
+  const [importNote, setImportNote] = React.useState<string | null>(null)
   const setDefaultCurrency = useSetDefaultCurrency()
   const { success, error: showError } = useToast()
 
@@ -133,15 +136,44 @@ export default function Page() {
   const handleFetchProfile = async (urls: string[]) => {
     setProfileNote(null)
     try {
-      const result = await fetchProfile.mutateAsync(urls)
+      await fetchProfile.mutateAsync(urls)
       success('Profile updated')
-      // WHAT THE PAGE DID NOT CARRY IS SAID OUT LOUD. A public profile does
-      // not render the paragraph under each role, and an import that quietly
-      // returns titles without them looks like a bug rather than a limit --
-      // see scraper/extractor/profile.py.
-      if (result.warnings.length) setProfileNote(result.warnings.join(' '))
+      // THE WARNINGS ARE NOT JOINED INTO THIS NOTE ANY MORE (Gabe, 2026-09-18,
+      // pasting the result back). Five sources produced seven sentences, each
+      // an instruction about a different link, run together into one grey
+      // paragraph under the button. They ride on their own source's row now --
+      // see `ProfileSources` -- which is where the address they are about is.
+      // This note is for the one thing that has no row: a request that threw.
     } catch (err) {
       setProfileNote(err instanceof Error ? err.message : 'Could not read that profile.')
+    }
+  }
+
+  /**
+   * The LinkedIn data export, merged over whatever the links read.
+   *
+   * IT IS THE ANSWER TO THE WARNINGS the links leave behind -- About, skills,
+   * job titles, the bullet text under each role -- and none of it can be
+   * fetched, because LinkedIn shows none of it to a signed-out visitor.
+   */
+  const handleImportProfile = async (files: { name: string; text: string }[]) => {
+    setImportNote(null)
+    try {
+      const result = await importProfile.mutateAsync(files)
+      if (result.recognised.length === 0) {
+        setImportNote(
+          'None of those files looked like a LinkedIn export. Profile.csv is the one to start with.'
+        )
+        return
+      }
+      success('Profile updated from the export')
+      setImportNote(
+        result.unrecognised.length
+          ? `Read ${result.recognised.join(', ')}. Ignored ${result.unrecognised.join(', ')}.`
+          : `Read ${result.recognised.join(', ')}.`
+      )
+    } catch (err) {
+      setImportNote(err instanceof Error ? err.message : 'Could not read those files.')
     }
   }
 
@@ -180,6 +212,9 @@ export default function Page() {
           hasProfile={!!stored?.profile}
           note={profileNote}
           sources={stored?.profile?.sources ?? []}
+          onImport={(files) => void handleImportProfile(files)}
+          importing={importProfile.isPending}
+          importNote={importNote}
         />
       }
       profileSteps={<ProfileSourceSteps />}
