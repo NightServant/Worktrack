@@ -313,16 +313,29 @@ describe('the profile panel’s layout', () => {
     expect(screen.getByText('EG')).toBeTruthy()
   })
 
-  it('leads each record with a tile for the ORGANISATION, not for the line above it', () => {
-    // Inferring the organisation from whichever of lead/detail was present put
-    // a "BC" tile beside Tarlac State University -- initials of "BS, Computer
-    // Science". On an experience the organisation is the subtitle; on an
-    // education it is the lead.
+  it('strings the records on a rail, with a node each and a line between', () => {
+    // Gabe, 2026-09-18: "adding vertical progress bar for education and
+    // experience sections", then "vertical progress bar with icon nodes". Four
+    // roles read as ONE career in order rather than four stacked cards, which
+    // is the fact a reader is after: how long, and in what sequence.
+    const twoRoles = {
+      ...FILLED,
+      experiences: [
+        { ...FILLED.experiences[0], period: '2025 – Present' },
+        { ...FILLED.experiences[0], title: 'Intern', period: '2024 – 2025' },
+      ],
+    }
     const { container } = render(
-      <SettingsPage prefs={null} profile={{ status: 'ready', profile: FILLED }} />
+      <SettingsPage prefs={null} profile={{ status: 'ready', profile: twoRoles }} />
     )
-    const tiles = [...container.querySelectorAll('[data-org-tile]')].map((t) => t.textContent)
-    expect(tiles).toEqual(['W', 'U'])
+    const experience = container.querySelector('[data-profile-section="experience"]')!
+    // A node per entry, and a line between them -- so one fewer rail than
+    // nodes, because the last entry ends the line rather than trailing it.
+    expect(experience.querySelectorAll('[data-profile-node]')).toHaveLength(2)
+    expect(experience.querySelectorAll('[data-profile-rail]')).toHaveLength(1)
+    // The current role carries the accent, the same vocabulary the nav item
+    // and the status marker use for "this one".
+    expect(experience.querySelectorAll('[data-profile-node][data-current]')).toHaveLength(1)
   })
 
   it('sets certifications as a real bulleted list', () => {
@@ -373,11 +386,19 @@ describe('the profile panel’s layout', () => {
     const sections = [...container.querySelectorAll('[data-profile-section]')].map((s) =>
       s.getAttribute('data-profile-section')
     )
-    expect(sections).toContain('about')
+    // NO `about` SECTION SINCE 2026-09-18 (Gabe: "remove about section"). The
+    // text is still stored -- it opens a generated CV -- it is simply not a
+    // panel on this screen any more.
+    expect(sections).not.toContain('about')
     expect(sections).toContain('experience')
     expect(sections).toContain('education')
+    expect(sections).toContain('skills')
     // FILLED carries no projects, so there is no projects section to find.
     expect(sections).not.toContain('projects')
+    // DETAILS LEADS (Gabe, 2026-09-18: "details first before experience"): it
+    // is four lines of facts a reader came for, and experience is the long
+    // read under them.
+    expect(sections.indexOf('details')).toBeLessThan(sections.indexOf('experience'))
   })
 })
 
@@ -659,49 +680,6 @@ describe('importing a LinkedIn export', () => {
     expect(container.querySelector('[data-profile-detail="born"]')).toBeTruthy()
     expect(screen.getByText(/Bamban, Tarlac/)).toBeTruthy()
     expect(screen.getByText('Mar 7')).toBeTruthy()
-  })
-
-  it('shows every source that had an About, named', () => {
-    // `summary` is a single field, so the merge keeps the first non-empty one
-    // and the rest were discarded -- which is how this panel introduced
-    // somebody with a three-word GitHub bio while nothing said so.
-    const { container } = render(
-      <SettingsPage prefs={null} profile={{ status: 'ready', profile: FILLED }} />
-    )
-    const about = container.querySelector('[data-profile-section="about"]') as HTMLElement
-    expect(within(about).getByText('Builds job-search tooling.')).toBeTruthy()
-    expect(within(about).getByText('All will be well.')).toBeTruthy()
-    expect(within(about).getByText('LinkedIn')).toBeTruthy()
-    expect(within(about).getByText('GitHub')).toBeTruthy()
-  })
-
-  it('names the source even when only one had an About', () => {
-    // THE CASE THE ATTRIBUTION EXISTS FOR: a profile introducing somebody with
-    // a three-word GitHub bio, and nothing on screen saying that is what it
-    // is. The label is what turns that into something to go and fix.
-    const { container } = render(
-      <SettingsPage
-        prefs={null}
-        profile={{
-          status: 'ready',
-          profile: { ...FILLED, about: [{ site: 'GitHub', text: 'All will be well.' }] },
-        }}
-      />
-    )
-    const about = container.querySelector('[data-profile-section="about"]') as HTMLElement
-    expect(within(about).getByText('All will be well.')).toBeTruthy()
-    expect(within(about).getByText('GitHub')).toBeTruthy()
-  })
-
-  it('still renders a profile stored before Abouts were attributed', () => {
-    const { container } = render(
-      <SettingsPage
-        prefs={null}
-        profile={{ status: 'ready', profile: { ...FILLED, about: [] } }}
-      />
-    )
-    const about = container.querySelector('[data-profile-section="about"]') as HTMLElement
-    expect(within(about).getByText('Builds job-search tooling.')).toBeTruthy()
   })
 
   it('names what the profile was built from, on the header', () => {

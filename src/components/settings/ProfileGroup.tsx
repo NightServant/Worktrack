@@ -89,8 +89,10 @@ export function ProfileGroup({ state, source, steps }: ProfileGroupProps) {
   const profile = state.status === 'ready' ? state.profile : EMPTY_PROFILE
   const ready = state.status === 'ready'
 
+  // SKILLS LEFT `details` and became a section of their own, so they no longer
+  // decide whether `details` is drawn at all: a profile with skills and
+  // nothing else would otherwise render an empty card.
   const facets =
-    profile.skills.length > 0 ||
     profile.languages.length > 0 ||
     profile.websites.length > 0 ||
     !!profile.address ||
@@ -163,69 +165,82 @@ export function ProfileGroup({ state, source, steps }: ProfileGroupProps) {
           }
         />
 
-        {/* TWO COLUMNS ONCE THE CARD IS WIDE ENOUGH (Gabe, 2026-09-18, with
-            four reference profiles). A single stack put `details` -- skills,
-            languages, websites -- below four sections of records, so the
-            facts somebody scans for were the last thing on the page and the
-            right half of a 1200px panel was empty the whole way down.
+        {/* ONE COLUMN, FULL WIDTH, EVERY SECTION (Gabe, 2026-09-18: "relayout
+            the profile page ... there are missing spaces in that profile
+            section", and "I want project and skills sections to span full
+            width").
 
-            THE SPLIT IS BY HOW A THING IS READ, not by length: the left
-            column is the NARRATIVE (about, roles, education) which is read in
-            order, and the right is the LOOKUP (details, skills, certificates,
-            projects) which is scanned. `1.6fr / 1fr` gives the prose a
-            readable measure and the lookup column enough width for a
-            two-column tag wall.
+            THE TWO-COLUMN VERSION WAS THE WRONG FIX FOR THE RIGHT COMPLAINT.
+            It was introduced to stop `details` being the last card under four
+            sections of records, and it did -- by trading one kind of empty
+            space for another: the columns are independent, so the shorter one
+            ends wherever it ends and leaves a hole beside the longer. On a
+            real profile that hole was most of the page, which is the gap Gabe
+            is pointing at.
 
-            BY CONTAINER, NOT VIEWPORT, like everything else on this panel. */}
-        <div className="grid gap-6 @4xl/profile:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] @4xl/profile:items-start">
-        <div className="flex min-w-0 flex-col gap-6">
-        {/* ABOUT IS ITS OWN SECTION, as it is on LinkedIn, rather than a
-            paragraph welded to the identity block. It is prose about a
-            person and it belongs with the other things they wrote, not
-            with their name and their photo.
+            SO THE WIDTH IS SPENT INSIDE EACH SECTION INSTEAD, where the
+            content can actually use it: skills wrap across the full measure
+            rather than down a 300px column, projects get a rail wide enough to
+            show three cards, and the short facts sit in a multi-column grid
+            that is as tall as its tallest item and no taller. Nothing can be
+            left beside anything, because there is no beside.
 
-            IT CARRIES EVERY SOURCE THAT HAD ONE, EACH NAMED (Gabe,
-            2026-09-18: "about section information must come from other sources
-            such as LinkedIn, JobStreet"). `summary` is a single field, so the
-            merge keeps the first non-empty one -- which is how this panel came
-            to introduce somebody with a three-word GitHub bio while nothing on
-            screen said that was what it was. Naming each is both the fix and
-            the answer to "why does my profile say that".
-
-            NOT CONCATENATED. Two Abouts are two things the same person wrote
-            for two audiences, and running them together makes one paragraph
-            that argues with itself.
-
-            `summary` ALONE IS THE FALLBACK, for a profile stored before the
-            attributed list existed. */}
-        {(profile.about.length > 0 || profile.summary) && (
-          <Section title="about" icon="Info">
-            {profile.about.length > 0 ? (
-              <div className="flex flex-col gap-4">
-                {profile.about.map((entry) => (
-                  <div key={entry.site} className="flex flex-col gap-1.5">
-                    {/* ALWAYS NAMED, even when there is only one. The first
-                        draft drew the label only when there were two to tell
-                        apart, which is the tidier rule and the wrong one here:
-                        a lone paragraph is exactly the case Gabe reported --
-                        a profile introducing him with a three-word GitHub bio
-                        and nothing on screen saying where it came from. The
-                        label is what turns that from a mystery into a link to
-                        go and fix. */}
-                    <p className="text-label-caps uppercase text-text-muted">{entry.site}</p>
-                    <p className="max-w-prose whitespace-pre-line text-body-m leading-[1.6] text-text-secondary">
-                      {entry.text}
-                    </p>
+            THE ORDER IS WHO, THEN FACTS, THEN THE LONG READ. Identity, then
+            `details` -- four lines somebody came for -- then experience,
+            education, skills, projects, and the paperwork last. A CV's own
+            order puts experience first; a PANEL is read differently, and short
+            blocks above long ones is what keeps the facts on screen with the
+            name (Gabe, 2026-09-18: "details first before experience"). */}
+        {facets && (
+          <Section title="details" icon="Info">
+            {/* A GRID INSIDE ONE SECTION, so four short facts are four columns
+                rather than four scrolls -- and the section is as tall as its
+                tallest item, which is what stops it leaving a hole. */}
+            <div className="grid gap-5 @lg/profile:grid-cols-2 @3xl/profile:grid-cols-3">
+              {profile.languages.length > 0 && (
+                <Facet title="languages">
+                  <div className="flex flex-wrap gap-1.5">
+                    {profile.languages.map((language) => (
+                      <Tag key={language}>{language}</Tag>
+                    ))}
                   </div>
-                ))}
-              </div>
-            ) : (
-              <p className="max-w-prose whitespace-pre-line text-body-m leading-[1.6] text-text-secondary">
-                {profile.summary}
-              </p>
-            )}
+                </Facet>
+              )}
+              {profile.websites.length > 0 && (
+                <Facet title="websites">
+                  <ul className="flex flex-col gap-1">
+                    {profile.websites.map((site) => (
+                      <li key={site} className="min-w-0">
+                        <a
+                          href={site}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block break-all text-body-s text-accent-default underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-default"
+                        >
+                          {site.replace(/^https?:\/\/(www\.)?/, '')}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </Facet>
+              )}
+              {/* LABELLED FOR WHAT IT IS. A home address and a birth date are a
+                  different category of fact from a job title, and a source
+                  hands them over whether or not anyone wanted them. Shown
+                  plainly, so a reader who does not want them stored knows to
+                  clear the profile. */}
+              {profile.address && <Detail label="address">{profile.address}</Detail>}
+              {profile.birthDate && <Detail label="born">{profile.birthDate}</Detail>}
+            </div>
           </Section>
         )}
+
+        {/* DETAILS BEFORE EXPERIENCE (Gabe, 2026-09-18: "details first before
+            experience"). It is the block a reader came for -- languages, a
+            website, where somebody lives -- and it is four lines tall, so
+            putting it above the career means the facts are on screen with the
+            identity rather than under a scroll. Experience is the long read;
+            long reads go after short ones. */}
 
         {profile.experiences.length > 0 && (
           <Section title="experience" icon="Briefcase" count={profile.experiences.length}>
@@ -257,103 +272,20 @@ export function ProfileGroup({ state, source, steps }: ProfileGroupProps) {
           </Section>
         )}
 
-        </div>
-
-        <div className="flex min-w-0 flex-col gap-6">
-        {/* THE LOOKUP COLUMN OPENS WITH `details`, which is the block a reader
-            came for: skills, languages, websites. It was the LAST card on the
-            page before this. */}
-        {facets && (
-          <Section title="details" icon="Tag">
-            <div className="flex flex-col gap-5">
-              {profile.skills.length > 0 && (
-                <Facet title="skills">
-                  {/* TAGS, NOT A COMMA-JOINED PARAGRAPH (Gabe, 2026-09-18:
-                      "consider using other UI components such as tags"). The
-                      note that used to sit here said the system forbids pills
-                      -- it forbids STATUS pills, which is a different thing:
-                      those are a hue with a meaning, and the rule is that
-                      status is a rule plus a label. These carry no status and
-                      no fill, and a wall of forty is exactly what a skills
-                      list is; as prose it was a paragraph nobody finishes. */}
-                  <div className="flex flex-wrap gap-1.5">
-                    {profile.skills.map((skill) => (
-                      <Tag key={skill}>{skill}</Tag>
-                    ))}
-                  </div>
-                </Facet>
-              )}
-              {profile.languages.length > 0 && (
-                <Facet title="languages">
-                  <div className="flex flex-wrap gap-1.5">
-                    {profile.languages.map((language) => (
-                      <Tag key={language}>{language}</Tag>
-                    ))}
-                  </div>
-                </Facet>
-              )}
-              {profile.websites.length > 0 && (
-                <Facet title="websites">
-                  <ul className="flex flex-col gap-1">
-                    {profile.websites.map((site) => (
-                      <li key={site} className="min-w-0">
-                        <a
-                          href={site}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="block break-all text-body-s text-accent-default underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-default"
-                        >
-                          {site.replace(/^https?:\/\/(www\.)?/, '')}
-                        </a>
-                      </li>
-                    ))}
-                  </ul>
-                </Facet>
-              )}
-              {/* LABELLED FOR WHAT IT IS. A home address and a birth date are
-                  a different category of fact from a job title, and a source
-                  hands them over whether or not anyone wanted them. Shown
-                  plainly, so a reader who does not want them stored knows to
-                  clear the profile. */}
-              {(profile.address || profile.birthDate) && (
-                <div className="grid gap-4 @sm/profile:grid-cols-2">
-                  {profile.address && <Detail label="address">{profile.address}</Detail>}
-                  {profile.birthDate && <Detail label="born">{profile.birthDate}</Detail>}
-                </div>
-              )}
+        {profile.skills.length > 0 && (
+          <Section title="skills" icon="Tag" count={profile.skills.length}>
+            {/* TAGS, ACROSS THE WHOLE WIDTH. Forty of them in a 300px column
+                is a wall; across 1200px it is three lines you can scan. */}
+            <div className="flex flex-wrap gap-1.5">
+              {profile.skills.map((skill) => (
+                <Tag key={skill}>{skill}</Tag>
+              ))}
             </div>
           </Section>
         )}
 
-        {profile.certifications.length > 0 && (
-          <Section
-            title="licenses & certifications"
-            icon="ShieldCheck"
-            count={profile.certifications.length}
-          >
-            <Bullets
-              rows={profile.certifications.map((c) => ({
-                lead: c.name,
-                detail: c.authority,
-                period: c.period,
-              }))}
-            />
-          </Section>
-        )}
-
-        {/* PROJECTS ARE A RAIL, NOT A LIST (Gabe, 2026-09-18: "projects sits
-            too tall at the right column -- my suggestion is to use carousel").
-            Ten of them with a description each ran to about nine hundred
-            pixels in a column beside `experience`, so the page ended in a
-            single tall box with nothing opposite it.
-
-            THE SAME CAROUSEL `up next` AND `fresh remote roles` USE, which is
-            what makes this a borrowing rather than a new pattern: one card
-            tall, the width doing the work, arrows flanking the track. A
-            project is exactly the shape that suits it -- a name, two lines,
-            and a link out. */}
         {profile.projects.length > 0 && (
-          <Section title="projects" icon="Code" count={profile.projects.length}>
+          <Section title="projects" icon="Code" count={profile.projects.length} bare>
             <Carousel
               opts={{ align: 'start', dragFree: true, containScroll: 'trimSnaps' }}
               className="flex flex-col gap-3"
@@ -363,9 +295,15 @@ export function ProfileGroup({ state, source, steps }: ProfileGroupProps) {
                 <CarouselContent className="-ml-3">
                   {profile.projects.map((project) => (
                     <CarouselItem key={project.title} className="basis-auto pl-3">
+                      {/* THE CARD KEEPS ITS FILL while the section loses its
+                          own -- Gabe's instruction, and the same arrangement
+                          the calendar's roles rail arrived at: the fill is
+                          what makes one project read as one object, and a
+                          second frame around all of them made them look nested
+                          inside something. */}
                       <article
                         data-profile-project
-                        className="flex h-full w-60 flex-col gap-1.5 rounded-md border border-border-subtle bg-bg-surface p-3"
+                        className="flex h-full w-60 flex-col gap-1.5 rounded-md border border-border-subtle bg-card p-3"
                       >
                         {project.url ? (
                           <a
@@ -397,8 +335,21 @@ export function ProfileGroup({ state, source, steps }: ProfileGroupProps) {
           </Section>
         )}
 
-        </div>
-        </div>
+        {profile.certifications.length > 0 && (
+          <Section
+            title="licenses & certifications"
+            icon="ShieldCheck"
+            count={profile.certifications.length}
+          >
+            <Bullets
+              rows={profile.certifications.map((c) => ({
+                lead: c.name,
+                detail: c.authority,
+                period: c.period,
+              }))}
+            />
+          </Section>
+        )}
 
         {!hasProfileContent(profile) && (
           <p className="text-body-s text-text-muted">This import came back empty.</p>

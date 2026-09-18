@@ -46,23 +46,46 @@ export function Section({
   title,
   icon,
   count,
+  bare = false,
   children,
 }: {
   title: string
   icon: IconName
   count?: number
+  /**
+   * No card around it: the heading and the content sit on the page ground.
+   *
+   * FOR A SECTION WHOSE CONTENTS ARE ALREADY BOXED (Gabe, 2026-09-18: "remove
+   * the background color of the project section but do not remove the
+   * background color of the carousel cards itself"). A rail of bordered cards
+   * inside a bordered card draws two frames a few pixels apart and makes the
+   * projects look nested inside something -- the same call the calendar's
+   * roles rail already made, for the same reason. See JobFeed.
+   */
+  bare?: boolean
   children: React.ReactNode
 }) {
+  const heading = (
+    <CardTitle icon={icon}>
+      <h3>{title}</h3>
+      {count !== undefined && count > 0 && (
+        <span className="tabular text-body-s font-normal text-text-muted">({count})</span>
+      )}
+    </CardTitle>
+  )
+
+  if (bare) {
+    return (
+      <section aria-label={title} data-profile-section={title} className="flex flex-col gap-4">
+        {heading}
+        {children}
+      </section>
+    )
+  }
+
   return (
     <Card aria-label={title} data-profile-section={title}>
-      <CardHeader>
-        <CardTitle icon={icon}>
-          <h3>{title}</h3>
-          {count !== undefined && count > 0 && (
-            <span className="tabular text-body-s font-normal text-text-muted">({count})</span>
-          )}
-        </CardTitle>
-      </CardHeader>
+      <CardHeader>{heading}</CardHeader>
       <CardContent>{children}</CardContent>
     </Card>
   )
