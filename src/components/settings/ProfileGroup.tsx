@@ -174,12 +174,48 @@ export function ProfileGroup({ state, source, steps }: ProfileGroupProps) {
         {/* ABOUT IS ITS OWN SECTION, as it is on LinkedIn, rather than a
             paragraph welded to the identity block. It is prose about a
             person and it belongs with the other things they wrote, not
-            with their name and their photo. */}
-        {profile.summary && (
+            with their name and their photo.
+
+            IT CARRIES EVERY SOURCE THAT HAD ONE, EACH NAMED (Gabe,
+            2026-09-18: "about section information must come from other sources
+            such as LinkedIn, JobStreet"). `summary` is a single field, so the
+            merge keeps the first non-empty one -- which is how this panel came
+            to introduce somebody with a three-word GitHub bio while nothing on
+            screen said that was what it was. Naming each is both the fix and
+            the answer to "why does my profile say that".
+
+            NOT CONCATENATED. Two Abouts are two things the same person wrote
+            for two audiences, and running them together makes one paragraph
+            that argues with itself.
+
+            `summary` ALONE IS THE FALLBACK, for a profile stored before the
+            attributed list existed. */}
+        {(profile.about.length > 0 || profile.summary) && (
           <Section title="about" icon="Info">
-            <p className="max-w-prose whitespace-pre-line text-body-m leading-[1.6] text-text-secondary">
-              {profile.summary}
-            </p>
+            {profile.about.length > 0 ? (
+              <div className="flex flex-col gap-4">
+                {profile.about.map((entry) => (
+                  <div key={entry.site} className="flex flex-col gap-1.5">
+                    {/* ALWAYS NAMED, even when there is only one. The first
+                        draft drew the label only when there were two to tell
+                        apart, which is the tidier rule and the wrong one here:
+                        a lone paragraph is exactly the case Gabe reported --
+                        a profile introducing him with a three-word GitHub bio
+                        and nothing on screen saying where it came from. The
+                        label is what turns that from a mystery into a link to
+                        go and fix. */}
+                    <p className="text-label-caps uppercase text-text-muted">{entry.site}</p>
+                    <p className="max-w-prose whitespace-pre-line text-body-m leading-[1.6] text-text-secondary">
+                      {entry.text}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="max-w-prose whitespace-pre-line text-body-m leading-[1.6] text-text-secondary">
+                {profile.summary}
+              </p>
+            )}
           </Section>
         )}
 

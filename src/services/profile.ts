@@ -68,6 +68,19 @@ export interface ProfileSource {
   note: string | null
 }
 
+/**
+ * One source's own About, kept with the name of who wrote it.
+ *
+ * `summary` IS STILL A SINGLE STRING, because the CV tools read it as one --
+ * `templatePersonalization` puts it in a document. This is the display half:
+ * every source that HAD an About, so a profile can say where its opening
+ * paragraph came from instead of quietly printing whichever won.
+ */
+export interface ProfileAbout {
+  site: string
+  text: string
+}
+
 export interface UserProfile {
   name: string | null
   /** The one-line professional headline. */
@@ -75,8 +88,10 @@ export interface UserProfile {
   location: string | null
   pictureUrl: string | null
   email: string | null
-  /** The "about" paragraph. */
+  /** The "about" paragraph -- the first source that had one. */
   summary: string | null
+  /** Every source's About, attributed. See `ProfileAbout`. */
+  about: ProfileAbout[]
   url: string | null
   /** LinkedIn's `Industry`, e.g. "Software Development". */
   industry: string | null
@@ -112,6 +127,7 @@ export const EMPTY_PROFILE: UserProfile = {
   pictureUrl: null,
   email: null,
   summary: null,
+  about: [],
   url: null,
   industry: null,
   address: null,

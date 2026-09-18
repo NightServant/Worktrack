@@ -20,6 +20,10 @@ const FILLED = {
   pictureUrl: null,
   email: 'egabe.cervantes@gmail.com',
   summary: 'Builds job-search tooling.',
+  about: [
+    { site: 'LinkedIn', text: 'Builds job-search tooling.' },
+    { site: 'GitHub', text: 'All will be well.' },
+  ],
   url: 'https://www.linkedin.com/in/example',
   experiences: [
     {
@@ -549,6 +553,49 @@ describe('importing a LinkedIn export', () => {
     expect(container.querySelector('[data-profile-detail="born"]')).toBeTruthy()
     expect(screen.getByText(/Bamban, Tarlac/)).toBeTruthy()
     expect(screen.getByText('Mar 7')).toBeTruthy()
+  })
+
+  it('shows every source that had an About, named', () => {
+    // `summary` is a single field, so the merge keeps the first non-empty one
+    // and the rest were discarded -- which is how this panel introduced
+    // somebody with a three-word GitHub bio while nothing said so.
+    const { container } = render(
+      <SettingsPage prefs={null} profile={{ status: 'ready', profile: FILLED }} />
+    )
+    const about = container.querySelector('[data-profile-section="about"]') as HTMLElement
+    expect(within(about).getByText('Builds job-search tooling.')).toBeTruthy()
+    expect(within(about).getByText('All will be well.')).toBeTruthy()
+    expect(within(about).getByText('LinkedIn')).toBeTruthy()
+    expect(within(about).getByText('GitHub')).toBeTruthy()
+  })
+
+  it('names the source even when only one had an About', () => {
+    // THE CASE THE ATTRIBUTION EXISTS FOR: a profile introducing somebody with
+    // a three-word GitHub bio, and nothing on screen saying that is what it
+    // is. The label is what turns that into something to go and fix.
+    const { container } = render(
+      <SettingsPage
+        prefs={null}
+        profile={{
+          status: 'ready',
+          profile: { ...FILLED, about: [{ site: 'GitHub', text: 'All will be well.' }] },
+        }}
+      />
+    )
+    const about = container.querySelector('[data-profile-section="about"]') as HTMLElement
+    expect(within(about).getByText('All will be well.')).toBeTruthy()
+    expect(within(about).getByText('GitHub')).toBeTruthy()
+  })
+
+  it('still renders a profile stored before Abouts were attributed', () => {
+    const { container } = render(
+      <SettingsPage
+        prefs={null}
+        profile={{ status: 'ready', profile: { ...FILLED, about: [] } }}
+      />
+    )
+    const about = container.querySelector('[data-profile-section="about"]') as HTMLElement
+    expect(within(about).getByText('Builds job-search tooling.')).toBeTruthy()
   })
 
   it('names what the profile was built from, on the header', () => {

@@ -40,6 +40,9 @@ EMPTY_PROFILE: dict[str, Any] = {
     "pictureUrl": None,
     "email": None,
     "summary": None,
+    #: Every source's own About, attributed. See `/profile`, which fills it --
+    #: a parser only ever sees one source and cannot know who else had one.
+    "about": [],
     "url": None,
     "industry": None,
     "address": None,

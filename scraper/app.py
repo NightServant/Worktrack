@@ -738,6 +738,25 @@ def _page_message(reason: str, label: str) -> str:
     }.get(reason, f"Could not read that {label} page.")
 
 
+def _attributed_about(read: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """Every source's own About, in the order they were asked for.
+
+    ONE PARAGRAPH PER SOURCE, DE-DUPLICATED ON ITS WORDS: two sites carrying
+    the same text is one About written twice, and whitespace is not a
+    difference.
+    """
+    about: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for result in read:
+        text = (result.get("profile", {}).get("summary") or "").strip()
+        fingerprint = " ".join(text.split()).lower()
+        if not text or fingerprint in seen:
+            continue
+        seen.add(fingerprint)
+        about.append({"site": result["site"], "text": text})
+    return about
+
+
 @app.post("/profile")
 async def profile_endpoint(body: ProfileRequest) -> JSONResponse:
     """One person, from every address the caller gave, merged.
@@ -805,6 +824,24 @@ async def profile_endpoint(body: ProfileRequest) -> JSONResponse:
         )
 
     profile = merge_profiles([result["profile"] for result in read])
+
+    # WHERE THE ABOUT CAME FROM, AND EVERY SOURCE THAT HAD ONE (Gabe,
+    # 2026-09-18: "about section information must come from other sources such
+    # as LinkedIn, JobStreet"). `summary` is a single field, so the merge keeps
+    # the first non-empty one and the rest are discarded -- which is how a
+    # profile ended up introducing itself with a three-word GitHub bio while
+    # nothing on the screen said that is what it was.
+    #
+    # ATTRIBUTED RATHER THAN CONCATENATED. Two sources' About sections are two
+    # things the same person wrote for two audiences; running them together
+    # makes one paragraph that contradicts itself, and naming each is also the
+    # answer to "why does my profile say that".
+    #
+    # BUILT HERE because a parser only ever sees its own source and cannot know
+    # who else had one. `summary` is left exactly as it was, since the CV tools
+    # read it as one string.
+    profile["about"] = _attributed_about(read)
+
     warnings: list[str] = []
     for result in read:
         for warning in result.get("warnings", []):

@@ -1251,3 +1251,34 @@ def test_two_roles_at_one_employer_are_never_merged():
         ]
     )["experiences"]
     assert len(merged) == 2
+
+
+def test_every_source_with_an_about_is_kept_and_named():
+    # `summary` is one field and the merge keeps the first non-empty one, so a
+    # second source's About was discarded silently -- which is how a profile
+    # came to introduce somebody with a three-word GitHub bio.
+    from app import _attributed_about
+
+    about = _attributed_about(
+        [
+            {"site": "LinkedIn", "profile": {"summary": "Builds job-search tooling."}},
+            {"site": "GitHub", "profile": {"summary": "All will be well."}},
+            {"site": "JobStreet", "profile": {"summary": None}},
+        ]
+    )
+    assert about == [
+        {"site": "LinkedIn", "text": "Builds job-search tooling."},
+        {"site": "GitHub", "text": "All will be well."},
+    ]
+
+
+def test_the_same_about_from_two_sources_is_one_paragraph():
+    from app import _attributed_about
+
+    about = _attributed_about(
+        [
+            {"site": "LinkedIn", "profile": {"summary": "Builds job-search tooling."}},
+            {"site": "JobStreet", "profile": {"summary": "builds   job-search tooling."}},
+        ]
+    )
+    assert [entry["site"] for entry in about] == ["LinkedIn"]

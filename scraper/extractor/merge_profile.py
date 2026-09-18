@@ -184,6 +184,10 @@ def _merge_records(
 def merge_profiles(profiles: list[dict[str, Any]]) -> dict[str, Any]:
     """The profiles, in order of authority, as one profile."""
     merged: dict[str, Any] = dict(EMPTY_PROFILE)
+    # A FRESH LIST FOR EVERY LIST FIELD. `dict()` is a shallow copy, so
+    # anything left pointing at EMPTY_PROFILE's own list would be shared by
+    # every profile this process ever merges.
+    merged["about"] = []
     merged["websites"] = []
     merged["skills"] = []
     merged["languages"] = []
