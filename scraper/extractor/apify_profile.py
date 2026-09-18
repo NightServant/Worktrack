@@ -109,6 +109,26 @@ def _period(node: Any, *, start: str = "startDate", end: str = "endDate") -> str
     return last
 
 
+#: What LinkedIn appends to a location that is not part of the place.
+_WORK_MODES = {"on-site", "onsite", "remote", "hybrid"}
+
+
+def _place(value: str | None) -> str | None:
+    """`Capas, Central Luzon, Philippines · On-site` -> the place.
+
+    THE WORK MODE IS A SEPARATE FACT and this app has a column for it on an
+    application, not on a person. Left on, it reads as part of the address --
+    and it is the actor's presentation, not the profile's data.
+
+    Only a KNOWN mode is stripped: a `·` in a location is otherwise somebody's
+    address, and cutting at the first separator would lose half of it.
+    """
+    if not value or " · " not in value:
+        return value
+    head, _, tail = value.rpartition(" · ")
+    return head.strip() if tail.strip().lower() in _WORK_MODES else value
+
+
 def _experiences(row: dict[str, Any]) -> list[dict[str, Any]]:
     """Current positions first, then past ones.
 
@@ -160,7 +180,7 @@ def _experiences(row: dict[str, Any]) -> list[dict[str, Any]]:
             title = current_title
         company = _pick(
             position, "company", "companyName", "organisation", "companyLinkedinName"
-        )
+        ) or _pick(position.get("company"), "name", "companyName", "universalName")
         if not title and not company:
             continue
         out.append(
@@ -168,7 +188,7 @@ def _experiences(row: dict[str, Any]) -> list[dict[str, Any]]:
                 "title": title or "",
                 "company": company,
                 "period": _period(position),
-                "location": _pick(position, "location", "locationName"),
+                "location": _place(_pick(position, "location", "locationName")),
                 # The bullet text under a role is what a CV is written from.
                 # LinkedIn does not serve it to a signed-out visitor, so this
                 # is usually None and the warning says so -- the export

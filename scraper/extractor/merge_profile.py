@@ -68,21 +68,20 @@ _RECORD_LISTS = {
 #: difference, and it is not one.
 _NOISE = {"the", "a", "an", "of", "for", "and", "my", "app", "application", "project"}
 
-#: Record lists where a record identified by ONE field is a partial copy of a
-#: fuller one, keyed by the field that stands alone.
+#: Record lists where one record can be an incomplete copy of another.
 #:
-#: AN EMPLOYER WITH NO ROLE IS NOT A SECOND JOB (Gabe, 2026-09-18: "there is
-#: redundant information from experience"). LinkedIn does not show job titles
-#: to a signed-out visitor on some profiles, so it returns the company and the
-#: dates with an empty title; JobStreet returns the same job WITH its title.
-#: Keyed on title+company those are two records, and the panel listed the same
-#: employer twice -- once as a job with no name.
+#: A HALF-NAMED RECORD IS NOT A SECOND ONE (Gabe, 2026-09-18, twice -- once in
+#: each direction). LinkedIn hides job titles from signed-out visitors on some
+#: profiles, so the public read returns an employer with an empty title;
+#: JobStreet returns the same job WITH its title. Then the CAPTURED page came
+#: back with the title, the dates and the bullet text and no employer at all,
+#: and the panel listed the same job twice again -- the other way round.
 #:
-#: IT IS SAFE PRECISELY BECAUSE THE PARTIAL CARRIES NOTHING TO CONTRADICT. A
-#: record with no title cannot be "a different role at that company"; it is an
-#: incomplete copy of one of them, and folding it into the first is the only
-#: reading that does not invent a job.
-_PARTIAL_LISTS = {"experiences": "company"}
+#: SO IT MATCHES ON WHATEVER BOTH RECORDS ACTUALLY NAME, rather than on one
+#: anchor field: same title and one of them has no company, or same company and
+#: one of them has no title. Two records that both name both are compared
+#: normally, so two real roles at one employer stay two roles.
+_PARTIAL_LISTS = {"experiences", "education", "certifications"}
 
 #: Lists where two records may be the same thing under two names.
 #:
@@ -162,7 +161,7 @@ def _merge_records(
     fields: tuple[str, ...],
     *,
     fuzzy: bool = False,
-    partial_on: str | None = None,
+    partial: bool = False,
 ) -> list[dict[str, Any]]:
     """One list of records, with duplicates filled in rather than repeated."""
     if not isinstance(incoming, list):
@@ -175,8 +174,8 @@ def _merge_records(
         if not key:
             continue
         existing = index.get(key)
-        if existing is None and partial_on:
-            existing = _partial_match(into, record, fields, partial_on)
+        if existing is None and partial:
+            existing = _partial_match(into, record, fields)
         if existing is None and fuzzy:
             # THE SAME PROJECT UNDER TWO NAMES. Scanned rather than looked up,
             # because "is one name a slug of the other" is not a question a
@@ -205,40 +204,44 @@ def _merge_records(
     return into
 
 
-def _anchor(record: dict[str, Any], field: str) -> str | None:
+def _norm(record: dict[str, Any], field: str) -> str | None:
     value = _text(record.get(field))
     return " ".join(value.split()).lower() if value else None
-
-
-def _is_partial(record: dict[str, Any], fields: tuple[str, ...], anchor_field: str) -> bool:
-    """Whether a record names only its anchor -- an employer with no role."""
-    return any(
-        field != anchor_field and not _text(record.get(field)) for field in fields
-    )
 
 
 def _partial_match(
     into: list[dict[str, Any]],
     record: dict[str, Any],
     fields: tuple[str, ...],
-    anchor_field: str,
 ) -> dict[str, Any] | None:
     """A record already held that this one is a fuller or thinner copy of.
 
-    IT HAS TO WORK IN BOTH DIRECTIONS, and the first pass only did one. The
-    real order is LinkedIn first, which is the source that returns an employer
-    with an EMPTY title -- so the incomplete record arrives first and the
-    complete one second. Matching only when the incoming record is the partial
-    one left both in the list, which is the duplicate Gabe reported.
+    THE RULE IN ONE SENTENCE: every field they BOTH name has to agree, at least
+    one has to be named by both, and at least one has to be missing from one of
+    them. The last clause is what keeps two complete records apart -- if both
+    name a title and a company, they were already compared by key, and reaching
+    here means they differ.
+
+    IT HAS TO WORK IN BOTH DIRECTIONS AND IN EITHER ARRIVAL ORDER, which the
+    first two attempts did not: one only folded an incoming partial into a
+    fuller record, and the second only ever anchored on the company -- so a
+    capture that returned a title with no employer produced a duplicate all
+    over again.
     """
-    anchor = _anchor(record, anchor_field)
-    if not anchor:
-        return None
-    incoming_partial = _is_partial(record, fields, anchor_field)
     for item in into:
-        if _anchor(item, anchor_field) != anchor:
+        shared = [
+            field
+            for field in fields
+            if _norm(record, field) is not None and _norm(item, field) is not None
+        ]
+        if not shared:
             continue
-        if incoming_partial or _is_partial(item, fields, anchor_field):
+        if any(_norm(record, field) != _norm(item, field) for field in shared):
+            continue
+        incomplete = any(
+            _norm(record, field) is None or _norm(item, field) is None for field in fields
+        )
+        if incomplete:
             return item
     return None
 
@@ -287,7 +290,7 @@ def merge_profiles(profiles: list[dict[str, Any]]) -> dict[str, Any]:
                 profile.get(field),
                 identity,
                 fuzzy=field in _FUZZY_LISTS,
-                partial_on=_PARTIAL_LISTS.get(field),
+                partial=field in _PARTIAL_LISTS,
             )
 
     return merged

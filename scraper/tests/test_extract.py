@@ -1573,3 +1573,73 @@ def test_the_old_actor_row_still_maps():
     p = profile_from_apify(ROW, "x")["profile"]
     assert p["name"] == "Satya Nadella"
     assert p["experiences"]
+
+
+def test_a_role_with_no_employer_is_not_a_second_job():
+    # THE SAME BUG THE OTHER WAY ROUND (Gabe, 2026-09-18, second report). The
+    # captured page returned the title, the duration and the bullet text with
+    # no employer; JobStreet returned the same job with its employer and
+    # nothing else. Anchored on the company, the fold could not see it.
+    captured = {
+        "experiences": [
+            {
+                "title": "Frontend Developer and UI/UX Designer",
+                "company": None,
+                "period": "3 mos",
+                "location": "Capas, Central Luzon, Philippines",
+                "description": "• Designed prototypes for key web pages using Figma.",
+            }
+        ]
+    }
+    named = {
+        "experiences": [
+            {
+                "title": "Frontend Developer and UI/UX Designer",
+                "company": "Dominican College of Tarlac",
+                "period": None,
+                "location": None,
+                "description": None,
+            }
+        ]
+    }
+    for order in ([captured, named], [named, captured]):
+        roles = merge_profiles(order)["experiences"]
+        assert len(roles) == 1
+        assert roles[0]["company"] == "Dominican College of Tarlac"
+        assert roles[0]["period"] == "3 mos"
+        assert roles[0]["description"].startswith("• Designed prototypes")
+
+
+def test_the_same_title_at_two_employers_stays_two_jobs():
+    # The clause that keeps the fold honest: two records that BOTH name both
+    # fields are compared normally, and these disagree on the company.
+    roles = merge_profiles(
+        [
+            {"experiences": [{"title": "Engineer", "company": "Acme"}]},
+            {"experiences": [{"title": "Engineer", "company": "Globex"}]},
+        ]
+    )["experiences"]
+    assert len(roles) == 2
+
+
+def test_the_company_may_arrive_as_an_object():
+    # `supreme_coder` returns `company: {name: ...}` on a position, and a
+    # string-only read left the employer blank -- which is what produced the
+    # duplicate above in the first place.
+    row = {
+        "firstName": "A",
+        "lastName": "B",
+        "positions": [
+            {
+                "title": "Frontend Developer",
+                "company": {"name": "Dominican College of Tarlac"},
+                "locationName": "Capas, Central Luzon, Philippines · On-site",
+                "totalDuration": "3 mos",
+            }
+        ],
+    }
+    role = profile_from_apify(row, "x")["profile"]["experiences"][0]
+    assert role["company"] == "Dominican College of Tarlac"
+    # And the work mode is not part of the place: this app records that on an
+    # application, not on a person.
+    assert role["location"] == "Capas, Central Luzon, Philippines"
