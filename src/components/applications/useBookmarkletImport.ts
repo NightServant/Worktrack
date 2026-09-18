@@ -3,7 +3,14 @@
 import * as React from 'react'
 
 /**
- * Receives a posting's page source from the Worktrack bookmarklet.
+ * Receives a page's source from a Worktrack bookmarklet.
+ *
+ * TWO SENDERS NOW, one mechanism (2026-09-18). The posting bookmarklet hands
+ * over a job advert; the profile one hands over a logged-in LinkedIn page,
+ * which is the only client that can see the About, the skills and the bullet
+ * text under each role. `kind` is the only difference between them -- the
+ * handshake, the retry, the ack and every guard below are the same, and a
+ * second copy of this file would be a second place to get them wrong.
  *
  * WHY A BOOKMARKLET EXISTS AT ALL. Indeed answers an anonymous fetch with a
  * Cloudflare 401 and a redirect to `?from=bot-detection-anonymous`; no proxy we
@@ -45,15 +52,19 @@ import * as React from 'react'
  */
 const MAX_HTML_CHARS = 3_000_000
 
-export function useBookmarkletImport(enabled: boolean): string | null {
+export function useBookmarkletImport(
+  enabled: boolean,
+  kind: 'posting' | 'profile' = 'posting'
+): string | null {
   const [html, setHtml] = React.useState<string | null>(null)
 
   React.useEffect(() => {
     if (!enabled) return
+    const wanted = `worktrack:${kind}`
 
     const onMessage = (event: MessageEvent) => {
       const data = event.data as { type?: unknown; html?: unknown } | null
-      if (!data || typeof data !== 'object' || data.type !== 'worktrack:posting') return
+      if (!data || typeof data !== 'object' || data.type !== wanted) return
       const source = data.html
       if (typeof source !== 'string' || !source || source.length > MAX_HTML_CHARS) return
 
@@ -62,7 +73,7 @@ export function useBookmarkletImport(enabled: boolean): string | null {
       // `'*'`: this reply goes back to whoever sent the source and to nobody
       // else, and it carries no data of ours in any case.
       try {
-        ;(event.source as Window | null)?.postMessage({ type: 'worktrack:posting:received' }, event.origin)
+        ;(event.source as Window | null)?.postMessage({ type: `${wanted}:received` }, event.origin)
       } catch {
         // A sender that has already closed cannot be acked, and does not need
         // to be -- it stopped retrying when it went away.
@@ -71,7 +82,7 @@ export function useBookmarkletImport(enabled: boolean): string | null {
 
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
-  }, [enabled])
+  }, [enabled, kind])
 
   return html
 }

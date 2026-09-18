@@ -50,6 +50,16 @@ const RATE_LIMIT_MAX_REQUESTS = 3
 const MAX_PROFILE_URLS = 6
 
 /**
+ * The biggest captured page this route will forward.
+ *
+ * A logged-in LinkedIn profile is heavy even with its scripts stripped, and it
+ * is the one page here that costs nothing to accept: no fetch leaves the
+ * service, no third party is involved, and the only thing this number protects
+ * is memory. The extractor caps it again at the same size.
+ */
+const MAX_HTML_CHARS = 6_000_000
+
+/**
  * An affordance, not a boundary -- per-instance memory, and Fluid Compute
  * reuses instances rather than guaranteeing one. What it genuinely stops is a
  * stuck retry loop and a rage-clicked button, which is the whole job.
@@ -99,7 +109,7 @@ export async function POST(request: Request) {
     )
   }
 
-  let body: { url?: unknown; urls?: unknown }
+  let body: { url?: unknown; urls?: unknown; html?: unknown }
   try {
     body = await request.json()
   } catch {
@@ -153,6 +163,22 @@ export async function POST(request: Request) {
     }
   }
 
+  /**
+   * THE PAGE THE CALLER IS ALREADY LOOKING AT, from the profile bookmarklet.
+   *
+   * It belongs to the first address, and the extractor treats it that way. The
+   * SSRF gate above still ran on every URL even though nothing will be fetched
+   * for this one: the address is still stored and still shown, and a gate that
+   * applies only sometimes is a gate whose behaviour nobody can state.
+   */
+  const html = typeof body?.html === 'string' ? body.html : ''
+  if (html.length > MAX_HTML_CHARS) {
+    return NextResponse.json(
+      { error: 'That page is too large to import.' },
+      { status: 413 }
+    )
+  }
+
   const extractor = process.env.EXTRACTOR_URL
   if (!extractor) {
     logSecurityEvent({
@@ -173,6 +199,9 @@ export async function POST(request: Request) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         urls: requested.map((candidate) => normalizeTargetUrl(String(candidate))),
+        // Omitted rather than sent empty: the extractor's field is `str |
+        // None`, and an empty string is a page it would try to parse.
+        ...(html ? { html } : {}),
       }),
     })
     const payload = await response.json()

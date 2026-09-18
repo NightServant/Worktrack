@@ -1348,3 +1348,121 @@ def test_a_bio_is_still_better_than_an_empty_about():
 
     about = _attributed_about([{"site": "GitHub", "profile": {"summary": "All will be well."}}])
     assert [entry["site"] for entry in about] == ["GitHub"]
+
+
+# --- A LinkedIn profile as its owner sees it, handed over by bookmarklet -----
+
+from extractor.linkedin_page import profile_from_linkedin_page  # noqa: E402
+
+#: SHAPED LIKE THE REAL PAGE, NOT COPIED FROM IT: the section anchors LinkedIn
+#: scrolls its own navigation to, list items, and every line printed twice --
+#: once `aria-hidden` for the eye, once `visually-hidden` for a screen reader.
+#:
+#: WHAT THIS PROVES AND WHAT IT CANNOT. It proves the reader's logic: slicing
+#: by anchor, taking one of each doubled pair, and mapping lines to fields by
+#: order. It cannot prove LinkedIn still writes this markup tomorrow -- nothing
+#: offline can, which is why the reader returns None rather than a blank when
+#: it recognises nothing, and the caller falls through to the ordinary one.
+LINKEDIN_PAGE = """
+<html><head><title>(3) Elijah Gabe Cervantes | LinkedIn</title></head><body>
+<h1>Elijah Gabe Cervantes</h1>
+<section><div id="about"></div>
+  <div><span aria-hidden="true">I build job-search tooling in Next.js and Supabase, and I care about the parts nobody sees.</span>
+  <span class="visually-hidden">I build job-search tooling in Next.js and Supabase, and I care about the parts nobody sees.</span></div>
+</section>
+<section><div id="experience"></div><ul>
+  <li>
+    <div><span aria-hidden="true">Frontend Developer and UI/UX Designer</span><span class="visually-hidden">Frontend Developer and UI/UX Designer</span></div>
+    <span><span aria-hidden="true">Dominican College of Tarlac \u00b7 Part-time</span></span>
+    <span><span aria-hidden="true">Jan 2025 - Present \u00b7 9 mos</span></span>
+    <span><span aria-hidden="true">Capas, Central Luzon, Philippines \u00b7 On-site</span></span>
+    <div><span aria-hidden="true">Rebuilt the college intranet in Next.js.</span></div>
+    <div><span aria-hidden="true">Skills: React, TypeScript and Figma</span></div>
+  </li>
+</ul></section>
+<section><div id="education"></div><ul><li>
+  <div><span aria-hidden="true">Tarlac State University</span></div>
+  <span><span aria-hidden="true">Bachelor of Science, Information Technology</span></span>
+  <span><span aria-hidden="true">2022 - 2026</span></span>
+</li></ul></section>
+<section><div id="licenses_and_certifications"></div><ul><li>
+  <div><span aria-hidden="true">Introduction to Networks</span></div>
+  <span><span aria-hidden="true">Cisco Networking Academy</span></span>
+  <span><span aria-hidden="true">Issued Jan 2024</span></span>
+</li></ul></section>
+<section><div id="skills"></div><ul>
+  <li><div><span aria-hidden="true">JavaScript</span></div><span><span aria-hidden="true">3 endorsements</span></span></li>
+  <li><div><span aria-hidden="true">React</span></div></li>
+</ul></section>
+</body></html>
+"""
+
+
+def test_a_captured_profile_carries_what_no_fetch_can_get():
+    out = profile_from_linkedin_page("https://www.linkedin.com/in/x/", LINKEDIN_PAGE)
+    assert out is not None
+    p = out["profile"]
+    assert p["name"] == "Elijah Gabe Cervantes"
+    # THE THREE THINGS EVERY WARNING WAS ABOUT: the About, the skills, and the
+    # bullet text under a role. None of them are on a signed-out page.
+    assert p["summary"].startswith("I build job-search tooling")
+    assert p["skills"][:3] == ["React", "TypeScript", "Figma"]
+    role = p["experiences"][0]
+    assert role["title"] == "Frontend Developer and UI/UX Designer"
+    assert role["company"] == "Dominican College of Tarlac"
+    assert role["period"] == "Jan 2025 - Present \u00b7 9 mos"
+    assert role["location"] == "Capas, Central Luzon, Philippines"
+    assert role["description"] == "Rebuilt the college intranet in Next.js."
+
+
+def test_a_line_printed_twice_is_read_once():
+    # Every line on the page exists twice -- aria-hidden for the eye,
+    # visually-hidden for a screen reader. Read naively, a role arrives as
+    # "Engineer Engineer".
+    p = profile_from_linkedin_page("x", LINKEDIN_PAGE)["profile"]
+    assert p["experiences"][0]["title"].count("Frontend") == 1
+    assert p["summary"].count("I build") == 1
+
+
+def test_education_and_certifications_come_through_too():
+    p = profile_from_linkedin_page("x", LINKEDIN_PAGE)["profile"]
+    assert p["education"] == [
+        {
+            "school": "Tarlac State University",
+            "degree": "Bachelor of Science, Information Technology",
+            "period": "2022 - 2026",
+        }
+    ]
+    assert p["certifications"][0]["authority"] == "Cisco Networking Academy"
+    assert p["certifications"][0]["period"] == "Issued Jan 2024"
+
+
+def test_a_page_with_no_recognised_section_falls_through():
+    # None, not a blank profile: the caller then parses it with the ordinary
+    # reader, so a markup change costs the extra fields and never the import.
+    assert profile_from_linkedin_page("x", "<html><body><p>hello</p></body></html>") is None
+
+
+def test_a_captured_page_is_never_fetched():
+    from app import _parse_supplied
+
+    record = _parse_supplied(
+        "https://www.linkedin.com/in/x/", LINKEDIN_PAGE, "linkedin", "LinkedIn"
+    )
+    assert record["ok"] is True
+    assert record["via"] == "bookmarklet"
+    assert record["profile"]["skills"]
+
+
+def test_a_captured_page_the_reader_cannot_parse_still_reads_as_a_profile():
+    # The ordinary reader is behind it: JSON-LD, then og tags, then the title.
+    from app import _parse_supplied
+
+    record = _parse_supplied(
+        "https://www.linkedin.com/in/x/",
+        "<html><head><title>Ada Lovelace - Engineer | LinkedIn</title></head><body></body></html>",
+        "linkedin",
+        "LinkedIn",
+    )
+    assert record["ok"] is True
+    assert record["profile"]["name"] == "Ada Lovelace"

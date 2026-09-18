@@ -73,3 +73,38 @@ describe('receiving a posting from the bookmarklet', () => {
     expect(() => send({ type: 'worktrack:posting', html: '<html>late</html>' })).not.toThrow()
   })
 })
+
+/**
+ * THE SECOND SENDER (2026-09-18). The profile bookmarklet hands over a
+ * logged-in LinkedIn page -- the only client that can see the About, the
+ * skills and the bullet text under each role. One hook serves both, and the
+ * kind is the only difference between them, so these two tests are about
+ * exactly that: a listener asked for one must not take the other.
+ */
+function ProfileHarness({ enabled }: { enabled: boolean }) {
+  const html = useBookmarkletImport(enabled, 'profile')
+  return <div data-testid="out">{html ?? 'nothing'}</div>
+}
+
+describe('receiving a profile from the bookmarklet', () => {
+  it('takes a captured profile page', () => {
+    render(<ProfileHarness enabled />)
+    send({ type: 'worktrack:profile', html: '<html><body>a profile</body></html>' })
+    expect(received()).toBe('<html><body>a profile</body></html>')
+  })
+
+  it('does not take a posting, and a posting listener does not take a profile', () => {
+    // Two buttons, two destinations: a page captured on LinkedIn must not seed
+    // the add-an-application wizard, and a job advert must not become somebody's
+    // profile.
+    render(<ProfileHarness enabled />)
+    send({ type: 'worktrack:posting', html: '<html>a posting</html>' })
+    expect(received()).toBe('nothing')
+
+    cleanup()
+    render(<Harness enabled />)
+    send({ type: 'worktrack:profile', html: '<html>a profile</html>' })
+    expect(received()).toBe('nothing')
+  })
+})
+

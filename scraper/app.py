@@ -34,6 +34,7 @@ from extractor.net import normalize_target_url, reject_reason
 from extractor.apify_profile import profile_from_apify
 from extractor.github_profile import _login, profile_from_github
 from extractor.jobstreet_profile import profile_from_jobstreet
+from extractor.linkedin_page import profile_from_linkedin_page
 from extractor.merge_profile import merge_profiles
 from extractor.profile import extract_profile
 
@@ -97,6 +98,15 @@ GITHUB_REPO_PAGE = 100
 FIRECRAWL_ENDPOINT = "https://api.firecrawl.dev/v2/scrape"
 FIRECRAWL_TIMEOUT_S = 60.0
 MAX_HTML_BYTES = 2_000_000
+
+#: A captured profile page is bigger than a fetched one and is allowed to be.
+#:
+#: A logged-in LinkedIn profile runs past 2MB of markup even with its scripts
+#: stripped, and it is the one page in this service that arrives WITHOUT a
+#: fetch -- nothing is spent on it and no third party is involved, so the only
+#: thing this number protects is memory. The web route caps it again at the
+#: same size before it gets here.
+MAX_SUPPLIED_HTML_BYTES = 6_000_000
 
 # The header set the Deno function arrived at. Kept verbatim: it is what a
 # browser sends, and several boards vary their markup by it.
@@ -167,6 +177,13 @@ class ProfileRequest(BaseModel):
 
     url: str | None = None
     urls: list[str] | None = None
+    #: The page the CALLER is already looking at, from the bookmarklet.
+    #:
+    #: It belongs to the FIRST address, which is the one the bookmarklet was
+    #: clicked on; the others are still fetched normally. A logged-in LinkedIn
+    #: profile carries the About, the skills and the bullet text under each
+    #: role that no fetch will ever return -- see `linkedin_page`.
+    html: str | None = None
 
     def addresses(self) -> list[str]:
         """The requested addresses, in order, without duplicates."""
@@ -655,15 +672,22 @@ async def _page_profile(url: str, label: str) -> tuple[dict[str, Any] | None, st
     return {**extract_profile(url, html, label), "via": "page"}, "ok"
 
 
-async def _one_profile(url: str) -> dict[str, Any]:
+async def _one_profile(url: str, html: str | None = None) -> dict[str, Any]:
     """One address, read by whichever route fits it.
 
     NEVER RAISES. Every source reports its own outcome and the endpoint decides
     what a partial set of failures means -- one dead link out of four must not
     cost the other three, which is the entire reason this returns a record
     rather than a payload.
+
+    CALLER-SUPPLIED HTML SHORT-CIRCUITS EVERY FETCH, which is the bookmarklet's
+    whole point and the same contract `/extract` has had since M7: no request
+    leaves this service, so there is no challenge to lose to and nothing to
+    spend. What arrives is a page the reader was already looking at.
     """
     route, label = _profile_site(url)
+    if html:
+        return _parse_supplied(url, html, route, label)
     if route == "github":
         payload, reason = await _github_profile(url)
         message = _github_message(reason)
@@ -687,6 +711,38 @@ async def _one_profile(url: str) -> dict[str, Any]:
     record["profile"] = payload["profile"]
     record["warnings"] = payload.get("warnings", [])
     return record
+
+
+def _parse_supplied(url: str, html: str, route: str, label: str) -> dict[str, Any]:
+    """A page the caller handed over, parsed by the best reader for its host.
+
+    THE SITE-SPECIFIC READER FIRST, THE ORDINARY ONE BEHIND IT. A captured
+    LinkedIn page is the only source that carries the About, the skills and the
+    bullet text under each role; if its markup has moved, the JSON-LD graph and
+    the meta tags are still in the same document and still say who this is.
+    """
+    payload: dict[str, Any] | None = None
+    if route == "linkedin":
+        payload = profile_from_linkedin_page(url, html)
+        if payload is not None:
+            payload = {**payload, "via": "bookmarklet"}
+    elif "jobstreet" in (urlparse(url).hostname or "").lower():
+        payload = profile_from_jobstreet(url, html)
+        if payload is not None:
+            payload = {**payload, "via": "bookmarklet"}
+
+    if payload is None:
+        payload = {**extract_profile(url, html, label), "via": "bookmarklet"}
+
+    return {
+        "url": url,
+        "site": label,
+        "ok": True,
+        "reason": "ok",
+        "via": payload.get("via", "bookmarklet"),
+        "profile": payload["profile"],
+        "warnings": payload.get("warnings", []),
+    }
 
 
 def _linkedin_message(reason: str) -> str:
@@ -811,10 +867,23 @@ async def profile_endpoint(body: ProfileRequest) -> JSONResponse:
         if reason:
             return JSONResponse({"error": reason}, status_code=400)
 
+    supplied = body.html or None
+    if supplied and len(supplied.encode("utf-8", "ignore")) > MAX_SUPPLIED_HTML_BYTES:
+        return JSONResponse({"error": "That page is too large to import"}, status_code=413)
+
     # CONFIGURATION IS CHECKED PER ROUTE, not once for the request: GitHub
     # needs no key, so a deployment with no Firecrawl and no Apify can still
     # read a GitHub profile, and refusing the whole request would hide that.
-    results = await asyncio.gather(*[_one_profile(url) for url in urls])
+    #
+    # THE SUPPLIED PAGE BELONGS TO THE FIRST ADDRESS. The bookmarklet sends one
+    # page and the address it was clicked on, and that address leads the list;
+    # anything else in the request is still fetched.
+    results = await asyncio.gather(
+        *[
+            _one_profile(url, supplied if index == 0 else None)
+            for index, url in enumerate(urls)
+        ]
+    )
 
     read = [result for result in results if result["ok"]]
     # EACH SOURCE KEEPS ITS OWN WARNINGS (Gabe, 2026-09-18, pasting the wall

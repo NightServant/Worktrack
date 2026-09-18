@@ -115,6 +115,11 @@ export interface ProfileFetchResult {
  * extractor merges them: first non-empty value per field, union of every list,
  * and the same role from two sources filled in rather than listed twice.
  *
+ * IT ALSO TAKES A CAPTURED PAGE. `html` is the profile bookmarklet's payload
+ * -- a logged-in LinkedIn page, which is the only client that can see the
+ * About, the skills and the bullet text under each role. It belongs to the
+ * first address and the extractor fetches nothing for that one.
+ *
  * IT MERGES OVER WHAT IS ALREADY STORED, the same rule the CSV import follows:
  * a fetch that came back with a name and no work history must not blank work
  * history somebody typed in by hand. Only the fields the fetch actually filled
@@ -131,12 +136,12 @@ export function useImportProfileFromUrl() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
 
-  return useMutation<ProfileFetchResult, Error, string[]>({
-    mutationFn: async (urls) => {
+  return useMutation<ProfileFetchResult, Error, { urls: string[]; html?: string }>({
+    mutationFn: async ({ urls, html }) => {
       const response = await authedFetch('/api/profile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ urls }),
+        body: JSON.stringify({ urls, ...(html ? { html } : {}) }),
       })
       const payload = (await response.json()) as
         | { profile?: Partial<UserProfile>; warnings?: string[]; sources?: unknown }

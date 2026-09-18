@@ -29,6 +29,30 @@ import * as React from 'react'
  * deployment and in production without three builds or a hardcoded domain
  * that goes stale the next time the project is renamed.
  */
+/**
+ * The PROFILE bookmarklet: the same handshake, a different destination.
+ *
+ * WHY THE PROFILE NEEDS ONE (Gabe, 2026-09-18: "build the bookmarklet for
+ * LinkedIn too"). Everything a signed-out visitor gets from LinkedIn is thin
+ * by design -- no About, no skills, no bullet text under a role, and on some
+ * profiles no job titles. That is not weak protection to be defeated; the data
+ * is simply not rendered to a stranger. The one client that can see it is the
+ * owner, logged in, on their own page.
+ *
+ * IT STRIPS THE PAGE BEFORE SENDING IT, which the posting one does not need
+ * to. A LinkedIn profile is megabytes of scripts and inline styles around a
+ * few kilobytes of person; the reader is parsed from the markup, so everything
+ * executable goes before the copy is made. Smaller to send, smaller to hold,
+ * and nothing this app parses is lost with it.
+ *
+ * `/settings?import=bookmarklet&profile=<url>` rather than `/applications`:
+ * the profile lives on the settings screen, and the address rides the query
+ * string exactly as `?add=` does for a posting.
+ */
+function profileBookmarkletSource(origin: string): string {
+  return `javascript:(function(){var o=${JSON.stringify(origin)};if(location.hostname.indexOf('linkedin.com')<0){alert('Worktrack: open your LinkedIn profile first, then click this.');return;}var w=window.open(o+'/settings?import=bookmarklet&profile='+encodeURIComponent(location.href),'_blank');if(!w){alert('Worktrack: allow pop-ups for this site, then click again.');return;}var d=document.documentElement.cloneNode(true);Array.prototype.forEach.call(d.querySelectorAll('script,style,noscript,link,svg,img'),function(n){n.parentNode&&n.parentNode.removeChild(n);});var p={type:'worktrack:profile',html:d.outerHTML};var n=0,t=setInterval(function(){if(++n>80){clearInterval(t);return;}try{w.postMessage(p,o);}catch(e){}},250);window.addEventListener('message',function(e){if(e.origin===o&&e.data&&e.data.type==='worktrack:profile:received'){clearInterval(t);}});})()`
+}
+
 function bookmarkletSource(origin: string): string {
   // Deliberately terse: this string ends up in a bookmark, where every byte is
   // visible in the browser's own editor. The retry loop exists because the
@@ -39,13 +63,19 @@ function bookmarkletSource(origin: string): string {
 
 export default function BookmarkletPage() {
   const linkRef = React.useRef<HTMLAnchorElement>(null)
+  const profileRef = React.useRef<HTMLAnchorElement>(null)
   const [source, setSource] = React.useState('')
-  const [copied, setCopied] = React.useState(false)
+  const [profileSource, setProfileSource] = React.useState('')
+  const [copied, setCopied] = React.useState<'posting' | 'profile' | null>(null)
 
   React.useEffect(() => {
     const code = bookmarkletSource(window.location.origin)
     setSource(code)
     linkRef.current?.setAttribute('href', code)
+
+    const profileCode = profileBookmarkletSource(window.location.origin)
+    setProfileSource(profileCode)
+    profileRef.current?.setAttribute('href', profileCode)
   }, [])
 
   return (
@@ -113,12 +143,62 @@ export default function BookmarkletPage() {
             className="inline-flex h-8 items-center rounded-md border border-border-subtle px-3 text-body-s text-text-primary"
             onClick={() => {
               void navigator.clipboard?.writeText(source).then(
-                () => setCopied(true),
-                () => setCopied(false)
+                () => setCopied('posting'),
+                () => setCopied(null)
               )
             }}
           >
-            {copied ? 'copied' : 'copy the address'}
+            {copied === 'posting' ? 'copied' : 'copy the address'}
+          </button>
+        </div>
+      </section>
+
+      {/* THE SECOND BOOKMARKLET, on the same page and not a second one of its
+          own: they install the same way, send the same way and answer the same
+          objection, and a reader who wants one will want the other. */}
+      <section className="flex flex-col gap-4 border-t border-border-subtle pt-8">
+        <h2 className="text-heading-m font-bold text-text-primary">
+          The profile button
+        </h2>
+        <p className="text-body-m font-normal text-text-secondary">
+          LinkedIn shows a signed-out visitor almost nothing: no About, no
+          skills, no detail under a role, and on some profiles not even the job
+          titles. Nothing Worktrack fetches can change that &mdash; the page is
+          not written for a stranger. Open your own profile while logged in and
+          press this instead; Worktrack reads the page you are looking at and
+          fills all of it in.
+        </p>
+
+        <div className="flex flex-wrap items-center gap-4 rounded-md border border-border-subtle p-6">
+          <a
+            ref={profileRef}
+            draggable
+            onClick={(event) => event.preventDefault()}
+            className="inline-flex h-10 cursor-grab items-center rounded-md bg-accent-default px-4 text-body-s font-medium text-ink-950"
+          >
+            send my profile to worktrack
+          </a>
+          <span className="text-body-s font-normal text-text-muted">
+            Drag this to your bookmarks bar, then click it on your LinkedIn
+            profile.
+          </span>
+        </div>
+
+        <pre className="max-h-40 overflow-auto rounded-md border border-border-subtle bg-bg-subtle p-4 text-body-s text-text-secondary">
+          <code className="break-all whitespace-pre-wrap">{profileSource}</code>
+        </pre>
+        <div>
+          <button
+            type="button"
+            className="inline-flex h-8 items-center rounded-md border border-border-subtle px-3 text-body-s text-text-primary"
+            onClick={() => {
+              void navigator.clipboard?.writeText(profileSource).then(
+                () => setCopied('profile'),
+                () => setCopied(null)
+              )
+            }}
+          >
+            {copied === 'profile' ? 'copied' : 'copy the address'}
           </button>
         </div>
       </section>
@@ -129,10 +209,13 @@ export default function BookmarkletPage() {
         </h2>
         <p className="text-body-m font-normal text-text-secondary">
           The address of the page and its HTML, to Worktrack and nowhere else.
-          It runs only when you click it, it reads nothing you have not opened,
-          and it saves nothing on its own &mdash; the application opens in the
-          usual form, for you to check and save. It is not a tracker and it does
-          not run in the background.
+          Either button runs only when you click it, reads nothing you have not
+          opened, and is not a tracker &mdash; neither runs in the background.
+          The posting one opens the usual form for you to check and save. The
+          profile one updates your Worktrack profile, which you can clear from
+          Settings at any time. The profile button also strips the page&rsquo;s
+          scripts, styles and images before sending it: what travels is the
+          text, not the machinery around it.
         </p>
       </section>
     </main>

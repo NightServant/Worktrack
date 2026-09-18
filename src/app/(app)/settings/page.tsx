@@ -1,6 +1,8 @@
 'use client'
 
 import * as React from 'react'
+import { Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
@@ -11,10 +13,11 @@ import { ProfileSources, ProfileSourceSteps } from '@/components/settings/Profil
 import type { ProfileState } from '@/components/settings/ProfileGroup'
 import {
   useUserProfile,
-  useImportProfile,
   useImportProfileFromUrl,
   useClearUserProfile,
 } from '@/hooks/useUserProfile'
+import { useBookmarkletImport } from '@/components/applications/useBookmarkletImport'
+import { RouteSkeleton } from '@/components/ui/loading-skeletons'
 import { toError } from '@/services/supabaseHelpers'
 import type { SupportedCurrency } from '@/services/userPreferences'
 
@@ -40,19 +43,29 @@ import type { SupportedCurrency } from '@/services/userPreferences'
  * button genuinely attempts the deletion and reports what actually
  * happened, rather than pretending to succeed.
  */
-export default function Page() {
+function SettingsRoute() {
   const { user, signOut } = useAuth()
   const { data: prefs = null } = useUserPreferences()
   const { data: stored, isPending: profileLoading } = useUserProfile()
   const fetchProfile = useImportProfileFromUrl()
-  const importProfile = useImportProfile()
   const clearProfile = useClearUserProfile()
   // What the last fetch did, kept here rather than read off the mutation: a
   // page that returned only a name and a headline resolves SUCCESSFULLY with
   // warnings, so `mutation.error` is empty on exactly the case worth saying
   // something about.
   const [profileNote, setProfileNote] = React.useState<string | null>(null)
-  const [importNote, setImportNote] = React.useState<string | null>(null)
+
+  /**
+   * `?import=bookmarklet&profile=<url>` is how the profile bookmarklet hands
+   * this screen a page. The URL rides the query string; the source follows on
+   * `postMessage`, because a LinkedIn profile is megabytes of markup.
+   */
+  const params = useSearchParams()
+  const captureUrl = params.get('profile')
+  const capturedHtml = useBookmarkletImport(
+    params.get('import') === 'bookmarklet' && !!captureUrl,
+    'profile'
+  )
   const setDefaultCurrency = useSetDefaultCurrency()
   const { success, error: showError } = useToast()
 
@@ -136,7 +149,7 @@ export default function Page() {
   const handleFetchProfile = async (urls: string[]) => {
     setProfileNote(null)
     try {
-      await fetchProfile.mutateAsync(urls)
+      await fetchProfile.mutateAsync({ urls })
       success('Profile updated')
       // THE WARNINGS ARE NOT JOINED INTO THIS NOTE ANY MORE (Gabe, 2026-09-18,
       // pasting the result back). Five sources produced seven sentences, each
@@ -150,32 +163,34 @@ export default function Page() {
   }
 
   /**
-   * The LinkedIn data export, merged over whatever the links read.
+   * A LinkedIn profile captured by the bookmarklet.
    *
-   * IT IS THE ANSWER TO THE WARNINGS the links leave behind -- About, skills,
-   * job titles, the bullet text under each role -- and none of it can be
-   * fetched, because LinkedIn shows none of it to a signed-out visitor.
+   * IT ARRIVES BY `postMessage`, NOT BY NAVIGATION. The bookmarklet runs on
+   * linkedin.com and this app runs on its own origin, so nothing is shared --
+   * not storage, not cookies, not the session. The ADDRESS travels in the
+   * query string; only the page source is too large for one, so only the
+   * source needs a channel. See `useBookmarkletImport`, which both bookmarklets
+   * now share.
+   *
+   * IT IMPORTS ITSELF once, on arrival. The reader clicked a button on their
+   * own profile and landed here; asking them to press a second one would be
+   * asking them to confirm the thing they just asked for. The guard is the
+   * ref: a re-render, a refetch or a second message cannot run it twice.
    */
-  const handleImportProfile = async (files: { name: string; text: string }[]) => {
-    setImportNote(null)
-    try {
-      const result = await importProfile.mutateAsync(files)
-      if (result.recognised.length === 0) {
-        setImportNote(
-          'None of those files looked like a LinkedIn export. Profile.csv is the one to start with.'
-        )
-        return
+  const captureRan = React.useRef(false)
+  React.useEffect(() => {
+    if (!capturedHtml || !captureUrl || captureRan.current) return
+    captureRan.current = true
+    void (async () => {
+      setProfileNote(null)
+      try {
+        await fetchProfile.mutateAsync({ urls: [captureUrl], html: capturedHtml })
+        success('Profile updated from the page you captured')
+      } catch (err) {
+        setProfileNote(err instanceof Error ? err.message : 'Could not read that page.')
       }
-      success('Profile updated from the export')
-      setImportNote(
-        result.unrecognised.length
-          ? `Read ${result.recognised.join(', ')}. Ignored ${result.unrecognised.join(', ')}.`
-          : `Read ${result.recognised.join(', ')}.`
-      )
-    } catch (err) {
-      setImportNote(err instanceof Error ? err.message : 'Could not read those files.')
-    }
-  }
+    })()
+  }, [capturedHtml, captureUrl, fetchProfile, success])
 
   const handleClearProfile = async () => {
     try {
@@ -212,9 +227,6 @@ export default function Page() {
           hasProfile={!!stored?.profile}
           note={profileNote}
           sources={stored?.profile?.sources ?? []}
-          onImport={(files) => void handleImportProfile(files)}
-          importing={importProfile.isPending}
-          importNote={importNote}
         />
       }
       profileSteps={<ProfileSourceSteps />}
@@ -224,5 +236,17 @@ export default function Page() {
       onSignOut={() => void handleSignOut()}
       onDeleteAccount={() => void handleDeleteAccount()}
     />
+  )
+}
+
+/**
+ * `useSearchParams` needs a Suspense boundary in the App Router, the same
+ * wrapper `/applications` carries for the same reason.
+ */
+export default function Page() {
+  return (
+    <Suspense fallback={<RouteSkeleton variant="table" />}>
+      <SettingsRoute />
+    </Suspense>
   )
 }

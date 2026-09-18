@@ -22,6 +22,10 @@ vi.mock('@/contexts/AuthContext', () => ({ useAuth: useAuthMock }))
 // router mounted and useRouter throws an invariant without this.
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ replace: replaceMock, push: vi.fn(), refresh: vi.fn() }),
+  // The screen reads `?import=bookmarklet&profile=<url>`, which is how the
+  // profile bookmarklet hands it a captured page. Empty here: these tests are
+  // about the account group, and an unmocked hook throws before they get to it.
+  useSearchParams: () => new URLSearchParams(),
 }))
 vi.mock('@/hooks/useUserPreferences', () => ({
   useUserPreferences: useUserPreferencesMock,

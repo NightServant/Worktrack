@@ -64,6 +64,73 @@ class Page:
             return None
         return str(text) if text else None
 
+    def texts(self, css: str) -> list[str]:
+        """Every match's TEXT, collapsed.
+
+        The counterpart of `all`, which returns each node's outer HTML -- right
+        for reading an attribute-bearing node and wrong for reading prose, and
+        the wrong one was used once already: an About arrived on the profile
+        panel wrapped in the `<span>` it was printed in.
+        """
+        try:
+            found = self._sel.css(css)
+        except Exception:
+            return []
+        out: list[str] = []
+        for node in found:
+            try:
+                text = node.get_all_text() if hasattr(node, "get_all_text") else None
+            except Exception:
+                text = None
+            if not text:
+                continue
+            cleaned = " ".join(str(text).split())
+            if cleaned:
+                out.append(cleaned)
+        return out
+
+    def items(self, item_css: str, line_css: str) -> list[list[str]]:
+        """Each `item_css` match, as the texts of the `line_css` nodes inside it.
+
+        THE ONE QUERY THAT NEEDS STRUCTURE RATHER THAN A VALUE, and it is here
+        rather than in the caller because this file is the only place Scrapling
+        is touched -- a module reaching into `page._sel` to walk children is the
+        boundary this class exists to hold.
+
+        Written for a captured LinkedIn profile, where a list entry is a stack
+        of short lines and MEANING COMES FROM ORDER: title, employer, dates,
+        place. A flat text dump loses that; one string per node keeps it.
+
+        CONSECUTIVE DUPLICATES COLLAPSE, because LinkedIn prints every line
+        twice -- once `aria-hidden` for the eye and once `visually-hidden` for
+        a screen reader -- and a caller that selects only one of the pair still
+        meets the doubling wherever the markup nests.
+        """
+        try:
+            found = self._sel.css(item_css)
+        except Exception:
+            return []
+        items: list[list[str]] = []
+        for node in found:
+            try:
+                lines_found = node.css(line_css)
+            except Exception:
+                continue
+            lines: list[str] = []
+            for line in lines_found:
+                try:
+                    text = line.get_all_text() if hasattr(line, "get_all_text") else None
+                except Exception:
+                    text = None
+                if not text:
+                    continue
+                cleaned = " ".join(str(text).split())
+                if cleaned and (not lines or lines[-1] != cleaned):
+                    lines.append(cleaned)
+            if lines:
+                items.append(lines)
+        return items
+
     def all(self, css: str) -> list[str]:
         try:
             found = self._sel.css(css)
