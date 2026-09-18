@@ -76,6 +76,17 @@ export interface ProfileSource {
    * you cannot attach to a source is one you cannot act on.
    */
   warnings: string[]
+  /**
+   * WHICH ROUTE READ IT -- `bookmarklet`, `apify`, `github`, `jobstreet`, …
+   *
+   * IT IS ON SCREEN BECAUSE THE DIFFERENCE IS THE WHOLE POINT (2026-09-18).
+   * A public-page read and a captured-page read produce the same green tick
+   * and wildly different profiles, so a reader who pressed the bookmarklet had
+   * no way to tell whether it had worked -- and the one who pressed `fetch
+   * again` by mistake saw four warnings about a signed-out page with nothing
+   * saying that is what he had just asked for.
+   */
+  via: string | null
 }
 
 /**

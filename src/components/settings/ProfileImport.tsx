@@ -420,8 +420,31 @@ export function ProfileSources({
                   ) : (
                     <AlertCircleIcon size={14} aria-hidden className="mt-0.5 shrink-0" />
                   )}
-                  {read.ok ? 'read' : read.note || 'could not be read'}
+                  {read.ok
+                    ? read.via === 'bookmarklet'
+                      ? 'read from the page you captured'
+                      : 'read from the public page'
+                    : read.note || 'could not be read'}
                 </div>
+              )}
+              {/* THE WAY OUT, ON THE ROW THAT NEEDS IT (2026-09-18). Every
+                  warning under a LinkedIn row is about what a SIGNED-OUT page
+                  does not show, and the bookmarklet is the only thing that
+                  changes that -- so the row that reports the limit is where
+                  the fix belongs. Offered only on LinkedIn, because the
+                  bookmarklet refuses to run anywhere else, and only when the
+                  page was NOT the one that was captured: over a capture it
+                  would be advice to do what was just done. */}
+              {source.id === 'linkedin' && read?.ok && read.via !== 'bookmarklet' && (
+                <a
+                  href="/bookmarklet"
+                  target="_blank"
+                  rel="noreferrer"
+                  data-profile-capture-link
+                  className="text-body-s text-accent-default underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-default"
+                >
+                  read it from your own signed-in page instead
+                </a>
               )}
               {/* WHAT THIS SOURCE COULD NOT GIVE, ON THIS SOURCE'S ROW (Gabe,
                   2026-09-18). All of them used to be joined into one paragraph

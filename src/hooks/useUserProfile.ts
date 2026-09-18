@@ -219,6 +219,7 @@ function readSources(value: unknown): ProfileSource[] {
         warnings: Array.isArray(source.warnings)
           ? source.warnings.filter((warning): warning is string => typeof warning === 'string')
           : [],
+        via: typeof source.via === 'string' ? source.via : null,
       },
     ]
   })

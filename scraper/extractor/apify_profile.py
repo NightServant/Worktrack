@@ -11,6 +11,12 @@ there is no HTML to parse here at all: the work is mapping their field names
 onto `UserProfile`. It also reaches sections the JSON-LD never carried --
 certifications, projects, volunteer work, personal websites.
 
+EVERY WARNING IT LEAVES NAMES THE BOOKMARKLET (2026-09-18). Three of them used
+to end "or import a LinkedIn data export", and that button was removed the same
+afternoon the bookmarklet shipped -- so the app was telling its owner to press
+something that no longer exists, four times, in the one place he was looking
+for a way out. A warning that names a fix has to name a fix that is there.
+
 WHAT IT COSTS, because that is not a detail. The actor is pay-per-event:
 $0.50 per gigabyte of memory at start (minimum one event) plus $0.01 per
 result. One profile at 1GB is about $0.51. `app.py` pins the memory for
@@ -296,13 +302,15 @@ def profile_from_apify(row: dict[str, Any], requested_url: str) -> dict[str, Any
     # imports with an empty skills list looks like a broken import rather than
     # a limit of the source.
     warnings.append(
-        "Skills and languages are not on a signed-out profile page, so they do "
-        "not come through. Add them by hand, or import a LinkedIn data export."
+        "Skills and languages are not on a signed-out profile page, so they do not come "
+        "through. Open your own profile while signed in and use the Worktrack bookmarklet "
+        "— it reads the page you are looking at."
     )
     if not profile["summary"]:
         warnings.append(
-            "No About section came back — LinkedIn only shows one to signed-out "
-            "visitors when the profile owner has made it public."
+            "No About section came back — LinkedIn only shows one to signed-out visitors "
+            "when the profile owner has made it public. The Worktrack bookmarklet reads it "
+            "from your own logged-in profile."
         )
 
     roles = profile["experiences"]
@@ -316,13 +324,14 @@ def profile_from_apify(row: dict[str, Any], requested_url: str) -> dict[str, Any
         # the reader was looking at.
         if all(not item["title"] for item in roles):
             warnings.append(
-                "LinkedIn does not show job titles to signed-out visitors on this "
-                "profile — the employers and dates came through, the roles did not."
+                "LinkedIn does not show job titles to signed-out visitors on this profile — "
+                "the employers and dates came through, the roles did not. The Worktrack "
+                "bookmarklet reads them from your own logged-in profile."
             )
         if all(item["description"] is None for item in roles):
             warnings.append(
-                "The bullet text under each role is not on a public profile page. "
-                "Write it in yourself, or import a LinkedIn data export."
+                "The bullet text under each role is not on a public profile page. The "
+                "Worktrack bookmarklet reads it from your own logged-in profile."
             )
 
     return {"profile": profile, "warnings": warnings}

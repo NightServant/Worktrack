@@ -50,6 +50,7 @@ const FILLED = {
       ok: true,
       note: null,
       warnings: ['Skills are not on a signed-out profile page.'],
+      via: 'apify',
     },
   ],
   fetchedAt: '2026-09-06T00:00:00.000Z',
@@ -443,13 +444,21 @@ describe('building a profile from several addresses', () => {
         onClear={vi.fn()}
         hasProfile
         sources={[
-          { url: 'https://github.com/octocat', site: 'GitHub', ok: true, note: null, warnings: [] },
+          {
+            url: 'https://github.com/octocat',
+            site: 'GitHub',
+            ok: true,
+            note: null,
+            warnings: [],
+            via: 'github',
+          },
           {
             url: 'https://www.linkedin.com/in/example',
             site: 'LinkedIn',
             ok: true,
             note: null,
             warnings: [],
+            via: 'apify',
           },
         ]}
       />
@@ -476,6 +485,7 @@ describe('building a profile from several addresses', () => {
             ok: true,
             note: null,
             warnings: ['LinkedIn does not publish skills to a signed-out visitor.'],
+            via: 'apify',
           },
           {
             url: 'https://www.glassdoor.com/member/home',
@@ -483,12 +493,72 @@ describe('building a profile from several addresses', () => {
             ok: false,
             note: 'Glassdoor showed nothing to a signed-out visitor.',
             warnings: [],
+            via: null,
           },
         ]}
       />
     )
     expect(container.querySelectorAll('[data-profile-source-state="read"]')).toHaveLength(1)
     expect(screen.getByText(/Glassdoor showed nothing/i)).toBeTruthy()
+  })
+
+  it('says HOW a source was read, so a capture is visibly different', () => {
+    // A public-page read and a captured-page read produce the same green tick
+    // and wildly different profiles. Somebody who pressed the bookmarklet had
+    // no way to tell whether it had worked (Gabe, 2026-09-18).
+    render(
+      <ProfileSources
+        onFetch={vi.fn()}
+        hasProfile
+        sources={[
+          {
+            url: 'https://www.linkedin.com/in/example',
+            site: 'LinkedIn',
+            ok: true,
+            note: null,
+            warnings: [],
+            via: 'bookmarklet',
+          },
+        ]}
+      />
+    )
+    expect(screen.getByText('read from the page you captured')).toBeTruthy()
+    // And no invitation to capture a page that WAS captured.
+    expect(document.querySelector('[data-profile-capture-link]')).toBeNull()
+  })
+
+  it('offers the bookmarklet on a LinkedIn row that was only read publicly', () => {
+    // Every warning under that row is about what a signed-out page does not
+    // show, and this is the only thing that changes it. The advice used to
+    // name the data-export button, which was removed the same afternoon.
+    render(
+      <ProfileSources
+        onFetch={vi.fn()}
+        hasProfile
+        sources={[
+          {
+            url: 'https://www.linkedin.com/in/example',
+            site: 'LinkedIn',
+            ok: true,
+            note: null,
+            warnings: ['Skills are not on a signed-out profile page.'],
+            via: 'apify',
+          },
+          {
+            url: 'https://github.com/octocat',
+            site: 'GitHub',
+            ok: true,
+            note: null,
+            warnings: [],
+            via: 'github',
+          },
+        ]}
+      />
+    )
+    const links = [...document.querySelectorAll('[data-profile-capture-link]')]
+    // On LinkedIn and nowhere else -- the bookmarklet refuses to run elsewhere.
+    expect(links).toHaveLength(1)
+    expect(links[0].getAttribute('href')).toBe('/bookmarklet')
   })
 
   it('has nothing to remove before the first fetch', () => {
