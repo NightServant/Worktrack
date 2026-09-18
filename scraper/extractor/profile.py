@@ -230,10 +230,24 @@ def extract_profile(url: str, html: str, site: str = "LinkedIn") -> dict[str, An
 
     if person is None:
         # `og:title` on a LinkedIn profile is "Name - Headline | LinkedIn".
-        title = _clean(page.meta("og:title")) or ""
-        name = title.split(" | ")[0]
-        if " - " in name:
-            first, _, rest = name.partition(" - ")
+        #
+        # THE DOCUMENT TITLE IS THE THIRD TIER, and it is there because a page
+        # with neither a graph nor an `og:title` is not rare: measured on a
+        # real JobStreet profile, zero `ld+json` blocks and an `og:` set that
+        # is site branding alone. Its `<title>` was
+        # "Elijah Gabe Cervantes, Frontend Developer and UI/UX Designer at
+        # Dominican College of Tarlac | Jobstreet" -- a name and a headline,
+        # free, on a page that would otherwise have parsed to nothing at all.
+        #
+        # The site suffix goes with the last `|`, and the name is separated
+        # from the headline by whichever of ` - ` or `, ` the page used.
+        # `text_block`, not `first`: the latter hands back the node's OUTER
+        # HTML, so the name would arrive as "<title>Elijah Gabe Cervantes".
+        title = _clean(page.meta("og:title")) or _clean(page.text_block("title")) or ""
+        name = title.rsplit(" | ", 1)[0] if " | " in title else title
+        separator = " - " if " - " in name else (", " if ", " in name else None)
+        if separator:
+            first, _, rest = name.partition(separator)
             profile["name"] = _clean(first)
             profile["headline"] = _clean(rest)
         else:

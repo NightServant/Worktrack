@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import os
 from pathlib import Path
+from urllib.parse import urlparse
 
 import httpx
 from fastapi import FastAPI
@@ -32,6 +33,7 @@ from extractor.core import extract
 from extractor.net import normalize_target_url, reject_reason
 from extractor.apify_profile import profile_from_apify
 from extractor.github_profile import _login, profile_from_github
+from extractor.jobstreet_profile import profile_from_jobstreet
 from extractor.merge_profile import merge_profiles
 from extractor.profile import extract_profile
 
@@ -457,8 +459,6 @@ def _profile_site(url: str) -> tuple[str, str]:
     THE LABEL IS FOR THE READER. A warning has to name the site it is about, or
     somebody with four links has no idea which one to fix.
     """
-    from urllib.parse import urlparse
-
     host = (urlparse(url).hostname or "").lower()
     host = host[4:] if host.startswith("www.") else host
     if host == "linkedin.com" or host.endswith(".linkedin.com"):
@@ -469,6 +469,8 @@ def _profile_site(url: str) -> tuple[str, str]:
         return "page", "JobStreet"
     if "glassdoor" in host:
         return "page", "Glassdoor"
+    if "indeed" in host:
+        return "page", "Indeed"
     return "page", host or "That site"
 
 
@@ -568,30 +570,89 @@ async def _linkedin_profile(url: str) -> tuple[dict[str, Any] | None, str]:
     return {**extract_profile(url, html, "LinkedIn"), "via": "firecrawl"}, "ok"
 
 
-async def _page_profile(url: str, label: str) -> tuple[dict[str, Any] | None, str]:
-    """Any other profile page, read through Firecrawl. `(payload, reason)`.
+async def _plain_fetch(url: str) -> tuple[str | None, str]:
+    """An ordinary HTTP GET. Returns `(html, reason)`.
 
-    ONE PARSER FOR EVERY SITE THAT IS NOT LINKEDIN OR GITHUB, and that is a
-    decision about honesty rather than laziness. JobStreet and Glassdoor do not
-    publish a candidate profile to a signed-out visitor at all -- the first is
-    a SEEK account behind a login, the second is a reviews account -- so there
-    is no site-specific structure to write a parser against. What CAN be read
-    is whatever schema.org `Person` or Open Graph data the page carries, which
-    is exactly what `extract_profile` already does.
+    THE FREE ROUTE, AND IT IS TRIED FIRST (2026-09-18). Every profile that was
+    not GitHub went straight to Firecrawl, which costs a credit per attempt --
+    and measured on a real JobStreet profile, a plain fetch with the browser
+    headers this service already sends returns 200 and 105KB of
+    server-rendered HTML carrying the whole public profile. Spending money to
+    fetch a page that answers an ordinary request is a habit, not a necessity.
 
-    WHEN THERE IS NOTHING, THE WARNING SAYS SO, naming the site. A panel that
-    silently added nothing for two of four links would look broken; one that
-    says Glassdoor showed no profile is telling the reader something true about
-    Glassdoor.
+    A CHALLENGE OR A JAVASCRIPT SHELL IS NOT A PAGE, and both are reported as
+    their own reason so the caller knows there is something better to try.
+    `/extract` makes the same two checks for the same reason; see its comments
+    for why rendering a page the site serves to browsers is not a disguise.
     """
-    if not os.environ.get("FIRECRAWL_API_KEY", "").strip():
-        return None, "no-key"
-    html, reason = await _firecrawl_fetch(url, firecrawl_profile_payload(url))
-    if not html:
-        return None, reason
+    try:
+        async with httpx.AsyncClient(
+            follow_redirects=True, timeout=REQUEST_TIMEOUT_S, headers=BROWSER_HEADERS
+        ) as client:
+            response = await client.get(url)
+    except httpx.TimeoutException:
+        return None, "timeout"
+    except Exception:
+        return None, "unreachable"
+
+    # THE REDIRECT IS A SECOND URL, and only the thing that followed it can see
+    # where it landed.
+    if reject_reason(str(response.url)):
+        return None, "redirected-to-blocked-host"
+
+    html = response.text
+    if looks_like_bot_challenge(response.status_code, html):
+        return None, "challenge"
+    if response.status_code >= 400:
+        return None, f"http-{response.status_code}"
+    if not html or not html.strip():
+        return None, "empty-body"
     if len(html.encode("utf-8", "ignore")) > MAX_HTML_BYTES:
         return None, "too-large"
-    return {**extract_profile(url, html, label), "via": "firecrawl"}, "ok"
+    if looks_like_javascript_shell(html):
+        return None, "javascript-shell"
+    return html, "ok"
+
+
+async def _page_profile(url: str, label: str) -> tuple[dict[str, Any] | None, str]:
+    """Any profile page that is not LinkedIn or GitHub. `(payload, reason)`.
+
+    ORDINARY FETCH FIRST, FIRECRAWL SECOND. The plain request is free and
+    works on at least one of these sites; Firecrawl is what runs the page when
+    a site answers a raw request with a challenge or an empty shell. Both
+    reasons ride back in the compound string, so a failure says which route
+    was tried and what each said.
+
+    THE PARSER IS CHOSEN BY HOST, and JobStreet earns its own because the
+    generic one cannot read it: that page has no JSON-LD and no `og:title`, so
+    "fetched fine, parsed to nothing" and "never fetched" produced the same
+    empty panel. See `jobstreet_profile`. Anything the site-specific parser
+    does not recognise falls through to the generic reader rather than
+    failing -- a markup change should cost the extra fields, not the import.
+
+    WHAT A SITE WILL NOT GIVE IS STILL SAID OUT LOUD, naming it. Glassdoor
+    publishes no candidate profile at all to a signed-out visitor, and a panel
+    that silently added nothing for it would look broken.
+    """
+    reasons: dict[str, str] = {}
+    html, reason = await _plain_fetch(url)
+    reasons["fetch"] = reason
+
+    if not html and os.environ.get("FIRECRAWL_API_KEY", "").strip():
+        html, reason = await _firecrawl_fetch(url, firecrawl_profile_payload(url))
+        reasons["firecrawl"] = reason
+        if html and len(html.encode("utf-8", "ignore")) > MAX_HTML_BYTES:
+            html, reasons["firecrawl"] = None, "too-large"
+
+    if not html:
+        return None, ", ".join(f"{k}: {v}" for k, v in reasons.items())
+
+    if "jobstreet" in (urlparse(url).hostname or "").lower():
+        site_specific = profile_from_jobstreet(url, html)
+        if site_specific is not None:
+            return {**site_specific, "via": "jobstreet"}, "ok"
+
+    return {**extract_profile(url, html, label), "via": "page"}, "ok"
 
 
 async def _one_profile(url: str) -> dict[str, Any]:

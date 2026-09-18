@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { SettingsPage } from '../SettingsPage'
 import {
@@ -228,7 +228,9 @@ describe('the profile panel', () => {
     expect(screen.getByText(/Baguio, Philippines · Software Development/)).toBeTruthy()
     expect(screen.getByText('Developer')).toBeTruthy()
     expect(screen.getByText('University')).toBeTruthy()
-    expect(screen.getByText('React, TypeScript')).toBeTruthy()
+    // Skills are TAGS now, one box each, rather than one comma-joined line.
+    expect(screen.getByText('React')).toBeTruthy()
+    expect(screen.getByText('TypeScript')).toBeTruthy()
   })
 
   it('renders a partial profile rather than blanking on missing fields', () => {
@@ -528,17 +530,49 @@ describe('importing a LinkedIn export', () => {
     render(<SettingsPage prefs={null} profile={{ status: 'ready', profile: FILLED }} />)
     expect(screen.getByText(/Software Development/)).toBeTruthy()
     expect(screen.getByText('Filipino (Native)')).toBeTruthy()
-    expect(screen.getByText('https://example.dev')).toBeTruthy()
+    // THE LINK IS INTACT, the label is not the whole URL: a website list is
+    // read at a glance and `https://www.` is the part nobody is reading.
+    const site = screen.getByRole('link', { name: 'example.dev' })
+    expect(site.getAttribute('href')).toBe('https://example.dev')
   })
 
-  it('shows the address and birth date plainly, under their own heading', () => {
+  it('shows the address and birth date plainly, under their own labels', () => {
     // A home address is a different category of fact from a job title. Shown
     // rather than tucked away, so somebody who does not want it stored knows
-    // to clear the profile.
-    render(<SettingsPage prefs={null} profile={{ status: 'ready', profile: FILLED }} />)
-    expect(screen.getByText('personal details')).toBeTruthy()
+    // to clear the profile. Each now carries its own label rather than sharing
+    // a `personal details` heading, which is the layout every reference
+    // profile uses for a field and its name.
+    const { container } = render(
+      <SettingsPage prefs={null} profile={{ status: 'ready', profile: FILLED }} />
+    )
+    expect(container.querySelector('[data-profile-detail="address"]')).toBeTruthy()
+    expect(container.querySelector('[data-profile-detail="born"]')).toBeTruthy()
     expect(screen.getByText(/Bamban, Tarlac/)).toBeTruthy()
-    expect(screen.getByText(/Born Mar 7/)).toBeTruthy()
+    expect(screen.getByText('Mar 7')).toBeTruthy()
+  })
+
+  it('names what the profile was built from, on the header', () => {
+    // A merged profile's most important fact is where it came from, and the
+    // sources card is at the foot of a long page.
+    const { container } = render(
+      <SettingsPage prefs={null} profile={{ status: 'ready', profile: FILLED }} />
+    )
+    const banner = container.querySelector('[data-profile-banner]') as HTMLElement
+    expect(within(banner).getByText('LinkedIn')).toBeTruthy()
+    expect(banner.querySelectorAll('[data-profile-tag]').length).toBeGreaterThan(0)
+  })
+
+  it('puts the email and the profile link in the header', () => {
+    // Every reference screen carries the facts you would copy out of a profile
+    // beside the name; this app had the email nowhere at all.
+    const { container } = render(
+      <SettingsPage prefs={null} profile={{ status: 'ready', profile: FILLED }} />
+    )
+    const banner = container.querySelector('[data-profile-banner]') as HTMLElement
+    expect(
+      within(banner).getByRole('link', { name: 'egabe.cervantes@gmail.com' }).getAttribute('href')
+    ).toBe('mailto:egabe.cervantes@gmail.com')
+    expect(banner.querySelector('[data-profile-detail="location"]')).toBeTruthy()
   })
 })
 

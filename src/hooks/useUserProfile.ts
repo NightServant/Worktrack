@@ -163,12 +163,21 @@ function readSources(value: unknown): ProfileSource[] {
     if (!row || typeof row !== 'object') return []
     const source = row as Record<string, unknown>
     if (typeof source.url !== 'string') return []
+    // THE RAW REASON RIDES WITH THE SENTENCE, in parentheses, the same way the
+    // whole-request failure already carries it. `Could not read that JobStreet
+    // page` is a dead end for anybody trying to fix their link; the same line
+    // with `(fetch: challenge, firecrawl: http-403)` says which route was tried
+    // and what each one said. It is the difference between a report and a
+    // shrug -- and it is how the JobStreet failure was diagnosed at all.
+    const sentence = typeof source.error === 'string' ? source.error : null
+    const reason = typeof source.reason === 'string' ? source.reason : null
     return [
       {
         url: source.url,
         site: typeof source.site === 'string' ? source.site : source.url,
         ok: source.ok === true,
-        note: typeof source.error === 'string' ? source.error : null,
+        note:
+          sentence && reason && reason !== 'ok' ? `${sentence} (${reason})` : sentence,
       },
     ]
   })

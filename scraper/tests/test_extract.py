@@ -1129,3 +1129,125 @@ def test_one_address_or_many_arrive_as_one_ordered_list():
     )
     # Order is authority for the merge, and a repeat is not a second source.
     assert both.addresses() == ["https://linkedin.com/in/b", "https://github.com/a"]
+
+
+# --- A JobStreet profile, which has neither JSON-LD nor og:title -------------
+
+from extractor.jobstreet_profile import profile_from_jobstreet  # noqa: E402
+from extractor.profile import extract_profile  # noqa: E402
+
+JOBSTREET_HTML = """
+<html><head><title>Elijah Gabe Cervantes, Frontend Developer at Dominican College | Jobstreet</title>
+<meta property="og:site_name" content="Jobstreet Philippines">
+<meta name="description" content="Find out more about Elijah Gabe Cervantes.">
+</head><body>
+<script>window.__APOLLO_STATE__ = {"ROOT_QUERY":{"__typename":"Query",
+"publicProfileView({\\"input\\":{\\"slug\\":\\"elijahgabe-cervantes-d3y9lqn7kx\\"}})":{
+"__typename":"RestrictedPublicProfileView","slug":"elijahgabe-cervantes-d3y9lqn7kx",
+"firstName":"Elijah Gabe","lastName":"Cervantes",
+"profileAvatarUrls":{"image256Url":"https://s3.example/avatar?X-Amz-Expires=43200"},
+"homeLocation":{"__typename":"PublicProfileLocation","countryCode":"PH",
+"label({\\"locale\\":\\"en-PH\\"})":"Bamban, Tarlac, PH"},
+"workHistories":[{"__typename":"RestrictedPublicProfileWorkHistory",
+"companyName":"Dominican College of Tarlac","roleTitle":"Frontend Developer and UI/UX Designer"}],
+"hasVerifiedCredentials":true}}};</script>
+</body></html>
+"""
+
+
+def test_a_jobstreet_profile_is_read_from_its_own_graphql_cache():
+    # MEASURED ON THE REAL PAGE (2026-09-18): zero ld+json blocks and an og:
+    # set that is site branding, so the generic reader had nothing. The cache
+    # the page hydrates from carries the fields as structured data.
+    out = profile_from_jobstreet("https://ph.jobstreet.com/profiles/x", JOBSTREET_HTML)
+    assert out is not None
+    p = out["profile"]
+    assert p["name"] == "Elijah Gabe Cervantes"
+    assert p["location"] == "Bamban, Tarlac, PH"
+    assert p["experiences"] == [
+        {
+            "title": "Frontend Developer and UI/UX Designer",
+            "company": "Dominican College of Tarlac",
+            "period": None,
+            "location": None,
+            "description": None,
+        }
+    ]
+    assert p["headline"] == "Frontend Developer and UI/UX Designer at Dominican College of Tarlac"
+
+
+def test_the_jobstreet_avatar_is_not_stored():
+    # The URLs are pre-signed with X-Amz-Expires=43200 -- twelve hours -- so
+    # storing one puts a broken image on the panel by tomorrow.
+    p = profile_from_jobstreet("x", JOBSTREET_HTML)["profile"]
+    assert p["pictureUrl"] is None
+
+
+def test_what_jobstreet_withholds_is_said_out_loud():
+    warnings = profile_from_jobstreet("x", JOBSTREET_HTML)["warnings"]
+    assert any("current role" in w for w in warnings)
+
+
+def test_a_page_without_the_cache_falls_through_rather_than_storing_a_blank():
+    # None, not an empty profile: the caller then tries the generic reader,
+    # which is the difference between "the markup moved" and "no name".
+    assert profile_from_jobstreet("x", "<html><body>hello</body></html>") is None
+
+
+def test_the_document_title_is_the_last_source_of_a_name_and_headline():
+    # A page with no graph and no og:title is not rare. Its <title> is
+    # "Name, Headline | Site", which is a name and a headline for free.
+    out = extract_profile("https://ph.jobstreet.com/profiles/x", JOBSTREET_HTML, "JobStreet")
+    assert out["profile"]["name"] == "Elijah Gabe Cervantes"
+    assert out["profile"]["headline"] == "Frontend Developer at Dominican College"
+    assert any("JobStreet did not return the structured half" in w for w in out["warnings"])
+
+
+# --- One project, two names --------------------------------------------------
+
+
+def test_a_repository_and_a_profile_entry_are_one_project():
+    # Gabe, 2026-09-18: "there are repeating information about projects -- one
+    # from LinkedIn and one from GitHub". The prose title wins because it is
+    # first; the repository's URL fills the gap it left.
+    merged = merge_profiles(
+        [
+            {"projects": [{"title": "FIFO page replacement algorithm", "description": "A Java CLI.", "url": None}]},
+            {"projects": [{"title": "FIFO_Algorithm", "description": "This Java CLI program.", "url": "https://github.com/x/FIFO_Algorithm"}]},
+        ]
+    )["projects"]
+    assert len(merged) == 1
+    assert merged[0]["title"] == "FIFO page replacement algorithm"
+    assert merged[0]["url"] == "https://github.com/x/FIFO_Algorithm"
+
+
+def test_a_slug_and_a_sentence_are_the_same_name():
+    merged = merge_profiles(
+        [
+            {"projects": [{"title": "The Online Resume Builder"}]},
+            {"projects": [{"title": "Online-Resume-Builder"}]},
+        ]
+    )["projects"]
+    assert [item["title"] for item in merged] == ["The Online Resume Builder"]
+
+
+def test_two_projects_that_merely_share_a_word_stay_apart():
+    merged = merge_profiles(
+        [
+            {"projects": [{"title": "Java Calculator"}]},
+            {"projects": [{"title": "Java"}, {"title": "Weather app in Java"}]},
+        ]
+    )["projects"]
+    assert len(merged) == 3
+
+
+def test_two_roles_at_one_employer_are_never_merged():
+    # The fuzzy rule is projects-only on purpose: these two share most of their
+    # words, and merging them would silently delete a job.
+    merged = merge_profiles(
+        [
+            {"experiences": [{"title": "Frontend Engineer", "company": "Worktrack"}]},
+            {"experiences": [{"title": "Senior Frontend Engineer", "company": "Worktrack"}]},
+        ]
+    )["experiences"]
+    assert len(merged) == 2

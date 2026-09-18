@@ -4,7 +4,7 @@ import * as React from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { EMPTY_PROFILE, hasProfileContent, type UserProfile } from '@/services/profile'
 import { Bullets, Records } from './profileEntries'
-import { Facet, Identity, Loading, Section } from './profileChrome'
+import { Detail, Facet, Identity, Loading, Section, Tag } from './profileChrome'
 
 /**
  * Settings -> Profile: who you are, as the CV tools see you.
@@ -116,8 +116,61 @@ export function ProfileGroup({ state, source, steps }: ProfileGroupProps) {
 
       {ready && (
       <div className="flex flex-col gap-6" data-profile-state="ready">
-        <Identity profile={profile} />
+        {/* WHAT THIS PROFILE WAS BUILT FROM, on the header itself. Four
+            reference screens all put a short row of tags under the name, and
+            the honest thing to put in ours is the sources: it answers "where
+            did this come from" at a glance, and it is the fact a merged
+            profile most needs to carry. Only the ones that READ -- a tag for a
+            link that failed would be a claim the sources card below already
+            contradicts. */}
+        <Identity
+          profile={profile}
+          tags={
+            <>
+              {profile.sources
+                .filter((source) => source.ok)
+                .map((source) => (
+                  <Tag key={source.url} icon="Link">
+                    {source.site}
+                  </Tag>
+                ))}
+              {/* THE ONE CONTROL ON THE HEADER, and it is navigation rather
+                  than an action: the thing you do to a profile you are looking
+                  at is change what it was built FROM, and that form is now the
+                  last card on a long page. Every reference screen carries a
+                  control in this position -- `Edit Profile`, `Share profile` --
+                  and this is the honest equivalent for a profile that is
+                  fetched rather than typed. A link, not a button, because it
+                  goes somewhere. */}
+              {source && (
+                <a
+                  href="#profile-sources"
+                  data-profile-sources-link
+                  className="text-body-s text-accent-default underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-default"
+                >
+                  update sources
+                </a>
+              )}
+            </>
+          }
+        />
 
+        {/* TWO COLUMNS ONCE THE CARD IS WIDE ENOUGH (Gabe, 2026-09-18, with
+            four reference profiles). A single stack put `details` -- skills,
+            languages, websites -- below four sections of records, so the
+            facts somebody scans for were the last thing on the page and the
+            right half of a 1200px panel was empty the whole way down.
+
+            THE SPLIT IS BY HOW A THING IS READ, not by length: the left
+            column is the NARRATIVE (about, roles, education) which is read in
+            order, and the right is the LOOKUP (details, skills, certificates,
+            projects) which is scanned. `1.6fr / 1fr` gives the prose a
+            readable measure and the lookup column enough width for a
+            two-column tag wall.
+
+            BY CONTAINER, NOT VIEWPORT, like everything else on this panel. */}
+        <div className="grid gap-6 @4xl/profile:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] @4xl/profile:items-start">
+        <div className="flex min-w-0 flex-col gap-6">
         {/* ABOUT IS ITS OWN SECTION, as it is on LinkedIn, rather than a
             paragraph welded to the identity block. It is prose about a
             person and it belongs with the other things they wrote, not
@@ -160,6 +213,74 @@ export function ProfileGroup({ state, source, steps }: ProfileGroupProps) {
           </Section>
         )}
 
+        </div>
+
+        <div className="flex min-w-0 flex-col gap-6">
+        {/* THE LOOKUP COLUMN OPENS WITH `details`, which is the block a reader
+            came for: skills, languages, websites. It was the LAST card on the
+            page before this. */}
+        {facets && (
+          <Section title="details" icon="Tag">
+            <div className="flex flex-col gap-5">
+              {profile.skills.length > 0 && (
+                <Facet title="skills">
+                  {/* TAGS, NOT A COMMA-JOINED PARAGRAPH (Gabe, 2026-09-18:
+                      "consider using other UI components such as tags"). The
+                      note that used to sit here said the system forbids pills
+                      -- it forbids STATUS pills, which is a different thing:
+                      those are a hue with a meaning, and the rule is that
+                      status is a rule plus a label. These carry no status and
+                      no fill, and a wall of forty is exactly what a skills
+                      list is; as prose it was a paragraph nobody finishes. */}
+                  <div className="flex flex-wrap gap-1.5">
+                    {profile.skills.map((skill) => (
+                      <Tag key={skill}>{skill}</Tag>
+                    ))}
+                  </div>
+                </Facet>
+              )}
+              {profile.languages.length > 0 && (
+                <Facet title="languages">
+                  <div className="flex flex-wrap gap-1.5">
+                    {profile.languages.map((language) => (
+                      <Tag key={language}>{language}</Tag>
+                    ))}
+                  </div>
+                </Facet>
+              )}
+              {profile.websites.length > 0 && (
+                <Facet title="websites">
+                  <ul className="flex flex-col gap-1">
+                    {profile.websites.map((site) => (
+                      <li key={site} className="min-w-0">
+                        <a
+                          href={site}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block break-all text-body-s text-accent-default underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-default"
+                        >
+                          {site.replace(/^https?:\/\/(www\.)?/, '')}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </Facet>
+              )}
+              {/* LABELLED FOR WHAT IT IS. A home address and a birth date are
+                  a different category of fact from a job title, and a source
+                  hands them over whether or not anyone wanted them. Shown
+                  plainly, so a reader who does not want them stored knows to
+                  clear the profile. */}
+              {(profile.address || profile.birthDate) && (
+                <div className="grid gap-4 @sm/profile:grid-cols-2">
+                  {profile.address && <Detail label="address">{profile.address}</Detail>}
+                  {profile.birthDate && <Detail label="born">{profile.birthDate}</Detail>}
+                </div>
+              )}
+            </div>
+          </Section>
+        )}
+
         {profile.certifications.length > 0 && (
           <Section
             title="licenses & certifications"
@@ -190,71 +311,8 @@ export function ProfileGroup({ state, source, steps }: ProfileGroupProps) {
           </Section>
         )}
 
-        {facets && (
-          <Section title="details" icon="Tag">
-            {/* THE SHORT LISTS SHARE A ROW once there is width for it.
-                Each is looked up rather than read, so four of them in
-                one column is three scrolls for four facts. */}
-            <div className="grid gap-5 @lg/profile:grid-cols-2 @3xl/profile:grid-cols-3">
-              {profile.skills.length > 0 && (
-                <Facet title="skills">
-                  {/* Comma-joined prose, not chips: the system forbids
-                      pills, and forty skills as forty boxes is a wall
-                      either way. */}
-                  <p className="text-body-s leading-[1.6] text-text-secondary">
-                    {profile.skills.join(', ')}
-                  </p>
-                </Facet>
-              )}
-              {profile.languages.length > 0 && (
-                <Facet title="languages">
-                  <p className="text-body-s text-text-secondary">
-                    {profile.languages.join(', ')}
-                  </p>
-                </Facet>
-              )}
-              {profile.websites.length > 0 && (
-                <Facet title="websites">
-                  <ul className="flex flex-col gap-1">
-                    {profile.websites.map((site) => (
-                      <li key={site} className="min-w-0">
-                        <a
-                          href={site}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="block break-all text-body-s text-accent-default underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-default"
-                        >
-                          {site}
-                        </a>
-                      </li>
-                    ))}
-                  </ul>
-                </Facet>
-              )}
-              {/* LABELLED FOR WHAT IT IS. A home address and a birth date
-                  are a different category of fact from a job title, and
-                  a source hands them over whether or not anyone wanted
-                  them. Shown plainly, so a reader who does not want them
-                  stored knows to clear the profile. */}
-              {(profile.address || profile.birthDate) && (
-                <Facet title="personal details">
-                  <div className="flex flex-col gap-1">
-                    {profile.address && (
-                      <p className="text-body-s leading-[1.6] text-text-secondary">
-                        {profile.address}
-                      </p>
-                    )}
-                    {profile.birthDate && (
-                      <p className="text-body-s text-text-secondary">
-                        Born {profile.birthDate}
-                      </p>
-                    )}
-                  </div>
-                </Facet>
-              )}
-            </div>
-          </Section>
-        )}
+        </div>
+        </div>
 
         {!hasProfileContent(profile) && (
           <p className="text-body-s text-text-muted">This import came back empty.</p>
@@ -271,9 +329,11 @@ export function ProfileGroup({ state, source, steps }: ProfileGroupProps) {
             they have done, and then -- for anyone who came to fix a link --
             where it all came from. */}
         {source && (
-          <Section title="sources" icon="Link">
-            {source}
-          </Section>
+          <div id="profile-sources" className="scroll-mt-6">
+            <Section title="sources" icon="Link">
+              {source}
+            </Section>
+          </div>
         )}
 
         {profile.fetchedAt && (

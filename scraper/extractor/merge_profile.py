@@ -31,6 +31,7 @@ source filled. That is what makes adding a source safe.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from .profile import EMPTY_PROFILE
@@ -60,12 +61,67 @@ _RECORD_LISTS = {
     "projects": ("title",),
 }
 
+#: Words that carry no identity in a project name.
+#:
+#: A repository is named `online-resume-builder` and the same project is
+#: written `The Online Resume Builder` on a profile. The article is the whole
+#: difference, and it is not one.
+_NOISE = {"the", "a", "an", "of", "for", "and", "my", "app", "application", "project"}
+
+#: Lists where two records may be the same thing under two names.
+#:
+#: PROJECTS ONLY, and the restriction is the safety (Gabe, 2026-09-18: "there
+#: are repeating information about projects -- one from LinkedIn and one from
+#: GitHub"). A person writes a project one way on a profile and names its
+#: repository another -- `FIFO page replacement algorithm` against
+#: `FIFO_Algorithm`, `Java Arithmetic Calculator` against `Java-Calculator` --
+#: so exact matching listed every one of them twice. Roles and schools are NOT
+#: matched this way on purpose: two different jobs at one employer share most
+#: of their words, and merging them would silently delete a job.
+_FUZZY_LISTS = {"projects"}
+
 
 def _text(value: Any) -> str | None:
     if not isinstance(value, str):
         return None
     stripped = value.strip()
     return stripped or None
+
+
+def _tokens(record: dict[str, Any], fields: tuple[str, ...]) -> set[str]:
+    """The words that identify a record, with the punctuation of a slug gone.
+
+    `I-Love-Music-1.0` and `I Love Music 1.0` are the same project written by a
+    repository and by a person, so the separators a slug uses -- hyphen,
+    underscore, dot -- are word breaks here, not characters.
+    """
+    words: set[str] = set()
+    for field in fields:
+        value = _text(record.get(field))
+        if not value:
+            continue
+        for word in re.split(r"[^a-z0-9]+", value.lower()):
+            if word and word not in _NOISE:
+                words.add(word)
+    return words
+
+
+def _same_thing(a: set[str], b: set[str]) -> bool:
+    """Whether two token sets name one project.
+
+    A SUBSET, NOT AN OVERLAP. `{fifo, algorithm}` inside
+    `{fifo, page, replacement, algorithm}` is a repository named after the
+    project beside it; two sets that merely share a word are two projects that
+    happen to both mention Java.
+
+    AND NEVER ON ONE WORD. `{java}` is inside every Java project anybody has
+    ever written, so a single-token name matches only its exact twin -- which
+    the caller has already tried by key.
+    """
+    if not a or not b:
+        return False
+    smaller, larger = (a, b) if len(a) <= len(b) else (b, a)
+    return len(smaller) >= 2 and smaller <= larger
 
 
 def _key(record: dict[str, Any], fields: tuple[str, ...]) -> str:
@@ -85,7 +141,11 @@ def _key(record: dict[str, Any], fields: tuple[str, ...]) -> str:
 
 
 def _merge_records(
-    into: list[dict[str, Any]], incoming: Any, fields: tuple[str, ...]
+    into: list[dict[str, Any]],
+    incoming: Any,
+    fields: tuple[str, ...],
+    *,
+    fuzzy: bool = False,
 ) -> list[dict[str, Any]]:
     """One list of records, with duplicates filled in rather than repeated."""
     if not isinstance(incoming, list):
@@ -98,6 +158,15 @@ def _merge_records(
         if not key:
             continue
         existing = index.get(key)
+        if existing is None and fuzzy:
+            # THE SAME PROJECT UNDER TWO NAMES. Scanned rather than looked up,
+            # because "is one name a slug of the other" is not a question a
+            # dictionary key can answer. The list is a handful of records.
+            words = _tokens(record, fields)
+            existing = next(
+                (item for item in into if _same_thing(words, _tokens(item, fields))),
+                None,
+            )
         if existing is None:
             copy = dict(record)
             into.append(copy)
@@ -147,6 +216,8 @@ def merge_profiles(profiles: list[dict[str, Any]]) -> dict[str, Any]:
                 merged[field].append(text)
 
         for field, identity in _RECORD_LISTS.items():
-            _merge_records(merged[field], profile.get(field), identity)
+            _merge_records(
+                merged[field], profile.get(field), identity, fuzzy=field in _FUZZY_LISTS
+            )
 
     return merged
