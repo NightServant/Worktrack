@@ -16,7 +16,8 @@ import {
 } from '@/components/ui/carousel'
 import { ICON_MOTION_GROUP } from '@/components/icons/motion'
 import { useAppHref } from '@/components/shell/routeBase'
-import { QUIET_AFTER_DAYS, type UpNextItem } from '@/lib/upNext'
+import { parseDayKey } from '@/lib/calendar'
+import { QUIET_AFTER_DAYS, RECENT_WINDOW_DAYS, type UpNextItem } from '@/lib/upNext'
 
 /**
  * The planner's first band: what is booked, and what has gone quiet.
@@ -33,10 +34,17 @@ import { QUIET_AFTER_DAYS, type UpNextItem } from '@/lib/upNext'
  * band -- a deliberate call, and a one-line swap if it reads wrong: your own
  * commitments outrank a third-party job board.
  *
- * TWO KINDS OF CARD, and the difference is carried by the label rather than by
- * colour. A booked event has a clock on it; a chase has an age. The system
- * paints status in five reserved hues and this is not a status, so neither
- * card is tinted -- the accent marks only the action, which is the link out.
+ * THREE KINDS OF CARD, and the difference is carried by the label and the
+ * lead rather than by colour. A booked event has a clock on it; a chase has an
+ * age; something that already happened says how long ago. The system paints
+ * status in five reserved hues and this is not a status, so no card is tinted
+ * -- the accent marks only the action, which is the link out.
+ *
+ * THE PAST IS IN HERE TOO SINCE 2026-09-18 (Gabe: "up next section must show
+ * the past activities occurred such as sent applications within a specific day
+ * and past interviews"). It is the TAIL of the rail rather than the head --
+ * see `buildUpNext` for the ordering -- so the heading stays true of what you
+ * see first, and the subtitle says the rest out loud.
  */
 export interface UpNextProps {
   items?: UpNextItem[]
@@ -51,15 +59,32 @@ function formatWhen(iso: string): string {
   return `${day} · ${time}`
 }
 
-/** How far off it is, in the words somebody would actually use. */
+/** `Mon, Sep 14` -- a day with no clock, for something dated and untimed. */
+function formatDay(key: string): string {
+  return parseDayKey(key).toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  })
+}
+
+/**
+ * How far off it is -- or how long ago -- in the words somebody would use.
+ *
+ * IT READS BACKWARDS AS WELL AS FORWARDS now that the rail carries what has
+ * already happened. Without the negative branch every past card said `today`,
+ * which is the one thing it certainly was not.
+ */
 function formatLead(iso: string, now: Date): string | null {
   const days = Math.round(
     (new Date(new Date(iso).toDateString()).getTime() - new Date(now.toDateString()).getTime()) /
       (24 * 60 * 60 * 1000)
   )
-  if (days <= 0) return 'today'
+  if (days === 0) return 'today'
   if (days === 1) return 'tomorrow'
-  if (days <= 14) return `in ${days} days`
+  if (days === -1) return 'yesterday'
+  if (days > 1 && days <= 14) return `in ${days} days`
+  if (days < -1 && days >= -RECENT_WINDOW_DAYS) return `${Math.abs(days)} days ago`
   return null
 }
 
@@ -92,7 +117,8 @@ export function UpNext({ items = [], className }: UpNextProps) {
               <h2>up next</h2>
             </CardTitle>
             <CardDescription>
-              what is booked, and what has gone quiet for more than {QUIET_AFTER_DAYS} days.
+              what is booked, what has gone quiet for more than {QUIET_AFTER_DAYS} days, and what
+              you have done in the last {RECENT_WINDOW_DAYS}.
             </CardDescription>
           </div>
         </div>
@@ -110,8 +136,8 @@ export function UpNext({ items = [], className }: UpNextProps) {
             this is one band on a page, not the whole screen. */}
         {items.length === 0 ? (
           <EmptyState icon="Calendar" className="py-10" data-up-next-empty>
-            nothing booked, and nothing waiting longer than {QUIET_AFTER_DAYS} days. the month
-            below is clear.
+            nothing booked, nothing waiting longer than {QUIET_AFTER_DAYS} days, and nothing sent
+            in the last {RECENT_WINDOW_DAYS}. the month below is clear.
           </EmptyState>
         ) : (
           /* THE ARROWS FLANK THE RAIL now rather than sitting on the heading
@@ -126,7 +152,10 @@ export function UpNext({ items = [], className }: UpNextProps) {
             <CarouselPrevious />
             <CarouselContent className="-ml-4">
             {items.map((item) => {
-              const lead = item.at ? formatLead(item.at, now) : null
+              // A dated-but-untimed item leads off its day; parsing the key
+              // rather than `new Date(key)` keeps it in the local calendar.
+              const leadFrom = item.at ?? (item.day ? parseDayKey(item.day).toISOString() : null)
+              const lead = leadFrom ? formatLead(leadFrom, now) : null
               return (
                 <CarouselItem key={item.id} className="basis-auto pl-4">
                   <article
@@ -149,7 +178,9 @@ export function UpNext({ items = [], className }: UpNextProps) {
                       <p className="tabular text-caption text-text-muted">
                         {item.at
                           ? formatWhen(item.at)
-                          : `no reply for ${item.quietDays} days`}
+                          : item.day
+                            ? formatDay(item.day)
+                            : `no reply for ${item.quietDays} days`}
                       </p>
                       {/* THE WHOLE POINT OF THE CARD. Every item here belongs
                           to an application, and the thing you do about it --

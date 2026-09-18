@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import type { CalendarEvent } from '@/services/events'
 import type { Job } from '@/types'
 
@@ -115,7 +115,12 @@ describe('Calendar route wrapper', () => {
     useJobsMock.mockReturnValue({ data: [JOB], isLoading: false, error: null })
     render(<Page />)
     expect(screen.getByRole('heading', { name: 'planner' })).toBeTruthy()
-    // Two agendas, one visible per width -- see the component's own test.
-    expect(screen.getAllByText('Acme Corp')).toHaveLength(2)
+    // SCOPED TO THE MOBILE BLOCK, which is where the agenda lives. It used to
+    // count every `Acme Corp` on the screen, and that number moved the moment
+    // the rail started reporting what had already happened -- an event at
+    // `now` is a held interview, so the company appeared once more. What this
+    // test is about is the JOIN, not how many surfaces show its result.
+    const agenda = document.querySelector('[data-week-strip]') as HTMLElement
+    expect(within(agenda).getAllByText('Acme Corp').length).toBeGreaterThan(0)
   })
 })

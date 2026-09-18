@@ -4,7 +4,7 @@ import * as React from 'react'
 import { Calendar } from '@/components/calendar/Calendar'
 import { JobFeed } from '@/components/calendar/JobFeed'
 import { useCalendarExtras } from '@/hooks/useCalendarExtras'
-import { dayKey } from '@/lib/calendar'
+import { sentApplicationsByDay } from '@/lib/calendar'
 import { buildUpNext } from '@/lib/upNext'
 import { DEMO } from '@/lib/demoFixture'
 
@@ -24,14 +24,7 @@ import { DEMO } from '@/lib/demoFixture'
 const companyByJobId = Object.fromEntries(DEMO.jobs.map((job) => [job.id, job.company]))
 
 /** Sent-per-day, built once: the fixture does not change between renders. */
-const applicationsByDay = DEMO.jobs.reduce<Record<string, number>>((map, job) => {
-  if (!job.date_applied) return map
-  const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(job.date_applied)
-  if (!parts) return map
-  const key = dayKey(new Date(+parts[1], +parts[2] - 1, +parts[3]))
-  map[key] = (map[key] ?? 0) + 1
-  return map
-}, {})
+const applicationsByDay = sentApplicationsByDay(DEMO.jobs)
 
 export function DemoCalendar() {
   const extras = useCalendarExtras()

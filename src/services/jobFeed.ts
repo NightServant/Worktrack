@@ -271,3 +271,78 @@ export async function fetchFeedIndustries(signal?: AbortSignal): Promise<FeedFac
     .filter((facet): facet is FeedFacet => facet !== null)
     .sort((a, b) => a.name.localeCompare(b.name))
 }
+
+/**
+ * The address, stripped of everything that varies without meaning.
+ *
+ * A tracked application holds the URL the reader handed to the add wizard, and
+ * the rail hands it `job.url` -- so they are the same string in the ordinary
+ * case. They stop being the same string for reasons that are not about the
+ * posting: a `?ref=` a board appended, a `#fragment` the browser kept, a
+ * trailing slash, `www.`, or `http` where the feed later said `https`.
+ * Comparing raw strings would call the same posting untracked over a question
+ * mark.
+ */
+function addressKey(url: string | null): string | null {
+  if (!url) return null
+  try {
+    const parsed = new URL(url)
+    const path = parsed.pathname.replace(/\/+$/, '')
+    return `${parsed.host.replace(/^www\./, '').toLowerCase()}${path.toLowerCase()}`
+  } catch {
+    return null
+  }
+}
+
+/** `luxury presence|junior web builder`. Case and spacing carry no meaning here. */
+function roleKey(company: string | null, role: string | null): string | null {
+  const clean = (value: string | null) => value?.replace(/\s+/g, ' ').trim().toLowerCase() || null
+  const left = clean(company)
+  const right = clean(role)
+  return left && right ? `${left}|${right}` : null
+}
+
+/**
+ * Which roles in the rail are already applications, as `feed id -> record id`.
+ *
+ * WHY THE RAIL NEEDS TO KNOW (Gabe, 2026-09-18: "Junior Web Builder is already
+ * tracked by my system ... the status link must be changed to tracked"). The
+ * panel offered `track it` on every role whatever the reader had already done,
+ * so the one thing it could say about a posting -- whether it is already in the
+ * pipeline -- it did not say, and pressing it opened the add wizard on a
+ * posting that has a record two screens away.
+ *
+ * TWO KEYS, IN THAT ORDER, and the second is not a nicety. The address is the
+ * exact match and is what `track it` itself produces: `?add=<url>` fills the
+ * wizard's URL field, so a role tracked FROM this rail stores this rail's link.
+ * Company-and-title catches the same posting reached another way -- from the
+ * employer's own careers page, or from the board's app -- which is the ordinary
+ * case for anybody who does not live in this panel.
+ *
+ * NOTHING IS FETCHED AND NOTHING IS WRITTEN. Both sides are already in memory:
+ * the applications the screen loaded and the rail it is drawing.
+ */
+export function trackedFeedRoles(
+  applications: { id: string; url: string | null; company: string; role: string }[],
+  feed: FeedJob[]
+): Record<string, string> {
+  const byAddress = new Map<string, string>()
+  const byRole = new Map<string, string>()
+  for (const application of applications) {
+    const address = addressKey(application.url)
+    // FIRST WINS, both times. Two applications for one posting is a duplicate
+    // the reader can see on their own board; picking the later one would move
+    // the link under them without explaining why.
+    if (address && !byAddress.has(address)) byAddress.set(address, application.id)
+    const role = roleKey(application.company, application.role)
+    if (role && !byRole.has(role)) byRole.set(role, application.id)
+  }
+
+  const tracked: Record<string, string> = {}
+  for (const job of feed) {
+    const match =
+      byAddress.get(addressKey(job.url) ?? '') ?? byRole.get(roleKey(job.company, job.title) ?? '')
+    if (match) tracked[job.id] = match
+  }
+  return tracked
+}

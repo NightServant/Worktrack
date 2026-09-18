@@ -9,7 +9,7 @@ import { useAuth } from '@/contexts/AuthContext'
  * Same shape as `useJob` -- keyed on `['job-events', user?.id, jobId]`,
  * enabled only once both the id and the user are known. Named `useJobEvents`
  * rather than `useEvents` so it does not collide with the calendar's own
- * hook over `eventService.listUpcoming`, which Task 6 adds.
+ * hook over `eventService.listFrom`, which Task 6 adds.
  */
 export function useJobEvents(jobId?: string) {
   const { user } = useAuth()

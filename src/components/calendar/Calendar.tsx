@@ -4,7 +4,7 @@ import * as React from 'react'
 import { PageHeader } from '@/components/ui/page-header'
 import { Button } from '@/components/ui/button'
 import { ChevronLeftIcon, ChevronRightIcon, CalendarIcon } from '@/components/icons'
-import { buildMonthGrid, weekOf } from '@/lib/calendar'
+import { buildMonthGrid, weekOf, type SentApplication } from '@/lib/calendar'
 import { MonthGrid } from './MonthGrid'
 import { WeekStrip } from './WeekStrip'
 import { Agenda } from './Agenda'
@@ -17,7 +17,7 @@ import type { UpNextItem } from '@/lib/upNext'
  * The calendar screen's body, over plain props -- same split as `Dashboard`
  * (Task 3) and `DetailPage` (Task 5), so it renders without Next routing or
  * react-query. `src/app/(app)/calendar/page.tsx` owns both reads this screen
- * needs: `useEvents()` (wrapping `eventService.listUpcoming`) for `events`,
+ * needs: `useEvents()` (wrapping `eventService.listFrom`) for `events`,
  * and `useJobs()` -- the same shared `['jobs', user?.id]` cache every other
  * screen in this branch already reads -- to build `companyByJobId`, the
  * `job_id -> company` map `Agenda` needs to satisfy roadmap 5.7's "time,
@@ -67,12 +67,14 @@ export interface CalendarProps {
    */
   onVisibleYearsChange?: (years: number[]) => void
   /**
-   * How many applications went out on each day, keyed by `dayKey`.
+   * Which applications went out on each day, keyed by `dayKey`.
    *
-   * Built at the route from the same `useJobs()` cache `companyByJobId` comes
-   * from, so the grid and the agenda agree without a second read.
+   * Built at the route by `sentApplicationsByDay`, from the same `useJobs()`
+   * cache `companyByJobId` comes from, so the grid and the agenda agree
+   * without a second read. It carries the rows rather than a count because the
+   * grid's day tooltip names the roles -- see MonthGrid.
    */
-  applicationsByDay?: Record<string, number>
+  applicationsByDay?: Record<string, SentApplication[]>
   /**
    * What is booked and what has gone quiet, built by `lib/upNext`.
    *
@@ -210,6 +212,7 @@ export function Calendar({
           events={events}
           holidays={holidays}
           applicationsByDay={applicationsByDay}
+          companyByJobId={companyByJobId}
           today={today}
         />
 

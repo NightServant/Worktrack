@@ -23,7 +23,7 @@ import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { FilterBar } from '@/components/ui/filter-bar'
 import { Skeleton } from '@/components/ui/skeleton'
-import { ExternalIcon, PlusIcon } from '@/components/icons'
+import { CheckIcon, ExternalIcon, PlusIcon } from '@/components/icons'
 import { ICON_MOTION_GROUP, iconMotion } from '@/components/icons/motion'
 import { localDayKey } from '@/services/date'
 import { parseDayKey } from '@/lib/calendar'
@@ -71,6 +71,15 @@ export interface JobFeedProps {
   locations?: FeedFacet[]
   geo?: string | null
   onGeoChange?: (slug: string) => void
+  /**
+   * Which roles here are already applications, as `feed id -> record id`.
+   *
+   * Computed by the route from the applications it has already loaded -- see
+   * `trackedFeedRoles`. Absent means "nobody asked", which is the demo and
+   * every test that does not care; the rail then offers `track it` on
+   * everything, which is what it did before this existed.
+   */
+  trackedIds?: Record<string, string>
   className?: string
 }
 
@@ -115,6 +124,7 @@ export function JobFeed({
   locations = [],
   geo = null,
   onGeoChange,
+  trackedIds = {},
   className,
 }: JobFeedProps) {
   const appHref = useAppHref()
@@ -345,6 +355,7 @@ export function JobFeed({
               {visible.map((job) => {
                 const band = formatBand(job)
                 const facts = [job.geo, job.level].filter(Boolean).join(' · ')
+                const tracked = trackedIds[job.id]
                 return (
                   <CarouselItem key={job.id} className="basis-auto pl-4">
                     {/* THE ROLE CARD KEEPS ITS FILL (Gabe, 2026-09-10:
@@ -396,20 +407,51 @@ export function JobFeed({
 
                       <div className="flex flex-col gap-2">
                         {band && <p className="tabular text-caption text-text-muted">{band}</p>}
-                        {/* THE URL, NOT THE ROW. `?add=` opens the ordinary add
-                            wizard on its first step with the address filled in;
-                            the app then reads the employer's own page. Nothing
-                            from this feed is written to the database. */}
-                        <Link
-                          href={appHref(`/applications?add=${encodeURIComponent(job.url)}`)}
-                          className={cn(
-                            ICON_MOTION_GROUP,
-                            'inline-flex items-center gap-1.5 self-start whitespace-nowrap text-body-s text-accent-default hover:underline'
-                          )}
-                        >
-                          <PlusIcon size={14} aria-hidden className={iconMotion('open')} />
-                          track it
-                        </Link>
+                        {/* TRACKED, OR TRACK IT -- one control, two states, and
+                            the difference is whether this posting already has a
+                            record (Gabe, 2026-09-18).
+
+                            `track it` IS THE URL, NOT THE ROW. `?add=` opens the
+                            ordinary add wizard on its first step with the
+                            address filled in; the app then reads the employer's
+                            own page. Nothing from this feed is written to the
+                            database.
+
+                            `tracked` IS THE RECORD. `?application=<id>` is the
+                            same parameter /applications already opens its record
+                            dialog from, so the link lands on the application
+                            overview for this posting rather than on a wizard
+                            that would create a second copy of it.
+
+                            IT IS NOT THE ACCENT. Orange is reserved for "the
+                            current action", and this one reports a state -- the
+                            work is done, and the link is a way back to it. The
+                            tick and the muted ink are the same pairing the rest
+                            of the app uses for a settled fact. */}
+                        {tracked ? (
+                          <Link
+                            href={appHref(`/applications?application=${tracked}`)}
+                            data-feed-tracked
+                            className={cn(
+                              ICON_MOTION_GROUP,
+                              'inline-flex items-center gap-1.5 self-start whitespace-nowrap text-body-s text-text-secondary hover:text-text-primary hover:underline'
+                            )}
+                          >
+                            <CheckIcon size={14} aria-hidden className={iconMotion('none')} />
+                            tracked
+                          </Link>
+                        ) : (
+                          <Link
+                            href={appHref(`/applications?add=${encodeURIComponent(job.url)}`)}
+                            className={cn(
+                              ICON_MOTION_GROUP,
+                              'inline-flex items-center gap-1.5 self-start whitespace-nowrap text-body-s text-accent-default hover:underline'
+                            )}
+                          >
+                            <PlusIcon size={14} aria-hidden className={iconMotion('open')} />
+                            track it
+                          </Link>
+                        )}
                       </div>
                     </article>
                   </CarouselItem>

@@ -105,7 +105,16 @@ export const eventService = {
   },
 
   /** Everything at or after `fromIso`, soonest first — the calendar and dashboard rail. */
-  async listUpcoming(client: SupabaseClient, fromIso: string): Promise<CalendarEvent[]> {
+  /**
+   * Every event from `fromIso` onward, oldest first.
+   *
+   * IT WAS `listUpcoming` AND THE ANCHOR WAS ALWAYS `now`, which is why the
+   * month grid could not draw an interview that had already happened -- a
+   * calendar that forgets last Tuesday. The query never cared: `fromIso` is
+   * the caller's, and the caller now asks for a window that reaches back. The
+   * name was the only thing claiming otherwise. See `useEvents`.
+   */
+  async listFrom(client: SupabaseClient, fromIso: string): Promise<CalendarEvent[]> {
     const { data, error } = await client
       .from('events')
       .select('*')

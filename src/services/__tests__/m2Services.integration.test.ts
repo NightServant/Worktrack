@@ -54,7 +54,7 @@ describeIntegration('M2 services against real Supabase rows', () => {
     expect(created.id).toBeTruthy()
     expect(created.user_id).toBe(userId)
 
-    const listed = await eventService.listUpcoming(client, '2026-01-01T00:00:00Z')
+    const listed = await eventService.listFrom(client, '2026-01-01T00:00:00Z')
     expect(listed.some((e) => e.id === created.id)).toBe(true)
 
     await eventService.remove(client, created.id)

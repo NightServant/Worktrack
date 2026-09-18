@@ -6,7 +6,8 @@ import { useJobs } from '@/hooks/useJobs'
 import { useCalendarExtras } from '@/hooks/useCalendarExtras'
 import { Calendar } from '@/components/calendar/Calendar'
 import { JobFeed } from '@/components/calendar/JobFeed'
-import { dayKey } from '@/lib/calendar'
+import { sentApplicationsByDay } from '@/lib/calendar'
+import { trackedFeedRoles } from '@/services/jobFeed'
 import { buildUpNext } from '@/lib/upNext'
 import { RouteSkeleton } from '@/components/ui/loading-skeletons'
 import { RouteError } from '@/components/ui/route-states'
@@ -16,7 +17,7 @@ import { RouteError } from '@/components/ui/route-states'
  * its data as props so it renders without Next routing or react-query, and
  * this file owns both reads it needs.
  *
- * `useEvents()` (wrapping `eventService.listUpcoming`) is the primary read
+ * `useEvents()` (wrapping `eventService.listFrom`) is the primary read
  * and the one that gates loading/error, same as `dashboard/page.tsx` gates
  * on its single `useJobs()` call. `useJobs()` here is a second, supplementary
  * read -- the same shared `['jobs', user?.id]` cache every other screen in
@@ -60,24 +61,27 @@ export default function Page() {
   }, [jobs])
 
   /**
-   * Applications sent per calendar day, for the grid.
+   * Applications sent per calendar day, for the grid and its day tooltip.
    *
-   * `date_applied` is a bare DATE, so it is turned into a local `Date` by
-   * PARTS rather than by `new Date(string)` -- the latter reads it as UTC
-   * midnight, which is the previous day for anyone behind UTC and would file
-   * the whole month one cell to the left. Same rule `jobStats` follows.
+   * The bucketing -- and the reason it parses `date_applied` by parts rather
+   * than through `new Date(string)` -- lives in `sentApplicationsByDay`, which
+   * the demo calendar builds from too. It was inlined here and copied there,
+   * which is two places for one date-parsing rule.
    */
-  const applicationsByDay = React.useMemo(() => {
-    const map: Record<string, number> = {}
-    for (const job of jobs) {
-      if (!job.date_applied) continue
-      const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(job.date_applied)
-      if (!parts) continue
-      const key = dayKey(new Date(+parts[1], +parts[2] - 1, +parts[3]))
-      map[key] = (map[key] ?? 0) + 1
-    }
-    return map
-  }, [jobs])
+  const applicationsByDay = React.useMemo(() => sentApplicationsByDay(jobs), [jobs])
+
+  /**
+   * Which roles in the fresh-roles rail are already applications.
+   *
+   * COMPUTED HERE BECAUSE IT NEEDS BOTH READS, the same rule `upNext` follows:
+   * the account's applications belong to this route and the rail belongs to
+   * `useCalendarExtras`, and neither hook can see the other. `JobFeed` takes
+   * the answer as a prop and decides nothing about it.
+   */
+  const trackedIds = React.useMemo(
+    () => trackedFeedRoles(jobs, extras.feed.jobs ?? []),
+    [jobs, extras.feed.jobs]
+  )
 
   // What is booked, merged with what has gone quiet. Built here because it
   // needs both reads; see lib/upNext for why events alone were not enough.
@@ -108,7 +112,7 @@ export default function Page() {
       {...extras.calendar}
       applicationsByDay={applicationsByDay}
       upNext={upNext}
-      feed={<JobFeed {...extras.feed} />}
+      feed={<JobFeed {...extras.feed} trackedIds={trackedIds} />}
     />
   )
 }

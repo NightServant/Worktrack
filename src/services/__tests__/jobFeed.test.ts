@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { geoSlugForCountry, toFeedJob } from '../jobFeed'
+import { geoSlugForCountry, toFeedJob, trackedFeedRoles } from '../jobFeed'
 
 const RAW = {
   id: 152938,
@@ -110,5 +110,63 @@ describe('geoSlugForCountry', () => {
     // A code Intl cannot name comes back as the code itself; that is not a
     // country name and must not be matched against one.
     expect(geoSlugForCountry('ZZ', LOCATIONS)).toBeNull()
+  })
+})
+
+describe('trackedFeedRoles', () => {
+  const role = (id: string, title: string, company: string, url: string) => ({
+    id,
+    title,
+    company,
+    url,
+    geo: null,
+    level: null,
+    industry: null,
+    publishedAt: new Date().toISOString(),
+    excerpt: null,
+    salaryMin: null,
+    salaryMax: null,
+    salaryCurrency: null,
+  })
+
+  const application = (id: string, url: string | null, company: string, jobRole: string) => ({
+    id,
+    url,
+    company,
+    role: jobRole,
+  })
+
+  it('matches on the address a `track it` would have stored', () => {
+    const feed = [role('1', 'Junior Web Builder', 'Luxury Presence', 'https://jobicy.com/jobs/152598-junior-web-builder')]
+    const tracked = trackedFeedRoles(
+      [application('a1', 'https://jobicy.com/jobs/152598-junior-web-builder', 'Luxury Presence', 'Junior Web Builder')],
+      feed
+    )
+    expect(tracked).toEqual({ '1': 'a1' })
+  })
+
+  it('ignores the parts of an address that carry no meaning', () => {
+    // A board appends `?ref=`, a browser keeps a fragment, a paste gains a
+    // trailing slash. None of them make it a different posting.
+    const feed = [role('1', 'Junior Web Builder', 'Luxury Presence', 'https://jobicy.com/jobs/152598')]
+    const tracked = trackedFeedRoles(
+      [application('a1', 'http://www.Jobicy.com/jobs/152598/?ref=saved#top', 'Luxury Presence', 'Junior Web Builder')],
+      feed
+    )
+    expect(tracked).toEqual({ '1': 'a1' })
+  })
+
+  it('still matches a posting tracked from the employer’s own page', () => {
+    const feed = [role('1', 'Junior Web Builder', 'Luxury Presence', 'https://jobicy.com/jobs/152598')]
+    const tracked = trackedFeedRoles(
+      [application('a1', 'https://luxurypresence.com/careers/123', 'luxury  presence', 'JUNIOR WEB BUILDER')],
+      feed
+    )
+    expect(tracked).toEqual({ '1': 'a1' })
+  })
+
+  it('leaves an untracked role out rather than guessing', () => {
+    const feed = [role('1', 'Backend Engineer', 'Vercel', 'https://jobicy.com/jobs/1')]
+    expect(trackedFeedRoles([application('a1', null, 'Netlify', 'Backend Engineer')], feed)).toEqual({})
   })
 })

@@ -2,11 +2,16 @@
  * Pure grid geometry for the calendar screen -- turning a year/month or an
  * arbitrary date into the `Date[]` shapes `MonthGrid` and `WeekStrip` render.
  *
- * This file does not bucket events into days. `groupEventsByDay` in
+ * This file does not bucket EVENTS into days. `groupEventsByDay` in
  * `src/services/events.ts` already owns that (see its docblock for the
  * TIMESTAMPTZ zone handling), and `Agenda`/`MonthGrid` call it directly --
  * writing a second day-bucketer here would give the calendar two competing
  * ideas of "which day does this event belong to."
+ *
+ * It DOES bucket applications, which is a different question with a different
+ * answer: `date_applied` is a bare DATE rather than an instant, so the zone
+ * reasoning above does not apply to it and the rule it needs instead is the
+ * one `sentApplicationsByDay` carries at the foot of this file.
  */
 
 /** The Sunday on or before `date`, at local midnight. */
@@ -83,4 +88,43 @@ export function dayKey(date: Date): string {
 export function parseDayKey(key: string): Date {
   const [year, month, day] = key.split('-').map(Number)
   return new Date(year, month - 1, day)
+}
+
+/** One application, as a calendar cell and its tooltip show it. */
+export interface SentApplication {
+  id: string
+  company: string
+  role: string
+}
+
+/**
+ * Applications bucketed under the day they were sent.
+ *
+ * THE ROWS, NOT A COUNT, and that is what the day tooltip is built from (Gabe,
+ * 2026-09-18: "add a tooltip for viewing the applications sent within that day
+ * -- show the role and company name"). It was `Record<string, number>` and a
+ * cell could only ever say `5 sent`, which is the one fact about those five
+ * applications that does not help: the reader knows they were busy, what they
+ * want back is WHICH. The count is still there -- it is `length`.
+ *
+ * PARSED BY PARTS, NEVER `new Date(string)`. `date_applied` is a bare DATE,
+ * and the Date constructor reads `2026-09-18` as UTC midnight -- which is the
+ * previous day for anyone behind UTC and would file a whole month one cell to
+ * the left. The same rule `jobStats` and `parseDayKey` follow.
+ *
+ * Structurally typed rather than taking `Job[]`: the four fields it reads are
+ * the contract, and that keeps this file free of a domain import.
+ */
+export function sentApplicationsByDay(
+  jobs: { id: string; company: string; role: string; date_applied: string | null }[]
+): Record<string, SentApplication[]> {
+  const byDay: Record<string, SentApplication[]> = {}
+  for (const job of jobs) {
+    if (!job.date_applied) continue
+    const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(job.date_applied)
+    if (!parts) continue
+    const key = dayKey(new Date(+parts[1], +parts[2] - 1, +parts[3]))
+    ;(byDay[key] ??= []).push({ id: job.id, company: job.company, role: job.role })
+  }
+  return byDay
 }

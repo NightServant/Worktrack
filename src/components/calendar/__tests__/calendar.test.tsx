@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { render, screen, cleanup, within } from '@testing-library/react'
+import { render, screen, cleanup, within, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import type { CalendarEvent } from '@/services/events'
 
 import { Calendar } from '../Calendar'
@@ -264,6 +265,22 @@ describe('the fresh-roles feed', () => {
     )
   })
 
+  it('offers the record, not the wizard, for a role already tracked', () => {
+    // The panel's one fact about a posting is whether it is already in the
+    // pipeline; before this it offered `track it` on everything and pressing
+    // it opened an add wizard for an application that exists.
+    render(
+      <JobFeed
+        jobs={[role('1', 'Backend Engineer', new Date().toISOString())]}
+        trackedIds={{ '1': 'job-9' }}
+      />
+    )
+    expect(screen.queryByRole('link', { name: /track it/i })).toBeNull()
+    expect(screen.getByRole('link', { name: /tracked/i }).getAttribute('href')).toBe(
+      '/applications?application=job-9'
+    )
+  })
+
   it('dates every card by the day it went up', () => {
     // The rail replaced a stack of day-grouped lists (Gabe, 2026-09-10), so
     // the day label moved onto the card. It is still the local day: reading a
@@ -333,6 +350,12 @@ describe('the fresh-roles feed', () => {
   })
 })
 
+const SENT = [
+  { id: 'j1', company: 'Acme', role: 'Frontend Engineer' },
+  { id: 'j2', company: 'Globex', role: 'Backend Engineer' },
+  { id: 'j3', company: 'Umbrella', role: 'Product Engineer' },
+]
+
 describe('applications on the month grid', () => {
   it('counts what was sent on each day', () => {
     // The grid was forty-two empty cells for anyone with no interviews booked,
@@ -342,12 +365,80 @@ describe('applications on the month grid', () => {
         grid={buildMonthGrid(2026, 7)}
         month={7}
         events={[]}
-        applicationsByDay={{ '2026-08-12': 3 }}
+        applicationsByDay={{ '2026-08-12': SENT }}
       />
     )
     const marks = container.querySelectorAll('[data-applications-sent]')
     expect(marks).toHaveLength(1)
-    expect(marks[0].textContent).toBe('3 sent')
+    expect(marks[0].textContent).toContain('3 sent')
+  })
+
+  it('names the roles for a reader who cannot hover', () => {
+    // The tooltip is a POINTER affordance, and it is the only place the roles
+    // are drawn. Every other mark in a cell carries its own words already --
+    // this one was a bare number.
+    const { container } = render(
+      <MonthGrid
+        grid={buildMonthGrid(2026, 7)}
+        month={7}
+        events={[]}
+        applicationsByDay={{ '2026-08-12': SENT }}
+      />
+    )
+    const mark = container.querySelector('[data-applications-sent]')!
+    expect(mark.textContent).toContain('Frontend Engineer at Acme')
+    expect(mark.textContent).toContain('Product Engineer at Umbrella')
+  })
+
+  /**
+   * THE DAY'S STACK (Gabe, 2026-09-18). A cell is ~190px wide: an interview
+   * shows a title with no time and no company, a holiday shows whichever half
+   * of its name fits, and five applications show as the words `5 sent`. The
+   * tooltip is where the day is actually legible.
+   */
+  it('opens the day’s stack on hover, naming every role, company and time', async () => {
+    const user = userEvent.setup()
+    const { container } = render(
+      <MonthGrid
+        grid={buildMonthGrid(2026, 7)}
+        month={7}
+        events={[ev('a', '2026-08-12T02:00:00.000Z')]}
+        companyByJobId={{ 'job-1': 'Initech' }}
+        applicationsByDay={{ '2026-08-12': SENT }}
+      />
+    )
+
+    await user.hover(container.querySelector('[data-day-cell="2026-08-12"]')!)
+
+    const stack = await waitFor(() => {
+      const found = document.querySelector('[data-day-stack]')
+      if (!found) throw new Error('no day stack')
+      return found as HTMLElement
+    })
+
+    // One line per thing on the day: the interview, then the three sent.
+    expect(stack.querySelectorAll('[data-day-item]')).toHaveLength(4)
+    // What the cell could not say: the company an interview is with, and which
+    // applications those three were.
+    expect(within(stack).getByText('Technical interview')).toBeTruthy()
+    expect(within(stack).getByText('Initech')).toBeTruthy()
+    expect(within(stack).getByText('Frontend Engineer')).toBeTruthy()
+    expect(within(stack).getByText('Acme')).toBeTruthy()
+    // And the kind of each, which is what tells one card from the next.
+    expect(within(stack).getAllByText('applied')).toHaveLength(3)
+    expect(within(stack).getByText('interview')).toBeTruthy()
+  })
+
+  it('leaves an empty day without a tooltip at all', async () => {
+    // Twenty-eight of these cells are usually blank, and a tooltip that opens
+    // to say nothing teaches the reader that hovering is not worth doing.
+    const user = userEvent.setup()
+    const { container } = render(
+      <MonthGrid grid={buildMonthGrid(2026, 7)} month={7} events={[]} />
+    )
+    await user.hover(container.querySelector('[data-day-cell="2026-08-12"]')!)
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    expect(document.querySelector('[data-day-stack]')).toBeNull()
   })
 
   it('draws nothing on a day with none', () => {
