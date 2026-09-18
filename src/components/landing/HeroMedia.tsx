@@ -159,6 +159,36 @@ export function HeroMedia({ posterSrc, videoSrc, paused = false }: HeroMediaProp
         />
       )}
         <div className="absolute inset-0 bg-ink-950 mix-blend-color" />
+        {/*
+          A SOFT FOCUS ON THE FOOTAGE, NOT A FROSTED PANE (Gabe, 2026-09-18:
+          "implement a backdrop-blur within the background video without
+          blurring the video excessively").
+
+          FOUR PIXELS. It is the smallest radius that does anything at all at
+          this size, and that is the point: the clip is a 1280px frame of glass
+          and branches behind 96px type, and its fine detail -- window mullions,
+          leaves -- is what competes with the headline. Four pixels takes the
+          edge off that detail and leaves the shapes; at 12 (the navbar's
+          `blur-md`, over a 60px band) the building becomes a grey wash and the
+          hero stops being footage at all.
+
+          IT SITS INSIDE THE MEDIA'S OWN `isolate`, which is what keeps it
+          honest: `backdrop-filter` samples the backdrop of its stacking
+          context, so this blurs the video and the tint above it and reaches
+          NOTHING else -- not the scrim below, which is a token-coloured
+          gradient, and not the headline, which is painted by the section
+          above this whole layer.
+
+          SUPPORTS-GUARDED for the same reason every other blur in this app is:
+          without `backdrop-filter` this element renders as nothing, which is
+          exactly the hero as it was yesterday. There is no translucency being
+          bought here, so there is nothing to fall back from.
+        */}
+        <div
+          aria-hidden
+          data-hero-blur
+          className="absolute inset-0 supports-[backdrop-filter]:backdrop-blur-xs"
+        />
       </div>
       {/*
         The scrim, transcribed from the frame: a left-to-right gradient from
@@ -166,21 +196,35 @@ export function HeroMedia({ posterSrc, videoSrc, paused = false }: HeroMediaProp
         dark in BOTH themes, and therefore what forces the navbar's two
         treatments -- see LandingNavbar.
 
-        The second, vertical gradient is not in the frame. It carries the hero
-        into the section below it so the boundary is a fade rather than a hard
-        horizontal edge against bg-canvas, which at this height reads as two
-        stacked blocks rather than one page.
+        The second, vertical gradient is not in the frame. It settles the foot
+        of the hero onto its own base colour so the last band of footage does
+        not end on a hard horizontal cut.
 
-        `h-24` (96px), DOWN FROM `h-32` ON 2026-09-15. In light mode this band
-        fades to near-white, and anything drawn inside it in the hero's own
-        near-white ink disappears -- which is what happened to the scroll cue
-        the day it was added. The cue moved up out of the band and the band
-        came down 32px to leave clearance rather than a touching edge; 96px
-        still softens the boundary, which is the only thing it was ever for.
-        Anything placed at the foot of the hero has to clear this.
+        IT FADES TO `ink-950`, NOT TO `bg-canvas`, AND THAT IS THE LIGHT-MODE
+        FIX (Gabe, 2026-09-18: "in light mode there is a color mismatch
+        problem"). `bg-canvas` is a SEMANTIC token: in the dark theme it
+        resolves to #0d1522, which IS `ink-950`, so this band has always been
+        "fade to ink-950" there and nobody could see it. In the light theme it
+        resolves to #ffffff -- so the same line drew a 96px white haze across
+        the bottom of a hero that is dark in BOTH themes, which is the one
+        thing this section's docblock says must never happen: the colours here
+        name primitives precisely because a semantic token flips and this
+        section does not.
+
+        DARK MODE IS UNCHANGED BY THIS, to the byte -- the two tokens are the
+        same colour there. Light mode loses the haze and ends on the hero's own
+        near-black, which is also what the navbar, the eyebrow and the scrim are
+        made of.
+
+        `h-24` (96px), DOWN FROM `h-32` ON 2026-09-15. The band used to eat
+        anything drawn in the hero's near-white ink -- that is how the scroll
+        cue vanished in light mode the day it was added -- so the cue moved up
+        and the band came down to leave clearance. Fading to ink-950 removes
+        that hazard at its source, and the clearance stays: 96px of the
+        footage's own dark under the cue is what it was always for.
       */}
       <div className="absolute inset-0 bg-gradient-to-r from-ink-950/90 via-ink-950/70 via-[45%] to-ink-950/30" />
-      <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-b from-transparent to-bg-canvas" />
+      <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-b from-transparent to-ink-950" />
     </div>
   )
 }

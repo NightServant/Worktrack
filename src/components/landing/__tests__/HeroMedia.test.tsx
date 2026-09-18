@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { HeroMedia } from '../HeroMedia'
@@ -112,3 +113,39 @@ describe('HeroMedia pausing', () => {
     expect(tint!.parentElement!.className).toContain('isolate')
   })
 })
+
+/**
+ * THE HERO IS DARK IN BOTH THEMES, so nothing inside it may be painted in a
+ * token that flips with the theme.
+ *
+ * The rule is written in both docblocks and it has now been broken twice: the
+ * bottom fade band was `to-bg-canvas`, which is `ink-950` in the dark theme
+ * and WHITE in the light one -- a 96px haze across the foot of a near-black
+ * hero -- and the call to action filled with `--color-accent-default`, which
+ * is orange in the dark theme and brick in the light one, two lines under an
+ * eyebrow that names `accent-400` outright.
+ *
+ * GATED ON SOURCE TEXT, like landingTypography: these are Tailwind classes and
+ * jsdom loads no stylesheet, so a rendered `to-bg-canvas` and a rendered
+ * `to-ink-950` compute to the same nothing. The class string is the artefact.
+ */
+describe('the hero paints in primitives, never in theme tokens', () => {
+  const FLIPPING = /\b(?:bg|from|via|to|text|border)-(?:bg-canvas|bg-inset|text-primary|text-secondary|text-muted|border-subtle|border-default|accent-default)\b/
+
+  it.each(['Hero.tsx', 'HeroMedia.tsx'])('%s', (file) => {
+    const source = readFileSync(`src/components/landing/${file}`, 'utf8')
+    // The section's own override is the exception that proves it: it REDEFINES
+    // the token for this subtree rather than painting with it.
+    const painted = source.replace(/\[--color-accent-default:[^\]]+\]/g, '')
+    expect(painted).not.toMatch(FLIPPING)
+  })
+
+  it('pins the accent for the section, so the one button on it cannot flip', () => {
+    // The button is a shared primitive and keeps meaning "the accent"; this is
+    // the one section where which colour that is cannot follow the theme.
+    expect(readFileSync('src/components/landing/Hero.tsx', 'utf8')).toContain(
+      '[--color-accent-default:var(--color-accent-400)]'
+    )
+  })
+})
+

@@ -358,14 +358,33 @@ export function LandingNavbar({ overHero, scrolled = false }: LandingNavbarProps
             // which read as a different application appearing on top of the
             // page rather than as the bar opening.
             //
-            // OPAQUE IN BOTH STATES, and that part is unchanged: `ink-950` is
-            // the hero's own base colour, the one its scrim runs from. The
-            // note that used to sit here argued against a TRANSLUCENT panel
-            // over video -- links that stop being readable -- and that
-            // argument still holds. This swaps the ground, not the opacity.
+            // A FROSTED PLATE, NOT AN OPAQUE ONE (Gabe, 2026-09-18: "hamburger
+            // dropdown must also implement backdrop-blur"). It is the same
+            // treatment the bar above it wears once the page has moved, which
+            // is the argument for it here: the panel drops out of that bar and
+            // should read as the bar opening rather than as a second surface
+            // landing on the page.
+            //
+            // THE OPACITY IS BOUGHT BY THE BLUR AND ONLY BY THE BLUR. The note
+            // that used to sit here argued against a translucent panel over
+            // moving footage -- links that stop being readable as the clip
+            // plays -- and that argument still holds exactly where there is no
+            // `backdrop-filter`. So the plate stays OPAQUE by default and the
+            // translucency is opted into inside the same `supports` guard as
+            // the blur, which is the idiom the bar itself uses.
+            //
+            // `/85` over the hero rather than the bar's `/30`: the bar has the
+            // gradient scrim under it and this has 12px of blurred footage,
+            // and these are body-sized links a thumb is aiming at.
             overHero
-              ? 'border-white/10 bg-ink-950 text-ink-50'
-              : 'border-border-subtle bg-bg-canvas text-text-primary'
+              ? cn(
+                  'border-white/10 bg-ink-950 text-ink-50',
+                  'supports-[backdrop-filter]:bg-ink-950/85 supports-[backdrop-filter]:backdrop-blur-md'
+                )
+              : cn(
+                  'border-border-subtle bg-bg-canvas text-text-primary',
+                  'supports-[backdrop-filter]:bg-bg-canvas/85 supports-[backdrop-filter]:backdrop-blur-md'
+                )
           )}
         >
           {NAV_LINKS.map((link) => {

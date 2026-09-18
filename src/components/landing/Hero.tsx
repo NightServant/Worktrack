@@ -102,7 +102,25 @@ export function Hero({ posterSrc, videoSrc, unpinned = false }: HeroProps) {
         lifts the headline and the CTA slightly, which leaves the lower third
         of the hero to the footage and the cue rather than crowding all three.
       */
-      className="relative isolate flex h-full min-h-[88svh] flex-col justify-center overflow-hidden px-gutter pb-48 pt-32 md:pt-40 lg:min-h-[92svh]"
+      /*
+        THE ACCENT IS PINNED TO `accent-400` FOR THIS SECTION (Gabe,
+        2026-09-18: "in light mode there is a color mismatch problem").
+
+        The eyebrow already named `accent-400` directly, with the reason
+        written down: accent-700 on near-black fails contrast. The CTA under it
+        did not -- `buttonVariants` fills with `--color-accent-default`, which
+        is accent-400 in the dark theme and accent-700 in the light one. So the
+        single button on a section that is DARK IN BOTH THEMES turned brick red
+        when the page theme flipped, two lines under an eyebrow that stayed
+        orange.
+
+        Redefining the token for this subtree rather than passing the colour to
+        the button: the button is a shared primitive and must keep meaning "the
+        accent", while this section is the one place where which colour that is
+        cannot follow the theme. It is the same move LandingNavbar makes for the
+        brand mark's accent cell over the hero, for the same reason.
+      */
+      className="relative isolate flex h-full min-h-[88svh] flex-col justify-center overflow-hidden px-gutter pb-48 pt-32 [--color-accent-default:var(--color-accent-400)] md:pt-40 lg:min-h-[92svh]"
     >
       <HeroMedia posterSrc={posterSrc} videoSrc={videoSrc} paused={unpinned} />
 
