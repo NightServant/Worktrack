@@ -110,9 +110,11 @@ The dates move with the clock. A fixture pinned to literal dates would say "appl
 - Word-style rich text editor (Tiptap). **There is no Save button**: the document writes itself 1200ms after you stop typing, the header says where the work stands, and ⌘S says so too rather than letting the browser offer to save the page
 - LaTeX source editor with live side-by-side preview
 - Template presets for both modes, browsable on their own screen
+- Grammar, spelling and style checks over the open document, from LanguageTool's keyless public endpoint. The browser calls it directly rather than through this server, because the free tier is rate limited per IP and a proxy would put every user behind one address
 - Version history — snapshots capped at 10 per CV
 - Export to `.tex`, `.docx` or PDF — three Next.js routes, with no headless browser between you and the file
 - An ATS check that reads the document rather than guessing at it, and names both the matched and the missing keywords
+- Tailoring against a job description, through your own OpenAI-compatible endpoint rather than a credit meter. Unset the `TAILORING_*` variables and every model feature switches off and says why, rather than failing at the point of use
 
 ### Profile
 - Import your LinkedIn profile by pasting its public address; the roles, education, certifications and projects feed CV tailoring
@@ -433,17 +435,6 @@ The work they were meant to do runs where it can be tested from a laptop:
 - **No accessibility audit has been done.** Keyboard navigation and `aria-current` are handled on the primary surfaces, `prefers-reduced-motion` is honoured throughout, and colour is never the only carrier of state — but a full screen-reader pass has not happened.
 - **Some job boards cannot be read from a server, and no amount of code changes that.** Indeed answers an anonymous request with a Cloudflare 401; JobStreet and SEEK answer 403. Where a board publishes its postings through its own API, that is used. Where one does not, the hosted fetcher is tried, and where that fails too the app says which board refused and points at the employer's own careers page — which parses at 0.90–0.95 confidence a field, against 0.40–0.70 for an aggregator mirror even when the mirror *can* be read. Nothing here wears a disguise: no challenge is solved, no session borrowed, no residential proxy bought.
 - **The pinned landing sequence is desktop-only.** Below `lg` nothing pins; the page scrolls normally, which is deliberate rather than unfinished.
-
-## 13. Roadmap
-
-Done since this list was last written: the Next.js and Vercel migration, the design-system pass, the landing page, the auth rebuild, and the demo.
-
-- [x] Break up the oversized page components — the route files under `src/app/(app)` are compositions now rather than the screens themselves. The weight moved into components rather than away, though, and nothing enforces a ceiling on those.
-- [x] Grammar and spelling checks in the CV editor — [`src/services/grammar.ts`](src/services/grammar.ts) and `useProofread`, called straight from the browser against LanguageTool's keyless endpoint, because its free tier is rate limited per IP and a proxy would put every user behind one address
-- [x] AI-assisted CV tailoring against a job description — [`src/app/api/tailor/route.ts`](src/app/api/tailor/route.ts), with its own model behind `MODEL_TAILOR`
-- [x] Cookie-backed sessions, so `/` can decide server-side rather than after hydration — done 2026-09-11. It is a Vercel-specific fight rather than a Vercel-specific exemption: `vercel.json` uses `services`, which reject Edge Function output, so the middleware pins `runtime: 'nodejs'` — and that line alone, without `experimental.nodeMiddleware` in [`next.config.ts`](next.config.ts), makes Next 15.5 emit no middleware at all while still reporting a successful build.
-
-Nothing is open. The next entries go here when there are some.
 
 ## Licence
 
