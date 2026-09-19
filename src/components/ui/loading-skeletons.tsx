@@ -266,3 +266,55 @@ function RouteSkeletonBody({ variant }: { variant: RouteSkeletonVariant }) {
       </div>
   )
 }
+
+/**
+ * A page of a document, loading.
+ *
+ * WHY THE GENERIC ONE WOULD NOT DO (Gabe, 2026-09-19: "there must be a
+ * customized skeleton for the document itself"). `RouteSkeleton variant="detail"`
+ * draws two boxes side by side, which is the shape of a record screen and the
+ * shape of nothing in a word processor -- so the pause before a CV appeared
+ * looked like the wrong screen loading rather than like this one working.
+ *
+ * IT IS A CV'S OWN SHAPE: a name, a contact line, then sections of a heading
+ * and a few lines of body, the last of each run short the way a paragraph
+ * ends. The widths are fixed rather than random, because a skeleton that
+ * reflows on every render draws attention to itself -- the one thing it is
+ * there not to do.
+ *
+ * `aria-hidden` AND A LABEL ON THE WRAPPER: a screen reader is told the
+ * document is being written, once, instead of reading out fourteen empty
+ * boxes.
+ */
+const DOCUMENT_ROWS: number[][] = [
+  [92, 64],
+  [40, 96, 88, 72],
+  [34, 94, 90, 58],
+  [44, 92, 86, 96, 61],
+]
+
+export function DocumentSkeleton({ label = 'Writing your document' }: { label?: string }) {
+  return (
+    <div
+      role="status"
+      aria-label={label}
+      data-document-skeleton
+      className="flex flex-col gap-8"
+    >
+      {DOCUMENT_ROWS.map((row, section) => (
+        <div key={section} className="flex flex-col gap-2.5">
+          {row.map((width, line) => (
+            <Skeleton
+              key={line}
+              aria-hidden
+              // The first line of each block is its heading: taller, and it
+              // carries the weight the real one will.
+              className={line === 0 && section > 0 ? 'h-4' : 'h-3'}
+              style={{ width: `${width}%` }}
+            />
+          ))}
+        </div>
+      ))}
+    </div>
+  )
+}

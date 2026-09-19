@@ -34,6 +34,23 @@ import { DocumentRailTabs } from './DocumentRail'
 import { DocumentNavigator } from './DocumentNavigator'
 import { DocumentToolbar } from './DocumentToolbar'
 import { DocumentRailPane, TailoringRailPane } from './DocumentRailPane'
+import { DocumentSkeleton } from '@/components/ui/loading-skeletons'
+import { AnalyzingDocument } from '@/components/ui/analyzing-document'
+import { RotatingText } from '@/components/ui/status-state'
+
+/**
+ * What the model is doing while the page is empty, in the order it happens.
+ *
+ * THE WIZARD'S `READ_STEPS` READ A POSTING; these write a CV. Same shape and
+ * same component, because it is the same promise being made -- something is
+ * happening to this document and it will be finished in a moment.
+ */
+const WRITE_STEPS = [
+  'reading your profile',
+  'writing your summary',
+  'describing your projects',
+  'setting it on the page',
+]
 import { asDocumentTab, DEFAULT_DOCUMENT_TAB, type DocumentTabId } from './documentTabs'
 import { letterReview, type LetterReview } from './letterSuggestions'
 import { useProofread } from './useProofread'
@@ -88,6 +105,16 @@ export interface WordResumeEditorProps {
    * no jobs list still renders.
    */
   jobs?: Job[]
+
+  /**
+   * A model is writing this document's prose; show the paper, not the text.
+   *
+   * THE EDITOR STILL RENDERS AROUND IT (Gabe, 2026-09-19: "document editor
+   * must show"). Only the sheet's contents are swapped -- see `PageSheet` --
+   * so the toolbar, the rails, the page geometry and the zoom are all real and
+   * all where they will be when the text lands.
+   */
+  polishing?: boolean
 
   /**
    * Where a tailored CV goes.
@@ -204,12 +231,25 @@ function PageSheet({
   type,
   naturalLineHeight,
   scale,
+  polishing = false,
 }: {
   editor: Editor | null
   geometry: PageGeometry
   type: DocumentTypography
   naturalLineHeight: number
   scale: number
+  /**
+   * A model is writing this document's prose; show the paper, not the text.
+   *
+   * ON THE SHEET RATHER THAN OVER THE ROUTE (Gabe, 2026-09-19: "document
+   * editor must show and there must be a customized skeleton for the document
+   * itself"). Swapping the whole screen for a route skeleton drew two boxes
+   * side by side -- the shape of a record screen, not of a word processor --
+   * so the pause looked like the wrong page loading. Everything around this
+   * sheet is real: the toolbar, the rails, the page geometry and the zoom. It
+   * is only the text that is not there yet.
+   */
+  polishing?: boolean
 }) {
   const view = useDocumentView()
   const scroll = view === 'scroll'
@@ -255,6 +295,33 @@ function PageSheet({
             }
       }
     >
+      {polishing ? (
+        <div
+          style={{
+            padding: scroll
+              ? '1rem 1rem 4rem'
+              : `${geometry.margin.top}in ${geometry.margin.right}in ${geometry.margin.bottom}in ${geometry.margin.left}in`,
+          }}
+        >
+          {/* THE WIZARD'S OWN WAITING STATE (Gabe, 2026-09-19: "how about the
+              loading-ui components? we can reuse it from the application
+              wizard"). Step 3 of `AddApplicationDialog` already says "a model
+              is working on a document" with this glyph and a rotating line,
+              and a second vocabulary for the same idea would be two answers to
+              one question -- plus this one is already reduced-motion aware and
+              already announces itself. Only the phrases differ: that one is
+              reading a posting, this one is writing a CV. */}
+          <div className="flex flex-col items-center gap-3 pb-10">
+            <AnalyzingDocument className="size-12 text-text-muted" />
+            <p className="text-body-m text-text-primary">
+              <RotatingText phrases={WRITE_STEPS} />
+            </p>
+          </div>
+          {/* THE SAME MARGINS THE TEXT WILL HAVE, so the lines land where the
+              real ones do and the page does not jump when they arrive. */}
+          <DocumentSkeleton />
+        </div>
+      ) : (
       <EditorContent
         editor={editor}
         style={
@@ -318,6 +385,7 @@ function PageSheet({
         }
           className=" [&_.ProseMirror]:min-h-[var(--page-body-height)] [&_.ProseMirror]:outline-none [&_.ProseMirror]:ring-0 [&_.ProseMirror]:shadow-none [&_.ProseMirror]:border-0 [&_.ProseMirror:focus]:outline-none [&_.ProseMirror:focus-visible]:outline-none [&_.ProseMirror:focus]:ring-0 [&_.ProseMirror:focus-visible]:ring-0 [&_.ProseMirror_*:focus]:outline-none [&_.ProseMirror_*:focus-visible]:outline-none [&_.ProseMirror_a]:outline-none [&_.ProseMirror_a:focus]:outline-none [&_.ProseMirror_h1]:[margin-block:0_var(--doc-h-after,0.25rem)] [&_.ProseMirror_h1]:text-[length:var(--doc-h1-size,1.45em)] [&_.ProseMirror_h1]:font-bold [&_.ProseMirror_h2]:[margin-block:var(--doc-h-before,1rem)_var(--doc-h-after,0.25rem)] [&_.ProseMirror_h2]:text-[length:var(--doc-h2-size,1.05em)] [&_.ProseMirror_h2]:font-bold [&_.ProseMirror_h3]:[margin-block:var(--doc-h-before,0.75rem)_var(--doc-h-after,0.25rem)] [&_.ProseMirror_h3]:font-bold [&_.ProseMirror_h3]:text-[length:var(--doc-h2-size,1em)] [&_.ProseMirror_[data-ruled]]:border-b [&_.ProseMirror_[data-ruled]]:border-current [&_.ProseMirror_[data-ruled]]:pb-0.5 [&_.ProseMirror_p]:[margin-block:0_var(--doc-para-space,0.5rem)] [&_.ProseMirror_ul]:[margin-block:0_var(--doc-para-space,0.5rem)] [&_.ProseMirror_ul]:list-disc [&_.ProseMirror_ul]:pl-6 [&_.ProseMirror_li]:[margin-block:0] [&_.ProseMirror_li_p]:[margin-block:0_var(--doc-para-space,0.25rem)]"
       />
+      )}
     </div>
   )
 }
@@ -422,6 +490,7 @@ export function WordResumeEditor({
   onTailored,
   kind = 'word',
   tailoredForJobId,
+  polishing = false,
 }: WordResumeEditorProps) {
   const isLetter = kind === 'cover_letter'
   const { user } = useAuth()
@@ -1208,6 +1277,7 @@ export function WordResumeEditor({
           type={type}
           naturalLineHeight={naturalLineHeight}
           scale={fit.scale}
+          polishing={polishing}
         />
       </div>
     </DocumentWorkspace>

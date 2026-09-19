@@ -263,7 +263,7 @@ function CvRoute() {
    * is what puts the editor on screen. Every failure drops the flag too, so
    * the worst case is the document that was already saved.
    */
-  const polishing = usePolishDraft({
+  const polish = usePolishDraft({
     draft: draftQuery.data ?? null,
     templateId: polishParam,
     save: (content) =>
@@ -277,10 +277,6 @@ function CvRoute() {
 
   if (draftQuery.isLoading) return <RouteSkeleton variant="detail" />
 
-  // THE SAME SKELETON THE LOAD USES, deliberately: to the reader this IS still
-  // the document opening, and a second, different waiting state would be two
-  // answers to one question.
-  if (polishing) return <RouteSkeleton variant="detail" />
 
   // A failed read and a CV that is not there are different facts, and the
   // second one cannot be fixed by reloading the same URL -- RLS makes a bad id
@@ -321,8 +317,22 @@ function CvRoute() {
   return (
     <>
       <WordResumeEditor
-        key={draft.id}
-        draft={draft}
+        /*
+          REMOUNTED ONCE WHEN THE POLISH LANDS. `useEditor` reads its content at
+          mount and never again, and this editor mounts immediately -- the whole
+          point of Gabe's arrangement is that the chrome is there at once -- so
+          a document rewritten a few seconds later would otherwise never reach
+          it. The key flips exactly once, from `raw` to `ai`.
+        */
+        key={`${draft.id}:${polish.content ? 'ai' : 'raw'}`}
+        draft={polish.content ? { ...draft, content: polish.content } : draft}
+        /*
+          THE PAPER'S OWN LOADING STATE, not the route's (Gabe, 2026-09-19:
+          "document editor must show and there must be a customized skeleton
+          for the document itself"). Swapping the whole screen drew a record
+          screen's two boxes, which looked like the wrong page loading.
+        */
+        polishing={polish.polishing}
         /*
           WHAT KIND OF DOCUMENT THIS IS, AND THE ONLY PLACE THAT KNOWS.
           `WordResumeEditor` has branched on `kind` since cover letters shipped

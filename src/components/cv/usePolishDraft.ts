@@ -66,10 +66,32 @@ export function templateContentFor(
   return (found?.content as ResumeContent) ?? null
 }
 
-export function usePolishDraft({ draft, templateId, save, onDone }: PolishOptions): boolean {
+export interface PolishState {
+  /** A model is writing; the sheet shows its loading state. */
+  polishing: boolean
+  /**
+   * The rewritten document, once there is one.
+   *
+   * RETURNED RATHER THAN LEFT TO THE QUERY (2026-09-19). `useEditor` reads its
+   * content ONCE, at mount, so a draft that is refetched after the save does
+   * not reach an editor that is already mounted -- and the editor mounts
+   * immediately here, because the whole point is that the chrome appears at
+   * once. Handing the content back lets the route remount the editor on it
+   * exactly once, with no dependence on when a refetch lands.
+   */
+  content: ResumeContent | null
+}
+
+export function usePolishDraft({
+  draft,
+  templateId,
+  save,
+  onDone,
+}: PolishOptions): PolishState {
   const { data: stored } = useUserProfile()
   const profile = stored?.profile ?? null
   const ran = React.useRef<string | null>(null)
+  const [content, setContent] = React.useState<ResumeContent | null>(null)
 
   // THE TEMPLATE IS RESOLVED BEFORE ANYTHING IS SHOWN. A `?polish=` naming a
   // template this build does not have is not a reason to hold a skeleton over
@@ -107,8 +129,12 @@ export function usePolishDraft({ draft, templateId, save, onDone }: PolishOption
 
       if (cancelled) return
       if (prose) {
+        const written = personalizeTemplate(template, profile, prose) as ResumeContent
         try {
-          await save(personalizeTemplate(template, profile, prose) as ResumeContent)
+          await save(written)
+          // SHOWN ONLY ONCE IT IS SAVED. Putting unsaved prose on screen would
+          // be a document that disappears on the next reload.
+          if (!cancelled) setContent(written)
         } catch {
           // The saved document is the one that was written at creation. A
           // failed rewrite loses the polish and nothing else.
@@ -125,5 +151,5 @@ export function usePolishDraft({ draft, templateId, save, onDone }: PolishOption
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, draft?.id, template, profile, templateId])
 
-  return active
+  return { polishing: active, content }
 }
