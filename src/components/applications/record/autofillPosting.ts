@@ -60,6 +60,18 @@ export interface AutofillPostingOptions {
    */
   html?: string
   onDigest?: (url: string) => Promise<PostingDigestResult>
+  /**
+   * The read came back with nothing, so the reader's own browser is the route.
+   *
+   * WHY IT IS A SIGNAL AND NOT A SENTENCE (Gabe, 2026-09-19: "I want the
+   * autofill to work properly"). This app already ships the answer for a board
+   * that refuses servers -- the posting bookmarklet, which hands over the page
+   * the reader's browser already has -- and NOTHING IN THE APP LINKED TO IT.
+   * The one person who needs it is the one who never heard it exists. Prose in
+   * the warning cannot be clicked; this lets the dialog put the install page
+   * one press away, at the moment it is the only thing left that works.
+   */
+  setHandover?: (needed: boolean) => void
 }
 
 export async function autofillPosting({
@@ -72,10 +84,12 @@ export async function autofillPosting({
   onAutofill,
   onDigest,
   html,
+  setHandover,
 }: AutofillPostingOptions): Promise<void> {
     setStep('fill')
     setReadNote('')
     setReadError('')
+    setHandover?.(false)
 
     const url = normalizePostingUrl(draft.url)
     if (!onAutofill || !url) {
@@ -135,6 +149,9 @@ export async function autofillPosting({
       // correctly. This is the same sentence for the case that fails with a
       // 200 instead of an exception.
       const filled = Object.keys(next).some((field) => field !== 'source')
+      // The same signal the sentence is built from: a read that filled nothing
+      // is a read the reader has to finish themselves.
+      setHandover?.(!filled)
       setReadNote(
         [
           result.warnings?.length
@@ -171,6 +188,7 @@ export async function autofillPosting({
       // one that says so. Copy describing a capability has to be changed by
       // whoever changes the capability; see AddApplicationDialog's
       // `submitWithDigest`.
+      setHandover?.(true)
       setReadError(
         `${err instanceof Error ? err.message : 'Could not read that posting.'} ` +
           'Nothing was filled in. Paste the posting into the description column ' +

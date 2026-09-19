@@ -164,6 +164,27 @@ describe('a posting the board refused to serve', () => {
     expect(screen.queryByText(/check every field before saving/i)).not.toBeInTheDocument()
   })
 
+  it('offers the one route left, as a link', async () => {
+    // Gabe, 2026-09-19: "I want the autofill to work properly". For a board
+    // that refuses servers the working route is the reader's own browser, and
+    // the app has shipped a bookmarklet for it since it was written with
+    // nothing in the app linking to it. A paragraph cannot be clicked.
+    await read(CHALLENGED)
+    const link = await screen.findByRole('link', { name: /install the posting bookmarklet/i })
+    expect(link).toHaveAttribute('href', '/bookmarklet')
+  })
+
+  it('stays quiet on a read that worked', async () => {
+    // The companion: this is the recovery for a posting nobody could read, and
+    // offering it over a filled form reads as the app doubting itself.
+    await read({
+      values: { company: 'Acme', role: 'Engineer', description: 'a posting' },
+      confidence: { company: 0.9 },
+      warnings: [],
+    })
+    expect(screen.queryByRole('link', { name: /bookmarklet/i })).not.toBeInTheDocument()
+  })
+
   it('still asks on a read that actually filled something', async () => {
     // The companion, so the fix cannot be "delete the sentence": a posting
     // that WAS read, with a warning attached, still has fields worth checking.

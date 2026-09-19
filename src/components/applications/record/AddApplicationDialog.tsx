@@ -145,6 +145,16 @@ export function AddApplicationDialog({
   const [readNote, setReadNote] = React.useState('')
   /** A read that FAILED, which is the only state with anything to offer. */
   const [readError, setReadError] = React.useState('')
+  /**
+   * Whether the reader's own browser is now the only route to this posting.
+   *
+   * SET BY THE READ, not guessed from the message. A board that refuses
+   * servers answers 200 with a warning and no fields, and until today the
+   * dialog's whole answer to that was a paragraph -- while the app shipped a
+   * bookmarklet built for exactly this case that nothing linked to. See
+   * `autofillPosting`'s `setHandover`.
+   */
+  const [handover, setHandover] = React.useState(false)
   const [resumeId, setResumeId] = React.useState('')
   /**
    * Whether the model has already restructured this draft's description.
@@ -211,6 +221,7 @@ export function AddApplicationDialog({
             return onDigest(text)
           }
         : undefined,
+      setHandover,
       // Only for the link it arrived with. Once the reader edits the URL the
       // captured source belongs to a different page, and parsing one page's
       // HTML under another page's address is how a wrong posting gets saved
@@ -554,6 +565,30 @@ export function AddApplicationDialog({
                     {readNote}
                   </p>
                 )
+              )}
+
+              {/* THE ONE ROUTE LEFT, AS A LINK RATHER THAN A SENTENCE.
+                  Measured 2026-09-19: a board that refuses our server serves
+                  the same posting to an ordinary browser with a full
+                  `JobPosting` JSON-LD in it -- the best source this parser
+                  has. The bookmarklet hands that page over, and it has been
+                  shipped and unlinked since it was written, so the reader who
+                  needs it has never been told. It opens in a new tab because
+                  this dialog is holding a half-finished application. */}
+              {handover && (
+                <p className="text-body-s text-text-muted" data-add-handover>
+                  Your own browser can still read it.{' '}
+                  <a
+                    href="/bookmarklet"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-text-primary underline underline-offset-2 hover:text-accent"
+                  >
+                    Install the posting bookmarklet
+                  </a>
+                  , open the posting, and click it — the page comes back here with
+                  its fields already read.
+                </p>
               )}
             </div>
             <ApplicationRecordView
