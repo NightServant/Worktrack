@@ -169,6 +169,25 @@ describe('the digest end to end', () => {
     expect(digest.fields.role).toBe('Senior Frontend Engineer')
   })
 
+  it('sends the ceilings that make the shorter wait safe', async () => {
+    // Gabe, 2026-09-19: "apply the shorter model budget for CV tailoring and
+    // application wizard". This call runs on the wizard's SAVE with the button
+    // disabled behind it, and its wait went 30s -> 25s. The cut is only safe
+    // because of these two: a copying task spends reasoning tokens before the
+    // first character of the answer, and an unbounded reply is what a 25s
+    // window cannot afford.
+    const fetchImpl = vi.fn().mockResolvedValue(reply({ role: 'Senior Frontend Engineer' }))
+    await digestPosting(POSTING, {
+      config: configWith(),
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    })
+    const body = JSON.parse(fetchImpl.mock.calls[0][1].body as string)
+    expect(body.max_tokens).toBe(2000)
+    expect(body.reasoning).toEqual({ effort: 'low' })
+    // And temperature stays where it was: this is a reading task.
+    expect(body.temperature).toBe(0)
+  })
+
   it('falls back rather than throwing when the provider fails', async () => {
     const digest = await digestPosting(POSTING, {
       config: configWith(),

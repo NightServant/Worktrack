@@ -6,7 +6,13 @@ import {
   type IntegrationConfig,
 } from '../config'
 import { parseJsonReply, askForJson } from '../llm'
-import { gapsIn, mergeFilled, MODEL_CONFIDENCE, type AutofillEnvelope } from '../postingFill'
+import {
+  fillPostingGaps,
+  gapsIn,
+  mergeFilled,
+  MODEL_CONFIDENCE,
+  type AutofillEnvelope,
+} from '../postingFill'
 import { readProse, factsFor } from '../cvWriter'
 import { EMPTY_PROFILE } from '../../profile'
 
@@ -214,6 +220,23 @@ describe('filling a posting’s gaps', () => {
     ])
     expect(after.warnings).toHaveLength(1)
     expect(after.warnings[0]).toContain('2 fields were read')
+  })
+
+  it('spends a short budget on it, because somebody is watching the form', async () => {
+    // Gabe, 2026-09-19: "apply the shorter model budget for CV tailoring and
+    // application wizard". The wait went 20s -> 15s, and these are what pay
+    // for it -- reading a posting is a copying task, so reasoning tokens are
+    // spent before the answer starts, and the schema is nine keys wide.
+    let sent: Record<string, unknown> = {}
+    await fillPostingGaps(envelope({ description: 'Pays PHP 50,000 a month.', company: '' }), {
+      config: CONFIG(),
+      fetchImpl: async (_url, init) => {
+        sent = JSON.parse(String((init as RequestInit).body))
+        return new Response(JSON.stringify({ choices: [{ message: { content: '{}' } }] }))
+      },
+    })
+    expect(sent.max_tokens).toBe(800)
+    expect(sent.reasoning).toEqual({ effort: 'low' })
   })
 
   it('returns the envelope untouched when the model filled nothing', () => {

@@ -60,6 +60,44 @@ export interface TailoringClientOptions {
 }
 
 /**
+ * How many rewrites the model is asked for.
+ *
+ * EIGHT IS ALREADY MORE THAN ANYBODY APPLIES. The panel lists these for a
+ * person to read one at a time, and generation is roughly linear in what is
+ * written -- every extra suggestion costs a quoted sentence, its rewrite and a
+ * rationale. Asking for an unbounded list spends the budget on the tail
+ * nobody scrolls to.
+ */
+const MAX_SUGGESTIONS = 8
+
+/**
+ * The ceiling on the reply.
+ *
+ * SIZED FROM THE SCHEMA WITH HEADROOM, not guessed: a summary is about 120
+ * tokens and each of eight suggestions about 130 -- a quoted sentence, its
+ * rewrite and one line of reasoning -- so a full answer is around 1,200. A
+ * reply cut off mid-string is invalid JSON and costs the WHOLE run rather than
+ * its tail, so this errs high; the control that actually bites is the
+ * reasoning effort.
+ */
+const MAX_REPLY_TOKENS = 2_500
+
+/**
+ * How long the reader waits before the run is abandoned.
+ *
+ * THIRTY SECONDS, DOWN FROM FORTY-FIVE (Gabe, 2026-09-19: "apply the shorter
+ * model budget for CV tailoring and application wizard"). Safe for the same
+ * reason it was safe on the CV writer: the call was made cheaper FIRST. Low
+ * reasoning effort removes the thinking tokens generated before the first
+ * character of the answer, the suggestion cap removes a third of what is
+ * written, and the token ceiling stops a model that decides to explain itself.
+ *
+ * IT KEEPS THE LONGEST BUDGET OF THE FOUR calls here, because it is the only
+ * one that reads a whole CV and a whole posting before it writes a word.
+ */
+const TAILOR_TIMEOUT_MS = 30_000
+
+/**
  * The instruction. Kept as a constant so it is reviewable and diffable rather
  * than assembled inline at the call site.
  *
@@ -74,6 +112,10 @@ const SYSTEM_PROMPT = [
   'Only rephrase what the CV already claims, using wording the posting uses.',
   'If a missing keyword is not supported by anything in the CV, say so in the',
   'rationale and leave it out rather than inserting it.',
+  `Give at most ${MAX_SUGGESTIONS} suggestions: the ones that change the match`,
+  'most, not every line you could touch.',
+  'In "before", quote only the sentence you are rewriting, never a whole',
+  'section.',
   'Reply with JSON only, no prose and no code fences, in exactly this shape:',
   '{"summary": string|null, "suggestions": [{"section": string, "before": string,',
   '"after": string, "rationale": string}]}',
@@ -154,7 +196,7 @@ export async function tailorCv(
   }
 
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 45_000)
+  const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? TAILOR_TIMEOUT_MS)
   const doFetch = options.fetchImpl ?? fetch
 
   const user = [
@@ -183,6 +225,19 @@ export async function tailorCv(
         // Low but not zero: this is a rewriting task where a little variation
         // helps, and the no-invention rule is carried by the prompt.
         temperature: 0.3,
+        // A CEILING, NOT A TARGET -- see `MAX_REPLY_TOKENS`. Generation is
+        // roughly linear in output tokens, so the honest way to make this
+        // finish sooner is to ask for less of it.
+        max_tokens: MAX_REPLY_TOKENS,
+        // JUDGEMENT, BUT NOT THE KIND REASONING TOKENS BUY. What may be
+        // claimed is a rule in the prompt, and what is missing arrives already
+        // computed in `missingKeywords` -- so a chain of thought here mostly
+        // restates the task, and every token of it is generated BEFORE the
+        // first character of the answer. Every suggestion is read and accepted
+        // one at a time by the person it is for, which is the check that
+        // matters. OpenRouter normalises this and drops it for models that do
+        // not support it.
+        reasoning: { effort: 'low' },
         // ASKED FOR, NOT HOPED FOR (2026-09-15). The prompt already says "JSON
         // only, no prose and no code fences", and the model mostly complies --
         // but "mostly" surfaced in production as "The model returned malformed

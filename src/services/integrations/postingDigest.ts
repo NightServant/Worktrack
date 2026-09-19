@@ -480,6 +480,33 @@ export function groundDescription(
  * rule true rather than requested -- the same "propose, then verify" split
  * this whole file is built on.
  */
+/**
+ * The ceiling on the reply.
+ *
+ * THE BIGGEST OF THE FOUR, because this call writes as well as reads: three
+ * headed lists at one fact per line run to about 600 tokens on a long advert,
+ * with the fields beside them. 2,000 is headroom for a posting that really
+ * does state that much -- and a reply cut off mid-string parses as nothing,
+ * which costs the restructure rather than its tail.
+ */
+const MAX_REPLY_TOKENS = 2_000
+
+/**
+ * How long the save waits.
+ *
+ * TWENTY-FIVE SECONDS, DOWN FROM THIRTY (Gabe, 2026-09-19: "apply the shorter
+ * model budget for CV tailoring and application wizard"). This one runs on the
+ * wizard's SAVE with the button disabled behind it, so it is the one wait the
+ * reader cannot do anything else during. Cheap first, shorter second: the
+ * reasoning effort and the token ceiling below are what make the smaller
+ * window enough.
+ *
+ * A TIMEOUT COSTS THE RESTRUCTURE AND NEVER THE POSTING. `base` is the
+ * deterministically tidied text, which is what a deployment with no provider
+ * gets and what this falls back to.
+ */
+const DIGEST_TIMEOUT_MS = 25_000
+
 const SYSTEM_PROMPT = `You read a job posting and report what it says. You never infer, guess or complete.
 
 You produce TWO separate things and they must not overlap.
@@ -643,7 +670,7 @@ export async function digestPosting(rawText: string, options: Options = {}): Pro
 
   const { baseUrl, apiKey, model } = config.tailoring
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 30_000)
+  const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? DIGEST_TIMEOUT_MS)
   const doFetch = options.fetchImpl ?? fetch
 
   try {
@@ -657,6 +684,16 @@ export async function digestPosting(rawText: string, options: Options = {}): Pro
         // variation helps; this is a reading one, where every degree of
         // freedom is a chance to invent a salary.
         temperature: 0,
+        // A CEILING, NOT A TARGET -- see `MAX_REPLY_TOKENS`. This is the
+        // largest reply of the four calls in this directory, because it writes
+        // a description as well as reading fields.
+        max_tokens: MAX_REPLY_TOKENS,
+        // READING, NOT REASONING -- which is what the prompt above already
+        // demands of it: report what the posting says, infer nothing, return
+        // null when unsure. A chain of thought about a copying task is spent
+        // before the first character of the answer. OpenRouter normalises this
+        // and drops it for models that do not support it.
+        reasoning: { effort: 'low' },
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: formatted.slice(0, 16_000) },

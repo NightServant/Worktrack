@@ -146,6 +146,27 @@ export function mergeFilled(
  */
 const MAX_DESCRIPTION_CHARS = 20_000
 
+/**
+ * The ceiling on the reply.
+ *
+ * NINE KEYS AND TWO SHORT LISTS is the entire schema, which is about 400
+ * tokens at its widest. 800 leaves room for a long tech stack without leaving
+ * room for the model to explain what it did.
+ */
+const MAX_REPLY_TOKENS = 800
+
+/**
+ * How long the form waits.
+ *
+ * FIFTEEN SECONDS, DOWN FROM TWENTY (Gabe, 2026-09-19: "apply the shorter
+ * model budget for CV tailoring and application wizard"). The cut FOLLOWS the
+ * two ceilings below rather than standing in for them: with reasoning off and
+ * the reply bounded, a call that has not answered in fifteen seconds was not
+ * going to answer in twenty either -- and the person watching this form can
+ * type the fields faster than they can wait for them.
+ */
+const FILL_TIMEOUT_MS = 15_000
+
 export async function fillPostingGaps(
   envelope: AutofillEnvelope,
   options: LlmOptions
@@ -169,7 +190,13 @@ export async function fillPostingGaps(
       temperature: 0,
       // Somebody is watching a form fill in. A slow answer here is worse than
       // no answer, because the fields it would have filled can be typed.
-      timeoutMs: 20_000,
+      timeoutMs: FILL_TIMEOUT_MS,
+      maxTokens: MAX_REPLY_TOKENS,
+      // READING IS NOT REASONING. The answers are copied out of the text in
+      // front of it -- the prompt's whole rule is "report only the facts it
+      // states" -- and every reasoning token is generated BEFORE the first
+      // character of that answer, so here they are pure wait.
+      reasoningEffort: 'low',
     },
     options
   )

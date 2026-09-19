@@ -219,6 +219,29 @@ describe('the tailoring request', () => {
     expect(body.response_format).toEqual({ type: 'json_object' })
   })
 
+  it('sends the ceilings that make the shorter wait safe', async () => {
+    // Gabe, 2026-09-19: "apply the shorter model budget for CV tailoring and
+    // application wizard". The wait went 45s -> 30s, and it is only honest
+    // because the call was made cheaper first: reasoning tokens are generated
+    // BEFORE the first character of the answer, so on a rewriting task they
+    // are pure wait, and an uncapped suggestion list spends the rest of the
+    // budget on a tail nobody scrolls to. Drop either and the timeout becomes
+    // a promise the call cannot keep.
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ choices: [{ message: { content: '{"summary":null,"suggestions":[]}' } }] }),
+    }) as unknown as typeof fetch
+
+    await tailorCv({ cvText: 'cv', jobDescription: 'jd' }, { config, fetchImpl })
+    const body = JSON.parse(
+      (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1].body as string
+    )
+    expect(body.max_tokens).toBe(2500)
+    expect(body.reasoning).toEqual({ effort: 'low' })
+    expect(body.messages[0].content).toMatch(/at most 8 suggestions/i)
+  })
+
   it('refuses to run without both halves', async () => {
     await expect(
       tailorCv({ cvText: '', jobDescription: 'jd' }, { config })
