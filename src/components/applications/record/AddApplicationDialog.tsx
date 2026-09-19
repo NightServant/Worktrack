@@ -18,7 +18,7 @@ import { WizardProgress } from './wizardSteps'
 import { STEPS, type StepId } from './wizardStepModel'
 import { autofillPosting } from './autofillPosting'
 import { draftFromJob, normalizePostingUrl, useRecordDraft, type RecordDraft } from './useRecordDraft'
-import type { PostingDigestResult } from './digest'
+import { applyMinedFields, type PostingDigestResult } from './digest'
 import type { SupportedCurrency } from '@/services/userPreferences'
 import type { JobAutofillResult, JobFormData } from '@/types'
 
@@ -255,7 +255,15 @@ export function AddApplicationDialog({
         digested.current = true
         // `digest.description` rather than `formatted`, the same choice the
         // read step makes and for the same reason -- see autofillPosting.
-        data = { ...data, description: digest.description }
+        //
+        // AND THE FIELDS IT MINED, which this dropped until 2026-09-19. The
+        // digest reports a posting's location, work mode, salary, stack and
+        // tags as well as restructuring its text, and the read step has always
+        // applied both halves. Keeping only the description here meant a
+        // PASTED posting -- the path every unreadable board sends people down
+        // -- saved an application with those fields empty out of text that
+        // stated them. Empty fields only; see `applyMinedFields`.
+        data = applyMinedFields({ ...data, description: digest.description }, digest.fields)
       } catch {
         // Keep what they pasted. See the docblock.
       } finally {

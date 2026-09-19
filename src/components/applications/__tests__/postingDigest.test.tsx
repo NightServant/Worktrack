@@ -120,6 +120,62 @@ async function pasteAndSave(options: {
   return { onDigest, onSubmit }
 }
 
+/**
+ * A board that refuses a robot answers 200, not an error.
+ *
+ * `autofill_from_url_alone` returns the site's own name off the hostname, a
+ * warning explaining the refusal, and no field read from any posting -- so the
+ * wizard must not tell the reader to check fields it never filled. That
+ * sentence used to be appended to every 200, two sentences after the warning
+ * had asked them to paste the posting in themselves.
+ */
+describe('a posting the board refused to serve', () => {
+  const CHALLENGED = {
+    values: { url: 'https://www.jobstreet.com.ph/job/1', source: 'JobStreet' },
+    confidence: { source: 1 },
+    warnings: [
+      'JobStreet blocks automated reads, so the posting could not be fetched. ' +
+        'Most JobStreet listings are copies: if the same job is on the ' +
+        "employer's own careers page, paste THAT link instead.",
+    ],
+  }
+
+  async function read(envelope: unknown) {
+    render(
+      <AddApplicationDialog
+        open
+        onOpenChange={vi.fn()}
+        defaultCurrency={CURRENCY}
+        onSubmit={vi.fn()}
+        onAutofill={vi.fn().mockResolvedValue(envelope)}
+        onDigest={vi.fn().mockResolvedValue(RESULT())}
+      />
+    )
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText(/job posting url/i), 'https://www.jobstreet.com.ph/job/1')
+    await user.click(screen.getByRole('button', { name: /continue/i }))
+    await user.click(screen.getByRole('button', { name: /fill it in/i }))
+    await screen.findByRole('button', { name: /save application/i })
+  }
+
+  it('does not ask the reader to check fields it never filled', async () => {
+    await read(CHALLENGED)
+    expect(await screen.findByText(/blocks automated reads/i)).toBeInTheDocument()
+    expect(screen.queryByText(/check every field before saving/i)).not.toBeInTheDocument()
+  })
+
+  it('still asks on a read that actually filled something', async () => {
+    // The companion, so the fix cannot be "delete the sentence": a posting
+    // that WAS read, with a warning attached, still has fields worth checking.
+    await read({
+      values: { company: 'Acme', role: 'Engineer', source: 'JobStreet' },
+      confidence: { company: 0.6 },
+      warnings: ['2 fields were read from the posting text by a model.'],
+    })
+    expect(await screen.findByText(/check every field before saving/i)).toBeInTheDocument()
+  })
+})
+
 describe('a description the reader pasted is tidied on save', () => {
   it('runs the model on text the fetch never produced', async () => {
     // The gap this closes: the failure copy asks for a paste, and the paste
@@ -128,6 +184,39 @@ describe('a description the reader pasted is tidied on save', () => {
     expect(onDigest).toHaveBeenCalledWith('messy pasted posting')
     await vi.waitFor(() => expect(onSubmit).toHaveBeenCalled())
     expect(onSubmit.mock.calls[0][0].description).toBe(RESULT().description)
+  })
+
+  it('fills the application with the fields the digest mined out of the paste', async () => {
+    // Gabe, 2026-09-19: "it does not fill the application overview dialog".
+    // The digest reports fields as well as restructuring text, and this path
+    // kept only the text -- so a pasted posting that plainly stated a location,
+    // a work mode and a stack saved an application with all three empty.
+    const onDigest = vi.fn().mockResolvedValue(
+      RESULT({
+        fields: {
+          company: 'Digest Corp',
+          location: 'Pasig City',
+          work_mode: 'hybrid',
+          salary_min: 50000,
+          salary_currency: 'PHP',
+          tech_stack: ['React', 'TypeScript'],
+          tags: ['Full-Time'],
+        },
+      })
+    )
+    const { onSubmit } = await pasteAndSave({ onDigest, pasted: 'a posting stating all of it' })
+    await vi.waitFor(() => expect(onSubmit).toHaveBeenCalled())
+    const saved = onSubmit.mock.calls[0][0]
+    expect(saved.location).toBe('Pasig City')
+    expect(saved.work_mode).toBe('hybrid')
+    expect(saved.salary_min).toBe(50000)
+    expect(saved.salary_currency).toBe('PHP')
+    expect(saved.tech_stack).toEqual(['React', 'TypeScript'])
+    expect(saved.tags).toEqual(['Full-Time'])
+    // AND NEVER OVER A PERSON'S OWN TYPING. The harness types the company in
+    // by hand to get past validation, so this is the assertion that keeps the
+    // fix from becoming an overwrite.
+    expect(saved.company).toBe('Acme')
   })
 
   it('does not run it twice on a posting the fetch already digested', async () => {

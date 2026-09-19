@@ -135,8 +135,17 @@ def autofill_from_url_alone(url: str) -> Envelope:
     # instructions: they read as the app being broken rather than the page.
     #
     # It says where the box is instead, because that is the only thing left to
-    # do here, and it says the paste is kept verbatim so nobody waits for a
-    # tidy-up that is not coming.
+    # do here.
+    #
+    # AND IT PROMISES THE TIDY-UP, which this comment used to deny. When the
+    # sentence was written the digest ran only on a FETCHED posting, so the
+    # honest thing to say was that the paste is kept verbatim. That stopped
+    # being true on 2026-09-17: `AddApplicationDialog.submitWithDigest`
+    # restructures a pasted description on its way to being saved, which is
+    # exactly the reader this message is written for. The string was updated
+    # and this paragraph was not -- so it is corrected here rather than left to
+    # argue the string back to the wrong version. Copy describing a capability
+    # is changed by whoever changes the capability.
     # IT SENDS THEM TO THE EMPLOYER FIRST, and that is not a consolation
     # prize -- it is the best outcome available anywhere in this system.
     # Measured 2026-09-17 (docs/EXTRACTION-FREE-OPTIONS.md): an aggregator

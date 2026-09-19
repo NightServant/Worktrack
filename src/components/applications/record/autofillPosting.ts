@@ -120,10 +120,34 @@ export async function autofillPosting({
       if (values.tech_stack?.length) next.techStack = values.tech_stack.join(', ')
       if (values.tags?.length) next.tags = values.tags.join(', ')
       replace(next)
+      // `source` IS NOT A FILLED FIELD, and that is the whole reason this is
+      // not one template string any more. A board that answers a bot
+      // challenge still returns 200: `autofill_from_url_alone` hands back the
+      // site's own name off the HOSTNAME and nothing else, no field read from
+      // any posting. This branch then appended "Check every field before
+      // saving" to a form where nothing had been filled -- two sentences after
+      // the warning had told the reader the posting could not be fetched and
+      // asked them to paste it in themselves. It reads as "we filled these in,
+      // go check them", on a page the app never read.
+      //
+      // The throw branch below has always said "Nothing was filled in."
+      // correctly. This is the same sentence for the case that fails with a
+      // 200 instead of an exception.
+      const filled = Object.keys(next).some((field) => field !== 'source')
       setReadNote(
-        result.warnings?.length
-          ? `${result.warnings.join(' ')} Check every field before saving.`
-          : 'Filled from the posting. Check every field before saving.'
+        [
+          result.warnings?.length
+            ? result.warnings.join(' ')
+            : filled
+              ? 'Filled from the posting.'
+              : 'Nothing was filled in.',
+          // ONLY WHERE THERE IS SOMETHING TO CHECK. An instruction to verify
+          // an empty form is noise standing between the reader and the advice
+          // that actually gets them unstuck.
+          filled ? 'Check every field before saving.' : '',
+        ]
+          .filter(Boolean)
+          .join(' ')
       )
     } catch (err) {
       // IT NAMED A BUTTON DELETED ON 2026-09-10. This said "press 'tidy and
