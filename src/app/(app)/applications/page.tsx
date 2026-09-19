@@ -114,7 +114,10 @@ function ApplicationsRoute() {
    * string. See `useBookmarkletImport` for why any origin may send it and what
    * stops that mattering.
    */
-  const importedHtml = useBookmarkletImport(params.get('import') === 'bookmarklet')
+  // `.html` only: a posting is one page, and the profile bookmarklet is the
+  // one that fetches subpages for itself.
+  const importedHtml =
+    useBookmarkletImport(params.get('import') === 'bookmarklet')?.html ?? null
 
   if (isLoading) {
     return <RouteSkeleton variant="table" />

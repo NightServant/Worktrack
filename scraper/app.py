@@ -112,6 +112,14 @@ GITHUB_TIMEOUT_S = 12.0
 #: second page would be somebody's archive rather than their best work.
 GITHUB_REPO_PAGE = 100
 
+#: How many extra captured pages one import may carry.
+#:
+#: FIVE IS THE SECTIONS THAT HAVE A `/details/` PAGE WORTH READING --
+#: certifications, education, experience, projects, skills -- and the
+#: bookmarklet fetches exactly those. The cap is here because the field is
+#: caller-supplied and nothing else bounds it.
+MAX_CAPTURED_PAGES = 5
+
 #: The biggest README this service will read, in bytes.
 #:
 #: A README is prose and a badge row; the ones that run past this are a
@@ -198,6 +206,26 @@ _load_local_env()
 app = FastAPI(title="worktrack-extractor", docs_url=None, redoc_url=None)
 
 
+class CapturedPage(BaseModel):
+    """One extra page the caller's own browser fetched and handed over.
+
+    WHY THERE ARE SEVERAL NOW (Gabe, 2026-09-19: "why credentials is 2? I told
+    you its eight"). A LinkedIn profile page does not carry a long section in
+    full -- the rest is on `/in/<name>/details/<section>/` -- so one captured
+    page can never be the whole profile however the reader is signed in. The
+    bookmarklet fetches those subpages from the session it is already running
+    in and sends them along, which turns five manual captures into one click.
+
+    IT IS THE BROWSER THAT FETCHES THEM, not this service, and that is the
+    whole point: they are same-origin requests carrying the reader's own
+    cookies, made by the reader's own browser, on pages they are looking at.
+    Nothing here could make them.
+    """
+
+    url: str
+    html: str
+
+
 class ProfileRequest(BaseModel):
     """One profile address, or several to be read and merged.
 
@@ -217,6 +245,8 @@ class ProfileRequest(BaseModel):
     #: profile carries the About, the skills and the bullet text under each
     #: role that no fetch will ever return -- see `linkedin_page`.
     html: str | None = None
+    #: The `/details/<section>/` pages that go with `html`. See `CapturedPage`.
+    pages: list[CapturedPage] | None = None
 
     def addresses(self) -> list[str]:
         """The requested addresses, in order, without duplicates."""
@@ -981,6 +1011,19 @@ async def profile_endpoint(body: ProfileRequest) -> JSONResponse:
     if supplied and len(supplied.encode("utf-8", "ignore")) > MAX_SUPPLIED_HTML_BYTES:
         return JSONResponse({"error": "That page is too large to import"}, status_code=413)
 
+    # THE SUBPAGES THE BOOKMARKLET FETCHED FOR ITSELF. See `CapturedPage`.
+    #
+    # CAPPED TOGETHER, not one by one: five pages under the single-page limit
+    # each is five times the memory this endpoint was sized for, and the cap is
+    # the only thing that bounds it.
+    extra: list[CapturedPage] = list(body.pages or [])[:MAX_CAPTURED_PAGES]
+    if sum(len(page.html.encode("utf-8", "ignore")) for page in extra) > MAX_SUPPLIED_HTML_BYTES:
+        return JSONResponse({"error": "Those pages are too large to import"}, status_code=413)
+    for page in extra:
+        reason = reject_reason(normalize_target_url(page.url))
+        if reason:
+            return JSONResponse({"error": reason}, status_code=400)
+
     # CONFIGURATION IS CHECKED PER ROUTE, not once for the request: GitHub
     # needs no key, so a deployment with no Firecrawl and no Apify can still
     # read a GitHub profile, and refusing the whole request would hide that.
@@ -995,6 +1038,18 @@ async def profile_endpoint(body: ProfileRequest) -> JSONResponse:
         ]
     )
 
+    # PARSED BEFORE THE FETCHED SOURCES ARE RANKED, because a page the reader
+    # was signed in for outranks anything a stranger can see: `merge_profiles`
+    # takes the first non-empty value for every field, so these lead the list.
+    captured: list[dict[str, Any]] = []
+    captured_warnings: list[str] = []
+    for page in extra:
+        parsed = profile_from_linkedin_page(page.url, page.html)
+        if parsed is None:
+            continue
+        captured.append(parsed["profile"])
+        captured_warnings.extend(parsed.get("warnings", []))
+
     read = [result for result in results if result["ok"]]
     # EACH SOURCE KEEPS ITS OWN WARNINGS (Gabe, 2026-09-18, pasting the wall
     # back: seven sentences from five sources in one paragraph, with nothing
@@ -1006,7 +1061,7 @@ async def profile_endpoint(body: ProfileRequest) -> JSONResponse:
         for result in results
     ]
 
-    if not read:
+    if not read and not captured:
         # THE REASONS REACH THE USER, because there is no fallback left and a
         # generic message sends them to check links that are fine.
         return JSONResponse(
@@ -1020,7 +1075,7 @@ async def profile_endpoint(body: ProfileRequest) -> JSONResponse:
             status_code=422,
         )
 
-    profile = merge_profiles([result["profile"] for result in read])
+    profile = merge_profiles(captured + [result["profile"] for result in read])
 
     # WHERE THE ABOUT CAME FROM, AND EVERY SOURCE THAT HAD ONE (Gabe,
     # 2026-09-18: "about section information must come from other sources such
@@ -1046,7 +1101,7 @@ async def profile_endpoint(body: ProfileRequest) -> JSONResponse:
     if about:
         profile["summary"] = about[0]["text"]
 
-    warnings: list[str] = []
+    warnings: list[str] = list(captured_warnings)
     for result in read:
         for warning in result.get("warnings", []):
             if warning not in warnings:

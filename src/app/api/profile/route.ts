@@ -60,6 +60,15 @@ const MAX_PROFILE_URLS = 6
 const MAX_HTML_CHARS = 6_000_000
 
 /**
+ * How many extra captured pages one import may carry.
+ *
+ * FIVE IS THE SECTIONS WITH A `/details/` PAGE WORTH READING -- certifications,
+ * education, experience, projects, skills -- which is exactly what the
+ * bookmarklet fetches. The extractor caps it again at the same number.
+ */
+const MAX_CAPTURED_PAGES = 6
+
+/**
  * An affordance, not a boundary -- per-instance memory, and Fluid Compute
  * reuses instances rather than guaranteeing one. What it genuinely stops is a
  * stuck retry loop and a rage-clicked button, which is the whole job.
@@ -109,7 +118,7 @@ export async function POST(request: Request) {
     )
   }
 
-  let body: { url?: unknown; urls?: unknown; html?: unknown }
+  let body: { url?: unknown; urls?: unknown; html?: unknown; pages?: unknown }
   try {
     body = await request.json()
   } catch {
@@ -179,6 +188,49 @@ export async function POST(request: Request) {
     )
   }
 
+  /**
+   * THE SUBPAGES THE BOOKMARKLET FETCHED FOR ITSELF.
+   *
+   * A LinkedIn profile page does not carry a long section in full -- the rest
+   * lives on `/in/<name>/details/<section>/` -- so one captured document was
+   * never the whole profile (Gabe, 2026-09-19: "why credentials is 2? I told
+   * you its eight"). The bookmarklet fetches those from the session it is
+   * running in and sends them along.
+   *
+   * THE SSRF GATE STILL RUNS ON EVERY ADDRESS even though nothing here will be
+   * fetched, for the same reason it runs on the captured page's own URL: the
+   * address is stored and shown, and a gate that applies only sometimes is a
+   * gate whose behaviour nobody can state.
+   *
+   * THE CAP IS ON THE TOTAL, not per page. Five pages each under the
+   * single-page limit is five times the memory this route was sized for.
+   */
+  const rawPages = Array.isArray(body?.pages) ? body.pages.slice(0, MAX_CAPTURED_PAGES) : []
+  const pages: { url: string; html: string }[] = []
+  for (const entry of rawPages) {
+    if (!entry || typeof entry !== 'object') continue
+    const page = entry as { url?: unknown; html?: unknown }
+    if (typeof page.url !== 'string' || typeof page.html !== 'string' || !page.html) continue
+    const reason = rejectReason(page.url)
+    if (reason) {
+      logSecurityEvent({
+        kind: 'request.rejected',
+        route: '/api/profile',
+        userId: auth.user.id,
+        reason,
+        status: 400,
+      })
+      return NextResponse.json({ error: reason }, { status: 400 })
+    }
+    pages.push({ url: normalizeTargetUrl(page.url), html: page.html })
+  }
+  if (pages.reduce((total, page) => total + page.html.length, 0) > MAX_HTML_CHARS) {
+    return NextResponse.json(
+      { error: 'Those pages are too large to import.' },
+      { status: 413 }
+    )
+  }
+
   const extractor = process.env.EXTRACTOR_URL
   if (!extractor) {
     logSecurityEvent({
@@ -202,6 +254,7 @@ export async function POST(request: Request) {
         // Omitted rather than sent empty: the extractor's field is `str |
         // None`, and an empty string is a page it would try to parse.
         ...(html ? { html } : {}),
+        ...(pages.length > 0 ? { pages } : {}),
       }),
     })
     const payload = await response.json()

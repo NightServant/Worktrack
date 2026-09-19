@@ -14,8 +14,8 @@ import { useBookmarkletImport } from '../useBookmarkletImport'
  */
 
 function Harness({ enabled }: { enabled: boolean }) {
-  const html = useBookmarkletImport(enabled)
-  return <div data-testid="out">{html ?? 'nothing'}</div>
+  const capture = useBookmarkletImport(enabled)
+  return <div data-testid="out">{capture?.html ?? 'nothing'}</div>
 }
 
 const send = (data: unknown) =>
@@ -82,15 +82,52 @@ describe('receiving a posting from the bookmarklet', () => {
  * exactly that: a listener asked for one must not take the other.
  */
 function ProfileHarness({ enabled }: { enabled: boolean }) {
-  const html = useBookmarkletImport(enabled, 'profile')
-  return <div data-testid="out">{html ?? 'nothing'}</div>
+  const capture = useBookmarkletImport(enabled, 'profile')
+  return (
+    <div data-testid="out">
+      {capture ? `${capture.html} +${capture.pages.length}` : 'nothing'}
+    </div>
+  )
 }
 
 describe('receiving a profile from the bookmarklet', () => {
   it('takes a captured profile page', () => {
     render(<ProfileHarness enabled />)
     send({ type: 'worktrack:profile', html: '<html><body>a profile</body></html>' })
-    expect(received()).toBe('<html><body>a profile</body></html>')
+    // `+0`: the harness prints how many subpages came with it, and a sender
+    // that offers none is still a capture.
+    expect(received()).toBe('<html><body>a profile</body></html> +0')
+  })
+
+  it('takes the subpages the sender fetched for itself', () => {
+    // Gabe, 2026-09-19: "why credentials is 2? I told you its eight". A
+    // LinkedIn profile does not carry a long section in full, so the
+    // bookmarklet fetches each `/details/` page and sends them along.
+    render(<ProfileHarness enabled />)
+    send({
+      type: 'worktrack:profile',
+      html: '<html><body>a profile</body></html>',
+      pages: [
+        { url: 'https://www.linkedin.com/in/x/details/certifications/', html: '<html>c</html>' },
+        { url: 'https://www.linkedin.com/in/x/details/education/', html: '<html>e</html>' },
+      ],
+    })
+    expect(received()).toBe('<html><body>a profile</body></html> +2')
+  })
+
+  it('drops a malformed or oversized subpage without losing the rest', () => {
+    render(<ProfileHarness enabled />)
+    send({
+      type: 'worktrack:profile',
+      html: '<html><body>a profile</body></html>',
+      pages: [
+        { url: 'https://www.linkedin.com/in/x/details/certifications/', html: '<html>c</html>' },
+        { url: 'https://www.linkedin.com/in/x/details/education/' },
+        { url: 'https://www.linkedin.com/in/x/details/skills/', html: 'x'.repeat(3_000_001) },
+        'not an object',
+      ],
+    })
+    expect(received()).toBe('<html><body>a profile</body></html> +1')
   })
 
   it('does not take a posting, and a posting listener does not take a profile', () => {

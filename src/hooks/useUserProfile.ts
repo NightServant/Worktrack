@@ -141,12 +141,24 @@ export function useImportProfileFromUrl() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
 
-  return useMutation<ProfileFetchResult, Error, { urls: string[]; html?: string }>({
-    mutationFn: async ({ urls, html }) => {
+  return useMutation<
+    ProfileFetchResult,
+    Error,
+    { urls: string[]; html?: string; pages?: { url: string; html: string }[] }
+  >({
+    mutationFn: async ({ urls, html, pages }) => {
       const response = await authedFetch('/api/profile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ urls, ...(html ? { html } : {}) }),
+        // `pages` ARE THE SUBPAGES THE BOOKMARKLET FETCHED FOR ITSELF -- a
+        // LinkedIn profile keeps a long section's tail on its own
+        // `/details/` page, so one captured document is never the whole
+        // profile. Omitted rather than sent empty, like `html`.
+        body: JSON.stringify({
+          urls,
+          ...(html ? { html } : {}),
+          ...(pages && pages.length > 0 ? { pages } : {}),
+        }),
       })
       const payload = (await response.json()) as
         | { profile?: Partial<UserProfile>; warnings?: string[]; sources?: unknown }

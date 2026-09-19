@@ -1768,6 +1768,55 @@ def test_a_details_capture_is_filed_under_the_profile_not_the_subpage():
     assert len(record["profile"]["certifications"]) == 2
 
 
+def test_captured_detail_pages_are_merged_and_outrank_the_public_read():
+    # The whole point of the subpage capture: the public scrape returns the two
+    # certificates LinkedIn renders to a stranger, the captured
+    # `/details/certifications/` page has the rest, and the captured one wins
+    # (Gabe, 2026-09-19: "why credentials is 2? I told you its eight").
+    from extractor.profile import EMPTY_PROFILE
+
+    captured = profile_from_linkedin_page(
+        "https://www.linkedin.com/in/elijah/details/certifications/",
+        DETAILS_CERTIFICATIONS,
+    )["profile"]
+    public = {
+        **EMPTY_PROFILE,
+        "name": "Elijah Gabe Cervantes",
+        "certifications": [
+            {"name": "Introduction to Networks", "authority": "Cisco Networking Academy"}
+        ],
+    }
+    merged = merge_profiles([captured, public])
+    # Two from the capture, not one from the public read -- and the one they
+    # share is filled in rather than listed twice.
+    assert len(merged["certifications"]) == 2
+    networks = next(
+        c for c in merged["certifications"] if c["name"] == "Introduction to Networks"
+    )
+    assert networks["issued"] == "Jun 2024"
+    assert networks["credentialId"] == "ABC-123"
+    # And the name the capture deliberately did not read comes from the fetch.
+    assert merged["name"] == "Elijah Gabe Cervantes"
+
+
+def test_the_request_model_carries_the_captured_subpages():
+    from app import ProfileRequest
+
+    body = ProfileRequest(
+        urls=["https://www.linkedin.com/in/elijah/"],
+        html="<html></html>",
+        pages=[
+            {
+                "url": "https://www.linkedin.com/in/elijah/details/certifications/",
+                "html": DETAILS_CERTIFICATIONS,
+            }
+        ],
+    )
+    assert body.pages is not None
+    assert len(body.pages) == 1
+    assert body.pages[0].url.endswith("/details/certifications/")
+
+
 def test_an_unknown_details_page_falls_through_rather_than_guessing():
     assert (
         profile_from_linkedin_page(

@@ -62,7 +62,7 @@ function SettingsRoute() {
    */
   const params = useSearchParams()
   const captureUrl = params.get('profile')
-  const capturedHtml = useBookmarkletImport(
+  const captured = useBookmarkletImport(
     params.get('import') === 'bookmarklet' && !!captureUrl,
     'profile'
   )
@@ -179,18 +179,29 @@ function SettingsRoute() {
    */
   const captureRan = React.useRef(false)
   React.useEffect(() => {
-    if (!capturedHtml || !captureUrl || captureRan.current) return
+    if (!captured || !captureUrl || captureRan.current) return
     captureRan.current = true
     void (async () => {
       setProfileNote(null)
       try {
-        await fetchProfile.mutateAsync({ urls: [captureUrl], html: capturedHtml })
-        success('Profile updated from the page you captured')
+        // THE SUBPAGES RIDE ALONG. A LinkedIn profile page does not carry a
+        // long section in full, so the bookmarklet fetches each `/details/`
+        // page from the session it is running in -- see `BookmarkletCapture`.
+        await fetchProfile.mutateAsync({
+          urls: [captureUrl],
+          html: captured.html,
+          pages: captured.pages,
+        })
+        success(
+          captured.pages.length > 0
+            ? `Profile updated from your page and ${captured.pages.length} more`
+            : 'Profile updated from the page you captured'
+        )
       } catch (err) {
         setProfileNote(err instanceof Error ? err.message : 'Could not read that page.')
       }
     })()
-  }, [capturedHtml, captureUrl, fetchProfile, success])
+  }, [captured, captureUrl, fetchProfile, success])
 
   const handleClearProfile = async () => {
     try {

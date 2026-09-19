@@ -52,23 +52,63 @@ import * as React from 'react'
  */
 const MAX_HTML_CHARS = 3_000_000
 
+/** One subpage the sender fetched for itself. See `BookmarkletCapture`. */
+export interface CapturedPage {
+  url: string
+  html: string
+}
+
+/**
+ * What a bookmarklet hands over: the page it ran on, and any subpages it
+ * fetched from the same session.
+ *
+ * `pages` EXISTS BECAUSE ONE PAGE IS NOT A PROFILE (Gabe, 2026-09-19: "why
+ * credentials is 2? I told you its eight"). LinkedIn keeps the rest of a long
+ * section on `/in/<name>/details/<section>/`, so the profile bookmarklet
+ * fetches those itself -- same origin, the reader's own cookies, in the
+ * browser they are already signed in to -- and sends them along. The posting
+ * bookmarklet sends none and this is empty for it.
+ */
+export interface BookmarkletCapture {
+  html: string
+  pages: CapturedPage[]
+}
+
+/** At most this many subpages are accepted. The server caps again at five. */
+const MAX_PAGES = 5
+
+function readPages(value: unknown): CapturedPage[] {
+  if (!Array.isArray(value)) return []
+  const out: CapturedPage[] = []
+  for (const entry of value.slice(0, MAX_PAGES)) {
+    if (!entry || typeof entry !== 'object') continue
+    const page = entry as { url?: unknown; html?: unknown }
+    if (typeof page.url !== 'string' || typeof page.html !== 'string') continue
+    if (!page.html || page.html.length > MAX_HTML_CHARS) continue
+    out.push({ url: page.url, html: page.html })
+  }
+  return out
+}
+
 export function useBookmarkletImport(
   enabled: boolean,
   kind: 'posting' | 'profile' = 'posting'
-): string | null {
-  const [html, setHtml] = React.useState<string | null>(null)
+): BookmarkletCapture | null {
+  const [capture, setCapture] = React.useState<BookmarkletCapture | null>(null)
 
   React.useEffect(() => {
     if (!enabled) return
     const wanted = `worktrack:${kind}`
 
     const onMessage = (event: MessageEvent) => {
-      const data = event.data as { type?: unknown; html?: unknown } | null
+      const data = event.data as
+        | { type?: unknown; html?: unknown; pages?: unknown }
+        | null
       if (!data || typeof data !== 'object' || data.type !== wanted) return
       const source = data.html
       if (typeof source !== 'string' || !source || source.length > MAX_HTML_CHARS) return
 
-      setHtml(source)
+      setCapture({ html: source, pages: readPages(data.pages) })
       // Answer the sender so it stops retrying. `event.origin` rather than
       // `'*'`: this reply goes back to whoever sent the source and to nobody
       // else, and it carries no data of ours in any case.
@@ -84,5 +124,5 @@ export function useBookmarkletImport(
     return () => window.removeEventListener('message', onMessage)
   }, [enabled, kind])
 
-  return html
+  return capture
 }
