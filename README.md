@@ -87,7 +87,8 @@ The dates move with the clock. A fixture pinned to literal dates would say "appl
 - Applications with company, role, salary range, location, work mode, source, tags, and tech stack
 - Status pipeline — wishlist → applied → interviewing → offer / rejected — shown as a progress bar on every application and as filter tabs over the list
 - Automatic status-change history, recorded by a database trigger rather than by the client, so a transition cannot be lost by a failed request
-- Auto-fill from a job posting URL, parsed server-side; a hosted fetcher (Firecrawl) is tried for the pages this server cannot open itself
+- Auto-fill from a job posting URL, parsed server-side. Three routes in, tried in order of what the answer is worth: the board's own structured data where it publishes any, then a hosted fetcher (Firecrawl) for pages this server cannot open, then the page rendered by a browser. JobStreet and SEEK refuse the HTML to everything that is not a browser and answer the same posting at their own `/graphql`, so that is what gets asked
+- A posting that genuinely cannot be read says so, names the board, and points at the employer's own careers page — which parses better than any aggregator mirror anyway
 - Search, ordering by date applied or alphabetically, pagination, and CSV **import and export**
 - One record dialog that reads and edits the same application: what the job is, the posting itself, and how your CV scores against it
 
@@ -106,7 +107,7 @@ The dates move with the clock. A fixture pinned to literal dates would say "appl
 - Every figure is computed from your own rows, so it is only ever as good as what you put in
 
 ### CV builder
-- Word-style rich text editor (Tiptap) with autosave
+- Word-style rich text editor (Tiptap). **There is no Save button**: the document writes itself 1200ms after you stop typing, the header says where the work stands, and ⌘S says so too rather than letting the browser offer to save the page
 - LaTeX source editor with live side-by-side preview
 - Template presets for both modes, browsable on their own screen
 - Version history — snapshots capped at 10 per CV
@@ -219,6 +220,16 @@ npm run dev
 
 The dev server starts at <http://localhost:3000>.
 
+`npm run dev` starts Next and nothing else. Auto-fill reads job postings through a separate Python service, so it stays unavailable until that is running too — and the symptom, before the app learned to say so, was auto-fill blaming perfectly good posting URLs:
+
+```bash
+python3 -m venv scraper/.venv
+scraper/.venv/bin/pip install -e './scraper[dev]'
+npm run dev:scraper        # http://127.0.0.1:8000, reloads on edit
+```
+
+Add `[dev,browser]` instead of `[dev]` to install the local browser as well. It is what reads boards that publish nothing structured, and it is a developer's convenience rather than part of a deployment: the Python builder installs `playwright` and never its Chromium, so a deployment uses `FIRECRAWL_API_KEY` for the same job.
+
 Apply the schema before first use:
 
 ```bash
@@ -273,6 +284,13 @@ No test count is quoted anywhere in this file, on purpose: the previous README c
 | `NEXT_PUBLIC_SUPABASE_URL` | The app cannot reach the database. Required. |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | The app cannot authenticate. Required. |
 | `SUPABASE_AUTH_SITE_URL` | Only read by `supabase config push`. It has **no default on purpose**: an unset value fails the push loudly rather than pointing production auth emails at `localhost`. |
+| `EXTRACTOR_URL` | Auto-fill answers 503 and says so. It is a Vercel service binding in [`vercel.json`](vercel.json); locally it is `http://127.0.0.1:8000` and `npm run dev` does **not** start that service — `npm run dev:scraper` does. |
+| `FIRECRAWL_API_KEY` | The hosted fetcher is skipped. Read by the extractor, not by the app. Boards that refuse an ordinary request fall through to a local browser, which exists on a developer's machine and not in a deployment — so without this, Indeed is unreadable in production. The skip is logged rather than reported as the board blocking us. |
+| `TAILORING_BASE_URL`, `TAILORING_API_KEY`, `TAILORING_MODEL` | Every model feature switches off and says why. Any OpenAI-compatible chat endpoint: OpenRouter, Groq, Together, a local Ollama. |
+| `MODEL_EXTRACT`, `MODEL_CV`, `MODEL_TAILOR` | Each falls back to `TAILORING_MODEL`. They are three different jobs — reading a posting against a schema, writing prose, and judging what may honestly be claimed — and they want different models. |
+| `TAILORING_ENABLED` | Absent means on. `false` is how a Preview deployment is told not to spend the shared key on a branch. |
+
+**One provider difference worth knowing before you swap endpoints.** OpenRouter documents two spellings for reasoning effort and they are not interchangeable: Groq answers the nested `reasoning: { effort }` with `400 property 'reasoning' is unsupported`, which costs the whole call. Everything here sends the flat OpenAI-style `reasoning_effort`, and the tests assert the nested form is absent.
 
 `NEXT_PUBLIC_SUPABASE_ANON_KEY` is in the client bundle, and that is correct. Next inlines any `NEXT_PUBLIC_` variable, the anon key is designed to be public, and row-level security — not key secrecy — is what protects the data. Never put the service-role key behind that prefix; it bypasses RLS entirely.
 
@@ -291,6 +309,8 @@ The signup OTP will not work on a stock Supabase project. The default "Confirm s
 ### Deployment
 
 Vercel. Import the repository, set the two `NEXT_PUBLIC_SUPABASE_*` variables, and deploy. The landing page, `/privacy` and the 404 are statically prerendered; the authenticated routes render on demand.
+
+[`vercel.json`](vercel.json) declares **two services**, not one: the Next app and the Python extractor, with a service binding that injects `EXTRACTOR_URL` into the app. That is why `EXTRACTOR_URL` does not appear in the project's environment variables and should not be added there. The model and Firecrawl keys are ordinary environment variables and do have to be set.
 
 ## 8. Engineering
 
@@ -359,7 +379,8 @@ docs/               SECURITY.md and the milestone plans
 | Charts | Recharts 3 |
 | Database | PostgreSQL (Supabase) |
 | Auth | Supabase Auth |
-| Server-side | Supabase Edge Functions (Deno) |
+| Server-side | Next.js route handlers (`src/app/api`) |
+| Posting extraction | Python (FastAPI) in [`scraper/`](scraper), run as its own service |
 | Testing | Vitest, React Testing Library |
 | Analysis | Python (pandas, matplotlib, seaborn) |
 
@@ -410,6 +431,7 @@ The work they were meant to do runs where it can be tested from a laptop:
 - **`/` redirects a signed-in visitor after hydration, not before.** The session lives in `localStorage`, so there is no auth cookie for middleware to read, and the landing page paints for a frame before the redirect. Removing that frame needs cookie-backed sessions via `@supabase/ssr`, which is a migration rather than a fix.
 - **`resumes.sections` is never written**, so the ATS column reads "not checked" for CVs created through the editors.
 - **No accessibility audit has been done.** Keyboard navigation and `aria-current` are handled on the primary surfaces, `prefers-reduced-motion` is honoured throughout, and colour is never the only carrier of state — but a full screen-reader pass has not happened.
+- **Some job boards cannot be read from a server, and no amount of code changes that.** Indeed answers an anonymous request with a Cloudflare 401; JobStreet and SEEK answer 403. Where a board publishes its postings through its own API, that is used. Where one does not, the hosted fetcher is tried, and where that fails too the app says which board refused and points at the employer's own careers page — which parses at 0.90–0.95 confidence a field, against 0.40–0.70 for an aggregator mirror even when the mirror *can* be read. Nothing here wears a disguise: no challenge is solved, no session borrowed, no residential proxy bought.
 - **The pinned landing sequence is desktop-only.** Below `lg` nothing pins; the page scrolls normally, which is deliberate rather than unfinished.
 
 ## 13. Roadmap
