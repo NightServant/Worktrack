@@ -81,10 +81,25 @@ RENDER_TIMEOUT_MS = 45_000
 #:                  its own field list names skills, languages, certifications
 #:                  and honours.
 #:
-#: THE INPUT SHAPE IS DIFFERENT AND THAT IS THE WHOLE MIGRATION: `urls` takes
-#: `{"url": ...}` objects rather than `profileUrls` taking strings. The output
-#: is read defensively by `apify_profile`, which now carries both actors'
-#: spellings -- see its docblock.
+#:   dev_fusion     PAY_PER_EVENT: $0.01 per result and nothing else -- memory
+#:                  is not billed at all, so it is a flat penny per profile.
+#:                  25 million runs against supreme_coder's field list, and its
+#:                  documented output carries certifications, skills, languages
+#:                  and GRADUATION DATES, which is exactly what the public read
+#:                  was missing (Gabe, 2026-09-19: "try this one").
+#:
+#: WHICH ONE RUNS IS `APIFY_PROFILE_ACTOR`, so swapping is an environment
+#: variable rather than a deploy. That only works because the request carries
+#: BOTH input shapes at once -- `urls` as `{"url": ...}` objects for
+#: supreme_coder, `profileUrls` as strings for dev_fusion -- and neither schema
+#: sets `additionalProperties: false`, so each ignores the other's key.
+#:
+#: THE OUTPUT SHAPES SHARE ALMOST NOTHING, which is the real migration and is
+#: all in `apify_profile`: `jobTitle` against `title`, `jobStartedOn` against
+#: `startDate`, `educations` against `education`, `jobDescription` against
+#: `description`. Switching without that would have silently dropped every
+#: date, every work location and the bullet text -- things the old actor DID
+#: return. A test pins one row of each dialect.
 #:
 #: `run-sync-get-dataset-items` runs the actor and returns the rows in one
 #: call, which is right for one profile and wrong for a hundred. Per-profile
@@ -482,10 +497,15 @@ async def _apify_profile(url: str) -> tuple[dict[str, Any] | None, str]:
                 headers={"Authorization": f"Bearer {token}"},
                 params={"memory": APIFY_MEMORY_MB, "timeout": int(APIFY_TIMEOUT_S)},
                 json={
-                    # `[{"url": ...}]`, not a list of strings: the actor's own
-                    # input schema declares `urls` as a request list, and a
-                    # bare string is not one.
+                    # BOTH SPELLINGS, BECAUSE THE ACTOR IS CONFIGURABLE.
+                    # `supreme_coder` declares `urls` as a request list, so a
+                    # bare string is not one; `dev_fusion` declares
+                    # `profileUrls` as a list of strings. Neither schema sets
+                    # `additionalProperties: false`, so the one it does not
+                    # know is ignored rather than rejected -- which is what
+                    # lets `APIFY_PROFILE_ACTOR` be swapped without a deploy.
                     "urls": [{"url": url}],
+                    "profileUrls": [url],
                     # OFF, BOTH OF THEM, and both are money. `scrapeCompany`
                     # fetches the current employer's own page for headcount and
                     # industry -- another $0.001 and another wait, for facts a

@@ -829,6 +829,86 @@ def test_a_degree_repeated_as_its_own_field_is_written_once():
     )
 
 
+DEV_FUSION_ROW = {
+    # The second actor's dialect, from its published output sample. Gabe
+    # suggested it on 2026-09-19 -- it is $0.01 a profile against $0.51, and it
+    # documents certifications, skills and graduation dates.
+    "fullName": "Elijah Gabe Cervantes",
+    "headline": "Front-End Developer",
+    "email": "egabe.cervantes@gmail.com",
+    "addressWithCountry": "Bamban, Central Luzon, Philippines",
+    "experiences": [
+        {
+            "jobTitle": "Frontend Developer and UI/UX Designer",
+            "companyName": "Dominican College of Tarlac",
+            "jobStartedOn": "Sep 2025",
+            "jobEndedOn": "Nov 2025",
+            "jobLocation": "Capas, Central Luzon, Philippines",
+            "jobDescription": "Designed prototypes.\nBuilt the login system.",
+        }
+    ],
+    "educations": [
+        {
+            "schoolName": "Tarlac State University",
+            "degree": "Bachelor of Science - BS",
+            "fieldOfStudy": "Computer Science",
+            "schoolStartedOn": 2022,
+            "schoolEndedOn": 2026,
+        }
+    ],
+    "certifications": [
+        {"title": "Introduction to Networks", "issuer": "Cisco Networking Academy"}
+    ],
+    "skills": [{"title": "React"}, {"title": "TypeScript"}],
+    "languages": [{"title": "English"}],
+}
+
+
+def test_the_second_actors_dialect_maps_onto_the_same_profile():
+    # ONE MAPPER, TWO ACTORS, and the keys share almost nothing: `jobTitle`
+    # against `title`, `jobStartedOn` against `startDate`, `educations` against
+    # `education`. Switching actors without this would have silently dropped
+    # every date, every work location and the bullet text -- things the old one
+    # DID return.
+    p = profile_from_apify(DEV_FUSION_ROW, "x")["profile"]
+    assert p["name"] == "Elijah Gabe Cervantes"
+    assert p["email"] == "egabe.cervantes@gmail.com"
+    assert p["location"] == "Bamban, Central Luzon, Philippines"
+
+    role = p["experiences"][0]
+    assert role["title"] == "Frontend Developer and UI/UX Designer"
+    assert role["company"] == "Dominican College of Tarlac"
+    assert role["period"] == "Sep 2025 – Nov 2025"
+    assert role["location"] == "Capas, Central Luzon, Philippines"
+    assert role["description"] == "Designed prototypes.\nBuilt the login system."
+
+    school = p["education"][0]
+    assert school["school"] == "Tarlac State University"
+    assert school["degree"] == "Bachelor of Science - BS, Computer Science"
+    assert school["period"] == "2022 – 2026"
+    assert school["graduationYear"] == "2026"
+
+    assert p["certifications"][0]["name"] == "Introduction to Networks"
+    assert p["skills"] == ["React", "TypeScript"]
+    assert p["languages"] == ["English"]
+
+
+def test_a_current_role_with_no_end_date_reads_as_present():
+    row = {
+        "experiences": [
+            {
+                "jobTitle": "Engineer",
+                "companyName": "Acme",
+                "jobStartedOn": "2024-01",
+                "jobStillWorking": True,
+            }
+        ]
+    }
+    assert profile_from_apify(row, "x")["profile"]["experiences"][0]["period"] == (
+        "2024-01 – Present"
+    )
+
+
 def test_a_year_that_arrives_as_a_number_is_still_a_year():
     # `_clean` refuses anything that is not a string, so an integer `endYear`
     # read as no year at all and the panel printed a blank beside the school

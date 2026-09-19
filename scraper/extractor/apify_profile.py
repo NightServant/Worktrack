@@ -114,7 +114,12 @@ def _pick_number(node: Any, *names: str) -> str | None:
     return None
 
 
-def _period(node: Any, *, start: str = "startDate", end: str = "endDate") -> str | None:
+def _period(
+    node: Any,
+    *,
+    starts: tuple[str, ...] = ("startDate",),
+    ends: tuple[str, ...] = ("endDate",),
+) -> str | None:
     """`start – end` as free text, matching `ProfileExperience.period`.
 
     FREE TEXT, NOT A DATE PAIR. The actor returns whatever LinkedIn displayed,
@@ -133,15 +138,19 @@ def _period(node: Any, *, start: str = "startDate", end: str = "endDate") -> str
     ready = _pick(node, "dateRange", "date_range")
     if ready:
         return ready
-    first = _clean(node.get(start))
-    last = _clean(node.get(end))
+    # SEVERAL SPELLINGS PER END, because the two actors this mapper serves do
+    # not agree: `supreme_coder` writes `startDate`/`endDate`, `dev_fusion`
+    # writes `jobStartedOn`/`jobEndedOn` and `schoolStartedOn`/`schoolEndedOn`.
+    # Numbers are tolerated here for the same reason `_number_or_text` exists.
+    first = _pick_number(node, *starts)
+    last = _pick_number(node, *ends)
     if first and last:
         return f"{first} – {last}"
     if first:
         return f"{first} – Present"
     # The duration alone, last: better than nothing under a role, and never
     # in place of the dates.
-    return last or _pick(node, "duration", "totalDuration")
+    return last or _pick(node, "duration", "totalDuration", "currentJobDuration")
 
 
 #: What LinkedIn appends to a location that is not part of the place.
@@ -223,13 +232,19 @@ def _experiences(row: dict[str, Any]) -> list[dict[str, Any]]:
         company = _pick(
             position, "company", "companyName", "organisation", "companyLinkedinName"
         ) or _pick(position.get("company"), "name", "companyName", "universalName")
+        if not title:
+            title = _pick(position, "jobTitle")
         if not title and not company:
             continue
         out.append(
             {
                 "title": title or "",
                 "company": company,
-                "period": _period(position),
+                "period": _period(
+                    position,
+                    starts=("startDate", "jobStartedOn", "startedOn"),
+                    ends=("endDate", "jobEndedOn", "endedOn"),
+                ),
                 # EVERY SPELLING, NOT THE FIRST NON-EMPTY ONE. `_place` refuses
                 # a name in another script (see `latin_place`), and the actor
                 # sometimes carries the same place twice under two keys with
@@ -243,6 +258,7 @@ def _experiences(row: dict[str, Any]) -> list[dict[str, Any]]:
                             for key in (
                                 "location",
                                 "locationName",
+                                "jobLocation",
                                 "geoLocationName",
                                 "locationText",
                             )
@@ -255,7 +271,9 @@ def _experiences(row: dict[str, Any]) -> list[dict[str, Any]]:
                 # LinkedIn does not serve it to a signed-out visitor, so this
                 # is usually None and the warning says so -- the export
                 # importer remains the only source that has it.
-                "description": _pick_block(position, "description", "summary"),
+                "description": _pick_block(
+                    position, "description", "jobDescription", "summary"
+                ),
             }
         )
     return out
@@ -267,7 +285,7 @@ def _education(row: dict[str, Any]) -> list[dict[str, Any]]:
     for school in schools:
         if not isinstance(school, dict):
             continue
-        name = _pick(school, "school", "schoolName", "name", "title")
+        name = _pick(school, "school", "schoolName", "name", "title", "schoolTitle")
         if not name:
             continue
         # `degree` and `fieldOfStudy` are separate columns and both are
@@ -288,9 +306,17 @@ def _education(row: dict[str, Any]) -> list[dict[str, Any]]:
         # The actor's education rows are the least consistent thing it returns:
         # `dateRange` on some, `startDate`/`endDate` on others, bare integer
         # `startYear`/`endYear` on the rest.
-        start = _pick_number(school, "startYear", "start_year", "startDate")
-        end = _pick_number(school, "endYear", "end_year", "endDate")
-        period = _period(school)
+        start = _pick_number(
+            school, "startYear", "start_year", "startDate", "schoolStartedOn", "startedOn"
+        )
+        end = _pick_number(
+            school, "endYear", "end_year", "endDate", "schoolEndedOn", "endedOn"
+        )
+        period = _period(
+            school,
+            starts=("startDate", "schoolStartedOn", "startedOn", "startYear"),
+            ends=("endDate", "schoolEndedOn", "endedOn", "endYear"),
+        )
         if not period:
             if start and end:
                 period = f"{start} – {end}"
@@ -338,9 +364,19 @@ def _certifications(row: dict[str, Any]) -> list[dict[str, Any]]:
             "date",
             "startDate",
             "issuedYear",
+            "issuedOnDate",
+            "certificationStartedOn",
+            "startedOn",
         )
         expires = _pick_number(
-            cert, "expirationDate", "expiresAt", "expires", "expiryDate", "endDate"
+            cert,
+            "expirationDate",
+            "expiresAt",
+            "expires",
+            "expiryDate",
+            "endDate",
+            "certificationEndedOn",
+            "endedOn",
         )
         period = _pick(cert, "dateRange", "duration")
         if not period:
@@ -355,7 +391,13 @@ def _certifications(row: dict[str, Any]) -> list[dict[str, Any]]:
             {
                 "name": name,
                 "authority": _pick(
-                    cert, "issuer", "authority", "organization", "subtitle", "company"
+                    cert,
+                    "issuer",
+                    "authority",
+                    "organization",
+                    "organizationName",
+                    "subtitle",
+                    "company",
                 ),
                 "period": period,
                 "issued": issued,
@@ -477,15 +519,32 @@ def profile_from_apify(row: dict[str, Any], requested_url: str) -> dict[str, Any
     profile["name"] = name
     profile["headline"] = _pick(row, "headline", "occupation", "subtitle")
     profile["location"] = _pick(
-        row, "location", "geoLocationName", "addressWithCountry", "locationName"
+        row,
+        "location",
+        "geoLocationName",
+        "addressWithCountry",
+        "locationName",
+        "addressWithoutCountry",
     )
     profile["summary"] = (
         _real_summary(row.get("summary"))
         or _real_summary(row.get("about"))
         or _real_summary(row.get("bio"))
     )
+    # THE EMAIL, WHICH THE OLDER ACTOR NEVER RETURNED and this mapper therefore
+    # never read. `dev_fusion` publishes it, and a CV's contact line is the one
+    # place it is unambiguously wanted. Only ever read for an address the user
+    # typed in about themselves.
+    profile["email"] = _pick(row, "email", "emailAddress", "workEmail")
     profile["pictureUrl"] = _pick(
-        row, "profilePicture", "profilePic", "photo", "pictureUrl", "profilePicHighQuality"
+        row,
+        "profilePicture",
+        "profilePic",
+        "photo",
+        "pictureUrl",
+        "profilePicHighQuality",
+        "profilePictureUrl",
+        "profilePicUrl",
     )
     profile["url"] = _pick(row, "profileUrl", "linkedinUrl", "url", "inputUrl") or requested_url
 
