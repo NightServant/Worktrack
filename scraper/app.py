@@ -15,6 +15,7 @@ copy is not redundant.
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 from pathlib import Path
 from urllib.parse import urlparse
@@ -38,15 +39,38 @@ from extractor.linkedin_page import profile_from_linkedin_page
 from extractor.merge_profile import merge_profiles
 from extractor.profile import _clean, extract_profile
 
+#: Why an escalation did not work, for whoever is running this.
+#:
+#: THE FIRST LOGGER IN THIS SERVICE, and it earns its place rather than opening
+#: a habit: every other failure here reaches the caller as a message they can
+#: act on, and this one cannot. Firecrawl being skipped for an empty key is
+#: invisible to the reader by design -- they are shown the page that could not
+#: be read, not our configuration -- so the operator is the only person who can
+#: fix it and the log is the only place they would see it.
+logger = logging.getLogger(__name__)
+
 REQUEST_TIMEOUT_S = 12.0
 
-#: How long to let a page finish rendering itself, after the network goes idle.
+#: How long to let a page finish rendering itself, after it loads.
 #:
 #: MEASURED, on Cloudstaff (2026-09-06). `network_idle` alone returned a page
 #: whose 4,930 visible characters were ENTIRELY its cookie banner -- the
 #: posting had not been written to the DOM yet. Six seconds got the whole
 #: posting; three did not.
+#:
+#: IT IS NOW THE ONLY WAIT (2026-09-19). `network_idle` was dropped from
+#: `_render`: a job board never reaches it, so the condition could not be
+#: satisfied and the render spent the whole timeout below before returning the
+#: page it already had. This is what the settle was doing all along -- the
+#: idle wait was never the thing that got the posting.
 RENDER_SETTLE_MS = 6000
+
+#: The ceiling on one render.
+#:
+#: IT WAS A BUDGET SOMETHING ACTUALLY SPENT until the idle wait went: JobStreet
+#: took 53.4s of it and returned 11 more characters than an 8.0s render of the
+#: same page. Now it is what it reads like -- a ceiling for a page that has
+#: genuinely stalled, not a number the ordinary case runs into.
 RENDER_TIMEOUT_MS = 45_000
 
 #: Firecrawl: a hosted fetcher that runs the page and handles the proxying.
@@ -426,8 +450,19 @@ async def _firecrawl_fetch(
 async def _fetch_via_firecrawl(
     url: str, payload: dict[str, Any] | None = None
 ) -> str | None:
-    """The `/extract` path, which only needs to know whether it worked."""
-    html, _ = await _firecrawl_fetch(url, payload)
+    """The `/extract` path, which only needs to know whether it worked.
+
+    IT STILL SAYS WHY IN THE LOG. "Only needs to know whether it worked" is
+    true of the CALLER and was wrong about the operator: a deployment whose
+    FIRECRAWL_API_KEY is empty skips the paid escalation silently, the render
+    is then the only attempt left, and the reader is told the BOARD blocks
+    automated reads. That sentence is about the site; `no-key` and `http-402`
+    are about us. `scraper/.env` had an empty key on 2026-09-19 and nothing
+    anywhere said so.
+    """
+    html, reason = await _firecrawl_fetch(url, payload)
+    if html is None:
+        logger.info("firecrawl escalation failed for %s: %s", url, reason)
     return html
 
 
@@ -447,7 +482,23 @@ def _render(url: str) -> str | None:
         page = DynamicFetcher.fetch(
             url,
             headless=True,
-            network_idle=True,
+            # NO `network_idle`, AND IT IS THE WHOLE REASON JOBSTREET READ AS
+            # UNREADABLE (measured 2026-09-19 on ph.jobstreet.com/job/94730110):
+            #
+            #   network_idle=True, 6s settle    53.4s   89,030 visible chars
+            #   settle only                      8.0s   89,019 visible chars
+            #   neither                          2.0s   88,865 visible chars
+            #
+            # Forty-five seconds for eleven characters. A job board never goes
+            # network-idle -- analytics, ad pixels and a recommendations rail
+            # keep polling for as long as the tab is open -- so the wait cannot
+            # be satisfied and simply burns `RENDER_TIMEOUT_MS` before handing
+            # back the page it already had. The posting was never the problem:
+            # a plain browser reads it in eight seconds.
+            #
+            # THE SETTLE STAYS, because that one is paid for: the last 16KB of
+            # markup arrives after first paint, and dropping it costs real
+            # content rather than eleven characters.
             timeout=RENDER_TIMEOUT_MS,
             wait=RENDER_SETTLE_MS,
         )

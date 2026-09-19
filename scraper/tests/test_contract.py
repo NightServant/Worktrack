@@ -67,3 +67,44 @@ def test_every_extracted_key_is_declared():
     </head></html>"""
     produced = set(extract("https://careers.example.com/j/1", html)["values"])
     assert produced <= set(VALUE_FIELDS), f"undeclared keys: {sorted(produced - set(VALUE_FIELDS))}"
+
+
+def test_render_does_not_wait_for_a_network_that_never_idles(monkeypatch):
+    """The 45 seconds JobStreet cost, and the eleven characters they bought.
+
+    MEASURED 2026-09-19 on ph.jobstreet.com/job/94730110:
+
+        network_idle=True, 6s settle    53.4s   89,030 visible chars
+        settle only                      8.0s   89,019 visible chars
+
+    A job board never reaches network idle -- analytics, ad pixels and a
+    recommendations rail keep polling for as long as the tab is open -- so the
+    condition could not be satisfied and the render spent the whole of
+    RENDER_TIMEOUT_MS before handing back the page it already had. The reader
+    was then told the BOARD blocks automated reads, on a posting a plain
+    browser reads in eight seconds.
+
+    THE SETTLE IS THE HALF THAT WAS EARNING ITS KEEP, so it is asserted too:
+    without it the last 16KB of markup has not arrived (Cloudstaff, 2026-09-06
+    -- the whole visible page was its cookie banner).
+    """
+    import sys
+    import types
+
+    seen: dict[str, object] = {}
+
+    class _Page:
+        html_content = "<html><body>rendered</body></html>"
+
+    module = types.ModuleType("scrapling.fetchers")
+    module.DynamicFetcher = types.SimpleNamespace(
+        fetch=lambda url, **kwargs: (seen.update(kwargs, url=url), _Page())[1]
+    )
+    monkeypatch.setitem(sys.modules, "scrapling.fetchers", module)
+
+    import app
+
+    assert app._render("https://ph.jobstreet.com/job/1") == _Page.html_content
+    assert "network_idle" not in seen
+    assert seen["wait"] == app.RENDER_SETTLE_MS
+    assert seen["timeout"] == app.RENDER_TIMEOUT_MS
