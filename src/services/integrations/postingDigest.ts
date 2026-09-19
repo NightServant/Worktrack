@@ -1,4 +1,4 @@
-import { readIntegrationConfig, capabilitiesOf, type IntegrationConfig } from './config'
+import { readIntegrationConfig, capabilitiesOf, modelFor, type IntegrationConfig } from './config'
 import { formatPostingText } from '../postingFormat'
 
 /**
@@ -666,9 +666,22 @@ export async function digestPosting(rawText: string, options: Options = {}): Pro
   }
 
   const config = options.config ?? readIntegrationConfig()
-  if (!formatted || !capabilitiesOf(config).tailorCv) return base
+  // `fillPosting`, NOT `tailorCv`, AND THE MODEL BELOW IS WHY THAT MATTERS.
+  // This asked whether tailoring could run and then posted `TAILORING_MODEL`
+  // -- so a deployment that set the three per-task variables and dropped the
+  // legacy one passed its own gate and sent an empty model id, which fails at
+  // the provider and falls back to the tidied text with nothing said. The gate
+  // and the model now read the SAME variable, so they cannot disagree again.
+  if (!formatted || !capabilitiesOf(config).fillPosting) return base
 
-  const { baseUrl, apiKey, model } = config.tailoring
+  const { baseUrl, apiKey } = config.tailoring
+  // THE EXTRACT MODEL, BECAUSE THIS IS AN EXTRACTION. Reading a posting's
+  // fields and restructuring what it asks of the applicant is the job
+  // `MODEL_EXTRACT` is configured for -- mechanical, schema-shaped, wants a
+  // big context window and no judgement. It was running on the tailoring model
+  // by inheritance rather than by choice. Still falls back to
+  // `TAILORING_MODEL`, which is what every deployment before 2026-09-19 set.
+  const model = modelFor(config, 'extract')
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? DIGEST_TIMEOUT_MS)
   const doFetch = options.fetchImpl ?? fetch

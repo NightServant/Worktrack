@@ -169,6 +169,46 @@ describe('the digest end to end', () => {
     expect(digest.fields.role).toBe('Senior Frontend Engineer')
   })
 
+  it('reads the posting with the extract model, not the tailoring one', async () => {
+    // Restructuring a posting is the mechanical, schema-shaped job
+    // `MODEL_EXTRACT` is configured for. It ran on the tailoring model by
+    // inheritance rather than by choice.
+    const fetchImpl = vi.fn().mockResolvedValue(reply({ role: 'Senior Frontend Engineer' }))
+    await digestPosting(POSTING, {
+      config: configWith({ models: { extract: 'extract/model', tailor: 'tailor/model' } }),
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    })
+    expect(JSON.parse(fetchImpl.mock.calls[0][1].body as string).model).toBe('extract/model')
+  })
+
+  it('runs on a deployment that set only the per-task variables', async () => {
+    // THE BUG THIS TEST IS FOR, and it was silent: the gate asked whether
+    // TAILORING could run while the request posted `TAILORING_MODEL`. Drop the
+    // legacy variable -- which a deployment configuring the three new ones
+    // reasonably would -- and the digest passed its own gate, sent an empty
+    // model id, failed at the provider and fell back to the tidied text with
+    // nothing said. The gate and the model must read the same variable.
+    const fetchImpl = vi.fn().mockResolvedValue(reply({ role: 'Senior Frontend Engineer' }))
+    const digest = await digestPosting(POSTING, {
+      config: configWith({ model: '', models: { extract: 'extract/model' } }),
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    })
+    expect(digest.usedModel).toBe(true)
+    expect(JSON.parse(fetchImpl.mock.calls[0][1].body as string).model).toBe('extract/model')
+  })
+
+  it('still skips the call entirely when no model is configured', async () => {
+    // The companion that stops the gate being loosened instead of corrected:
+    // CI, a fresh clone and anyone without a key must spend nothing.
+    const fetchImpl = vi.fn()
+    const digest = await digestPosting(POSTING, {
+      config: configWith({ model: '' }),
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    })
+    expect(fetchImpl).not.toHaveBeenCalled()
+    expect(digest.usedModel).toBe(false)
+  })
+
   it('sends the ceilings that make the shorter wait safe', async () => {
     // Gabe, 2026-09-19: "apply the shorter model budget for CV tailoring and
     // application wizard". This call runs on the wizard's SAVE with the button
