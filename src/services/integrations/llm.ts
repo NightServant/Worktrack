@@ -70,8 +70,10 @@ export interface LlmRequest {
    * wait. Writing prose from facts that are already in front of it is not a
    * problem that reasoning solves; extraction against a schema is not either.
    *
-   * OpenRouter normalises this across providers and ignores it for models
-   * that do not support it, so it is safe to send everywhere.
+   * SENT AS THE FLAT `reasoning_effort`, which is the OpenAI-style spelling.
+   * OpenRouter documents both that and the nested `reasoning: { effort }`;
+   * Groq rejects the nested one outright with a 400, and a rejected request
+   * costs the whole answer. See the request body for the measurement.
    */
   reasoningEffort?: 'low' | 'medium' | 'high'
 }
@@ -136,9 +138,14 @@ export async function askForJson<T>(
         model,
         temperature: request.temperature ?? 0.2,
         ...(request.maxTokens ? { max_tokens: request.maxTokens } : {}),
-        ...(request.reasoningEffort
-          ? { reasoning: { effort: request.reasoningEffort } }
-          : {}),
+        // `reasoning_effort`, NOT `reasoning: { effort }`. Both are documented
+        // by OpenRouter and they are not interchangeable across providers:
+        // Groq answers the nested form with `400 property 'reasoning' is
+        // unsupported` and the whole call is lost. Measured 2026-09-19 against
+        // `api.groq.com` with `openai/gpt-oss-120b` -- the flat OpenAI-style
+        // key returned 200 on the same request. It is the spelling both the
+        // providers this repo actually runs on accept.
+        ...(request.reasoningEffort ? { reasoning_effort: request.reasoningEffort } : {}),
         // ASKED FOR, NOT HOPED FOR (2026-09-15, and it is why this is shared).
         response_format: { type: 'json_object' },
         messages: [

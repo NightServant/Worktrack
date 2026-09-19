@@ -151,7 +151,11 @@ describe('the shared client', () => {
       }
     )
     expect(sent.max_tokens).toBe(3000)
-    expect(sent.reasoning).toEqual({ effort: 'low' })
+    expect(sent.reasoning_effort).toBe('low')
+    // AND NOT THE NESTED FORM, which is the regression this pins: Groq answers
+    // `reasoning: { effort }` with `400 property 'reasoning' is unsupported`,
+    // and a 400 here costs the whole answer rather than the saving.
+    expect('reasoning' in sent).toBe(false)
   })
 
   it('omits both when the caller does not ask, so other tasks are unchanged', async () => {
@@ -167,7 +171,7 @@ describe('the shared client', () => {
       }
     )
     expect('max_tokens' in sent).toBe(false)
-    expect('reasoning' in sent).toBe(false)
+    expect('reasoning_effort' in sent).toBe(false)
   })
 
   it('strips the fences a model adds even when told not to', () => {
@@ -236,7 +240,7 @@ describe('filling a posting’s gaps', () => {
       },
     })
     expect(sent.max_tokens).toBe(800)
-    expect(sent.reasoning).toEqual({ effort: 'low' })
+    expect(sent.reasoning_effort).toBe('low')
   })
 
   it('returns the envelope untouched when the model filled nothing', () => {

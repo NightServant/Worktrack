@@ -237,7 +237,10 @@ export async function tailorCv(
         // one at a time by the person it is for, which is the check that
         // matters. OpenRouter normalises this and drops it for models that do
         // not support it.
-        reasoning: { effort: 'low' },
+        //
+        // FLAT, NOT NESTED: Groq answers `reasoning: { effort }` with a 400,
+        // which costs the whole call. See `llm.ts` for the measurement.
+        reasoning_effort: 'low',
         // ASKED FOR, NOT HOPED FOR (2026-09-15). The prompt already says "JSON
         // only, no prose and no code fences", and the model mostly complies --
         // but "mostly" surfaced in production as "The model returned malformed

@@ -706,7 +706,10 @@ export async function digestPosting(rawText: string, options: Options = {}): Pro
         // null when unsure. A chain of thought about a copying task is spent
         // before the first character of the answer. OpenRouter normalises this
         // and drops it for models that do not support it.
-        reasoning: { effort: 'low' },
+        //
+        // FLAT, NOT NESTED: Groq answers `reasoning: { effort }` with a 400,
+        // which costs the whole call. See `llm.ts` for the measurement.
+        reasoning_effort: 'low',
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: formatted.slice(0, 16_000) },

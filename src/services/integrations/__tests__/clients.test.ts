@@ -238,7 +238,11 @@ describe('the tailoring request', () => {
       (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1].body as string
     )
     expect(body.max_tokens).toBe(2500)
-    expect(body.reasoning).toEqual({ effort: 'low' })
+    expect(body.reasoning_effort).toBe('low')
+    // AND NOT THE NESTED FORM, which is the regression this pins: Groq answers
+    // `reasoning: { effort }` with `400 property 'reasoning' is unsupported`,
+    // and a 400 here costs the whole answer rather than the saving.
+    expect('reasoning' in body).toBe(false)
     expect(body.messages[0].content).toMatch(/at most 8 suggestions/i)
   })
 
