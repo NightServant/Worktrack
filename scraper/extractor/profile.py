@@ -26,6 +26,7 @@ this can be tested against a saved page with no network.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from .page import Page
@@ -130,6 +131,57 @@ def _period(member: Any) -> str | None:
     return end
 
 
+#: A four-digit year anywhere in a string.
+_YEAR = re.compile(r"\b(19|20)\d{2}\b")
+
+
+def graduation_year(period: str | None) -> str | None:
+    """The LAST year named in a free-text period, or None.
+
+    THE LAST ONE, not the first: `2021 - 2025` ends in 2025 and that is the
+    year a CV prints. A period that is still running -- `2024 - Present` --
+    has not produced a graduation year, so it returns None rather than the
+    start year dressed up as one.
+    """
+    if not period:
+        return None
+    if re.search(r"present|current|now", period, re.I):
+        return None
+    years = [match.group(0) for match in _YEAR.finditer(period)]
+    return years[-1] if years else None
+
+
+#: Scripts a profile in this app is ever written in.
+#:
+#: LATIN, PLUS THE PUNCTUATION AND DIGITS A PLACE NAME CARRIES. Everything
+#: else -- Cyrillic, Greek, CJK -- is a localised rendering rather than the
+#: place, and see `latin_place` for why that distinction had to be drawn.
+_NON_LATIN = re.compile(r"[^\u0000-\u024F\u1E00-\u1EFF\s]")
+
+
+def latin_place(value: str | None) -> str | None:
+    """A place name, or None when what came back is in another script.
+
+    THE `Капас` BUG (Gabe, 2026-09-19: "there is a weird greek word that
+    renders the location of the work experience"). It is Cyrillic for Capas,
+    and it is not a mistranslation -- it is the LinkedIn session the hosted
+    actor happened to be signed into, rendering a Philippine town in Russian.
+    Nothing downstream can tell that from a real place name, so it printed
+    under the role as though the person had worked there.
+
+    NONE RATHER THAN A TRANSLITERATION. `Капас` transliterates to `Kapas`,
+    which is not the town's name either -- it is a second wrong answer that
+    looks more convincing than the first. An absent location is a gap another
+    source can fill; a plausible wrong one is not.
+    """
+    if value is None:
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    return None if _NON_LATIN.search(text) else text
+
+
 def _experiences(person: dict[str, Any]) -> list[dict[str, Any]]:
     """One entry per organisation the person `worksFor`.
 
@@ -161,7 +213,10 @@ def _experiences(person: dict[str, Any]) -> list[dict[str, Any]]:
                 "title": title or "",
                 "company": company,
                 "period": _period(member),
-                "location": _address(org.get("location") or org.get("address")),
+                # See `latin_place`: a hosted read can return the town in the
+                # reader's locale rather than the profile's, and a Cyrillic
+                # Capas is not a place anybody worked.
+                "location": latin_place(_address(org.get("location") or org.get("address"))),
                 # See the module docblock: the logged-out page does not carry
                 # the bullet text, and inventing a summary from the role name
                 # would put words in the person's CV that they never wrote.
@@ -181,12 +236,14 @@ def _education(person: dict[str, Any]) -> list[dict[str, Any]]:
             continue
         member = school.get("member")
         member = member[0] if isinstance(member, list) and member else member
+        period = _period(member)
         out.append(
             {
                 "school": name,
                 "degree": _clean(school.get("description"))
                 or _clean(member.get("description") if isinstance(member, dict) else None),
-                "period": _period(member),
+                "period": period,
+                "graduationYear": graduation_year(period),
             }
         )
     return out

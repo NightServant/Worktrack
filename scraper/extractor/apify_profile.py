@@ -37,7 +37,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .profile import EMPTY_PROFILE, _clean, _listed
+from .profile import EMPTY_PROFILE, _clean, _listed, graduation_year, latin_place
 
 
 def _block(value: Any) -> str | None:
@@ -97,7 +97,12 @@ def _period(node: Any, *, start: str = "startDate", end: str = "endDate") -> str
     """
     if not isinstance(node, dict):
         return None
-    ready = _pick(node, "dateRange", "duration", "totalDuration", "date_range")
+    # A RANGE BEFORE A DURATION, which is the opposite of what this did until
+    # 2026-09-19 -- `duration` came second in the same `_pick` and won on every
+    # profile that had one, so a three-month internship printed as `3 mos` with
+    # no year anywhere on the CV. A duration answers "how long"; a CV asks
+    # "when", and only the range can answer that.
+    ready = _pick(node, "dateRange", "date_range")
     if ready:
         return ready
     first = _clean(node.get(start))
@@ -106,7 +111,9 @@ def _period(node: Any, *, start: str = "startDate", end: str = "endDate") -> str
         return f"{first} – {last}"
     if first:
         return f"{first} – Present"
-    return last
+    # The duration alone, last: better than nothing under a role, and never
+    # in place of the dates.
+    return last or _pick(node, "duration", "totalDuration")
 
 
 #: What LinkedIn appends to a location that is not part of the place.
@@ -122,11 +129,18 @@ def _place(value: str | None) -> str | None:
 
     Only a KNOWN mode is stripped: a `·` in a location is otherwise somebody's
     address, and cutting at the first separator would lose half of it.
+
+    AND THE RESULT HAS TO BE IN THE LATIN SCRIPT. The actor runs a signed-in
+    LinkedIn session whose locale is not ours, and it returned `Капас` for
+    Capas -- see `latin_place`, which is where that story is written down.
     """
-    if not value or " · " not in value:
-        return value
-    head, _, tail = value.rpartition(" · ")
-    return head.strip() if tail.strip().lower() in _WORK_MODES else value
+    if not value:
+        return None
+    if " · " in value:
+        head, _, tail = value.rpartition(" · ")
+        if tail.strip().lower() in _WORK_MODES:
+            value = head.strip()
+    return latin_place(value)
 
 
 def _experiences(row: dict[str, Any]) -> list[dict[str, Any]]:
@@ -188,7 +202,27 @@ def _experiences(row: dict[str, Any]) -> list[dict[str, Any]]:
                 "title": title or "",
                 "company": company,
                 "period": _period(position),
-                "location": _place(_pick(position, "location", "locationName")),
+                # EVERY SPELLING, NOT THE FIRST NON-EMPTY ONE. `_place` refuses
+                # a name in another script (see `latin_place`), and the actor
+                # sometimes carries the same place twice under two keys with
+                # only one of them localised -- so trying them in turn recovers
+                # the real town where taking the first would have lost it.
+                "location": next(
+                    (
+                        place
+                        for place in (
+                            _place(_clean(position.get(key)))
+                            for key in (
+                                "location",
+                                "locationName",
+                                "geoLocationName",
+                                "locationText",
+                            )
+                        )
+                        if place
+                    ),
+                    None,
+                ),
                 # The bullet text under a role is what a CV is written from.
                 # LinkedIn does not serve it to a signed-out visitor, so this
                 # is usually None and the warning says so -- the export
@@ -212,12 +246,25 @@ def _education(row: dict[str, Any]) -> list[dict[str, Any]]:
         # optional. "BSc, Computer Science" reads as one line on a CV.
         degree = _pick(school, "degree", "degreeName", "subtitle")
         field = _pick(school, "fieldOfStudy", "field")
-        parts = [part for part in (degree, field) if part]
+        # THE SAME TEXT TWICE IS ONE FACT (Gabe, 2026-09-19: "remove repeating
+        # information"). The actor fills `degree` and `fieldOfStudy` from one
+        # LinkedIn line when the school records no degree, so joining them
+        # printed "Information and Communications Technology, Information and
+        # Communications Technology" under a school. Compared case-folded,
+        # because the two copies are not always spelled identically.
+        parts: list[str] = []
+        for part in (degree, field):
+            if part and part.casefold() not in {kept.casefold() for kept in parts}:
+                parts.append(part)
+        period = _period(school)
         out.append(
             {
                 "school": name,
                 "degree": ", ".join(parts) or None,
-                "period": _period(school),
+                "period": period,
+                "graduationYear": graduation_year(period)
+                or _clean(school.get("endYear"))
+                or _clean(school.get("end_year")),
             }
         )
     return out
@@ -236,13 +283,42 @@ def _certifications(row: dict[str, Any]) -> list[dict[str, Any]]:
         name = _pick(cert, "name", "title")
         if not name:
             continue
+        # WHAT A CERTIFICATE ACTUALLY CARRIES (Gabe, 2026-09-19: "scrape more
+        # information about the certifications and licenses such as Date
+        # Issued"). LinkedIn prints four things under one: who issued it, when,
+        # when it lapses, and the registry number that proves it. Only the
+        # first was read, so every certificate on the panel was a bare line.
+        #
+        # EVERY SPELLING, because the actor's README names the concepts and
+        # not the keys -- the same defensive lookup the rest of this file uses.
+        issued = _pick(
+            cert, "issueDate", "issuedOn", "issued", "issuedDate", "date", "startDate"
+        )
+        expires = _pick(
+            cert, "expirationDate", "expiresAt", "expires", "expiryDate", "endDate"
+        )
+        period = _pick(cert, "dateRange", "duration")
+        if not period:
+            # `Issued Jan 2024 · Expires Jan 2027`, written the way LinkedIn
+            # writes it, so the panel and the CV can print one line.
+            parts = [
+                f"Issued {issued}" if issued else None,
+                f"Expires {expires}" if expires else None,
+            ]
+            period = " · ".join(part for part in parts if part) or None
         out.append(
             {
                 "name": name,
                 "authority": _pick(
                     cert, "issuer", "authority", "organization", "subtitle", "company"
                 ),
-                "period": _pick(cert, "issueDate", "date", "issued") or _period(cert),
+                "period": period,
+                "issued": issued,
+                "expires": expires,
+                "credentialId": _pick(
+                    cert, "credentialId", "credentialID", "licenseNumber", "credential_id"
+                ),
+                "url": _pick(cert, "credentialUrl", "url", "link", "credential_url"),
             }
         )
     return out
@@ -415,6 +491,17 @@ def profile_from_apify(row: dict[str, Any], requested_url: str) -> dict[str, Any
                 "LinkedIn does not show job titles to signed-out visitors on this profile — "
                 "the employers and dates came through, the roles did not. The Worktrack "
                 "bookmarklet reads them from your own logged-in profile."
+            )
+        # A LOCATION THAT WAS DROPPED IS NOT A LOCATION THAT WAS MISSING, and
+        # the reader cannot tell the two apart from a blank line. The hosted
+        # actor runs a LinkedIn session in its own locale and returned `Капас`
+        # for Capas (Gabe, 2026-09-19); a place name in another script is
+        # refused rather than printed, and this is the sentence that says so.
+        if roles and all(item["location"] is None for item in roles):
+            warnings.append(
+                "No work location came through in a readable form — the public page returns "
+                "it in whatever language the reader's session uses. The Worktrack bookmarklet "
+                "reads it from your own logged-in profile."
             )
         if all(item["description"] is None for item in roles):
             warnings.append(

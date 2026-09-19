@@ -802,17 +802,110 @@ def test_current_roles_come_before_past_ones():
 
 def test_a_degree_and_its_field_read_as_one_line():
     edu = profile_from_apify(ROW, "x")["profile"]["education"][0]
-    assert edu == {"school": "University of Chicago", "degree": "MBA, Business", "period": "1994 – 1996"}
+    assert edu == {
+        "school": "University of Chicago",
+        "degree": "MBA, Business",
+        "period": "1994 – 1996",
+        # The year a CV prints beside a school, taken from the END of the range.
+        "graduationYear": "1996",
+    }
+
+
+def test_a_degree_repeated_as_its_own_field_is_written_once():
+    # The actor fills `degree` and `fieldOfStudy` from one LinkedIn line when
+    # the school records no degree, which printed the same words twice under
+    # a school on Gabe's own profile (2026-09-19).
+    row = {
+        "education": [
+            {
+                "school": "Children of Fatima School Inc.",
+                "degree": "Information and Communications Technology",
+                "fieldOfStudy": "Information and Communications Technology",
+            }
+        ]
+    }
+    assert profile_from_apify(row, "x")["profile"]["education"][0]["degree"] == (
+        "Information and Communications Technology"
+    )
+
+
+def test_a_localised_place_name_is_dropped_rather_than_printed():
+    # `Капас` is Cyrillic for Capas: the hosted actor's own LinkedIn session
+    # locale, not the place. A plausible wrong location is worse than none.
+    row = {"positions": [{"title": "Intern", "company": "Acme", "location": "Капас"}]}
+    out = profile_from_apify(row, "x")
+    assert out["profile"]["experiences"][0]["location"] is None
+    # And the blank says why, or it reads as a field that failed to import.
+    assert any("readable form" in warning for warning in out["warnings"])
+
+
+def test_a_second_key_recovers_the_place_the_first_one_localised():
+    # The actor carries the same place twice under two keys and localises only
+    # one of them; taking the first non-empty would have lost the real town.
+    row = {
+        "positions": [
+            {
+                "title": "Intern",
+                "company": "Acme",
+                "location": "Капас",
+                "locationName": "Capas, Central Luzon, Philippines",
+            }
+        ]
+    }
+    assert profile_from_apify(row, "x")["profile"]["experiences"][0]["location"] == (
+        "Capas, Central Luzon, Philippines"
+    )
+
+
+def test_a_date_range_beats_a_duration():
+    # `3 mos` answers "how long"; a CV asks "when". The duration is the last
+    # resort, never the first.
+    row = {"positions": [{"title": "Intern", "company": "Acme", "duration": "3 mos",
+                          "startDate": "Sep 2025", "endDate": "Nov 2025"}]}
+    assert profile_from_apify(row, "x")["profile"]["experiences"][0]["period"] == (
+        "Sep 2025 – Nov 2025"
+    )
 
 
 def test_certifications_and_projects_survive():
     p = profile_from_apify(ROW, "x")["profile"]
     assert p["certifications"] == [
-        {"name": "Some Cert", "authority": "An Authority", "period": "Mar 2020"}
+        {
+            "name": "Some Cert",
+            "authority": "An Authority",
+            "period": "Issued Mar 2020",
+            "issued": "Mar 2020",
+            "expires": None,
+            "credentialId": None,
+            "url": None,
+        }
     ]
     assert p["projects"] == [
         {"title": "A project", "description": "What it did", "url": "https://example.dev"}
     ]
+
+
+def test_a_certificates_expiry_and_number_are_read():
+    # LinkedIn prints four things under a certificate's name and this read one
+    # (Gabe, 2026-09-19: "scrape more information ... such as Date Issued").
+    row = {
+        "certifications": [
+            {
+                "name": "CCNA",
+                "issuer": "Cisco",
+                "issueDate": "Jan 2024",
+                "expirationDate": "Jan 2027",
+                "credentialId": "ABC-123",
+                "credentialUrl": "https://example.org/verify/ABC-123",
+            }
+        ]
+    }
+    cert = profile_from_apify(row, "x")["profile"]["certifications"][0]
+    assert cert["issued"] == "Jan 2024"
+    assert cert["expires"] == "Jan 2027"
+    assert cert["credentialId"] == "ABC-123"
+    assert cert["url"] == "https://example.org/verify/ABC-123"
+    assert cert["period"] == "Issued Jan 2024 · Expires Jan 2027"
 
 
 def test_what_a_signed_out_profile_cannot_carry_is_said_out_loud():
@@ -1003,6 +1096,35 @@ GH_REPOS = [
 ]
 
 
+PROFILE_README = """
+<p align="center"><img src="https://example.dev/banner.png" alt="banner" /></p>
+
+# Hi, I'm Mona
+
+I am a full-stack engineer in San Francisco who builds developer tools and
+cares about the seams between design and code.
+
+## Languages
+
+![JavaScript](https://img.shields.io/badge/javascript-%23F7DF1E.svg?logo=javascript)
+![TypeScript](https://img.shields.io/badge/typescript-3178C6.svg?logo=typescript)
+
+## Frontend & UI Ecosystem
+
+<img alt="Tailwind CSS" src="https://img.shields.io/badge/Tailwind_CSS-38B2AC" />
+![](https://img.shields.io/badge/Next.js-black?logo=nextdotjs)
+"""
+
+REPO_README = """
+# Worktrack
+
+- Tracks every application from first contact through to an offer.
+- npm install
+- Renders a tailored CV as PDF, DOCX and LaTeX from one document.
+- TODO
+"""
+
+
 def test_a_github_account_maps_onto_the_profile_the_app_stores():
     p = profile_from_github(GH_USER, GH_REPOS, "https://github.com/octocat")["profile"]
     assert p["name"] == "Mona Lisa"
@@ -1013,12 +1135,93 @@ def test_a_github_account_maps_onto_the_profile_the_app_stores():
     assert p["websites"] == ["https://monalisa.dev"]
 
 
+def test_the_avatar_never_becomes_the_profile_photo():
+    # Gabe, 2026-09-19: "Profile Pic must not come from GitHub." A code host's
+    # avatar is whatever somebody picked for a code host, and the merge takes
+    # the first non-empty value -- so it won by default and became the face on
+    # a CV.
+    assert profile_from_github(GH_USER, GH_REPOS, "x")["profile"]["pictureUrl"] is None
+
+
+def test_the_profile_readme_beats_the_bio_and_names_the_stack():
+    # The special `<user>/<user>` repository: a paragraph where the bio field
+    # is 160 characters, and a badge row naming tools no repository `language`
+    # can see.
+    p = profile_from_github(GH_USER, GH_REPOS, "x", PROFILE_README)["profile"]
+    assert p["summary"].startswith("I am a full-stack engineer")
+    assert p["skills"][:4] == ["JavaScript", "TypeScript", "Tailwind CSS", "Next.js"]
+    # The counted languages still follow, minus anything the badges said first.
+    assert "Python" in p["skills"]
+
+
+def test_a_connect_with_me_badge_is_not_a_skill():
+    # Measured on Gabe's own README (2026-09-19): `LinkedIn`, `Gmail` and
+    # `Facebook` arrived on his skills list beside `TypeScript`. A contact badge
+    # is the same shape as a stack badge; the link WRAPPED AROUND it is the
+    # only thing that tells them apart.
+    md = (
+        "[![LinkedIn](https://img.shields.io/badge/LinkedIn-0A66C2)](https://linkedin.com/in/x)\n"
+        "[![Gmail](https://img.shields.io/badge/Gmail-EA4335)](mailto:a@b.c)\n"
+        "![TypeScript](https://img.shields.io/badge/typescript-3178C6)\n"
+        "[![Next.js](https://img.shields.io/badge/Next.js-black)](https://nextjs.org)\n"
+    )
+    skills = profile_from_github(GH_USER, GH_REPOS, "x", md)["profile"]["skills"]
+    assert "LinkedIn" not in skills
+    assert "Gmail" not in skills
+    # And a badge that links at the technology's own site is still a skill.
+    assert skills[:2] == ["TypeScript", "Next.js"]
+
+
+def test_the_html_spelling_of_a_contact_badge_is_caught_too():
+    # A README laid out in `<p align="center">` writes the anchor and the image
+    # on separate lines, which is how Gabe's does -- and why the markdown-only
+    # check still let `LinkedIn`, `Gmail` and `Facebook` through.
+    md = (
+        '<a href="https://www.linkedin.com/in/x/">\n'
+        '  <img src="https://img.shields.io/badge/LinkedIn-Connect-0A66C2?style=for-the-badge" />\n'
+        "</a>\n"
+        '<p><img src="https://img.shields.io/badge/Laravel-FF2D20?style=for-the-badge" /></p>\n'
+    )
+    skills = profile_from_github(GH_USER, GH_REPOS, "x", md)["profile"]["skills"]
+    assert "LinkedIn" not in skills
+    assert skills[0] == "Laravel"
+
+
+def test_a_missing_profile_readme_is_said_out_loud():
+    warnings = profile_from_github(GH_USER, GH_REPOS, "x")["warnings"]
+    assert any("profile README" in w for w in warnings)
+
+
+def test_a_repository_readme_becomes_the_projects_bullets():
+    # The bullets a CV entry is written from, in the owner's own words. An
+    # install step and a two-word checklist item are not among them.
+    p = profile_from_github(GH_USER, GH_REPOS, "x", None, {"worktrack": REPO_README})[
+        "profile"
+    ]
+    project = next(item for item in p["projects"] if item["title"] == "worktrack")
+    assert project["highlights"] == [
+        "Tracks every application from first contact through to an offer.",
+        "Renders a tailored CV as PDF, DOCX and LaTeX from one document.",
+    ]
+    assert project["tech"] == ["TypeScript"]
+    assert project["stars"] == 40
+
+
 def test_forks_and_nameless_repositories_are_not_projects():
     # A fork is somebody else's work, and a repository with no description is
     # a name a reader cannot judge -- the 900-star fork and the 90-star
     # undescribed repo are both out, however well they would have ranked.
     projects = profile_from_github(GH_USER, GH_REPOS, "x")["profile"]["projects"]
     assert [item["title"] for item in projects] == ["worktrack", "extractor"]
+
+
+def test_a_repository_with_no_blurb_but_a_readme_is_a_project():
+    # The description-only filter was right while a project was a title and one
+    # line. The dialog reads the README, so the evidence moved.
+    projects = profile_from_github(
+        GH_USER, GH_REPOS, "x", None, {"notes": REPO_README}
+    )["profile"]["projects"]
+    assert [item["title"] for item in projects] == ["notes", "worktrack", "extractor"]
 
 
 def test_languages_become_skills_counted_over_repositories():
@@ -1431,10 +1634,38 @@ def test_education_and_certifications_come_through_too():
             "school": "Tarlac State University",
             "degree": "Bachelor of Science, Information Technology",
             "period": "2022 - 2026",
+            "graduationYear": "2026",
         }
     ]
     assert p["certifications"][0]["authority"] == "Cisco Networking Academy"
     assert p["certifications"][0]["period"] == "Issued Jan 2024"
+    assert p["certifications"][0]["issued"] == "Jan 2024"
+
+
+def test_a_captured_certificate_carries_its_dates_number_and_link():
+    # Gabe, 2026-09-19: the panel showed a bare line per certificate because
+    # this read the name, one other line, and one date.
+    html = """
+    <div id="licenses_and_certifications"></div>
+    <ul><li>
+      <span aria-hidden="true">Introduction to Networks</span>
+      <span aria-hidden="true">Cisco Networking Academy</span>
+      <span aria-hidden="true">Issued Jun 2024</span>
+      <span aria-hidden="true">Expires Jun 2027</span>
+      <span aria-hidden="true">Credential ID ABC-123</span>
+      <a href="https://www.credly.com/badges/abc"><span aria-hidden="true">Show credential</span></a>
+    </li></ul>
+    <div id="skills"></div>
+    <ul><li><span aria-hidden="true">Networking</span></li></ul>
+    """
+    cert = profile_from_linkedin_page("x", html)["profile"]["certifications"][0]
+    assert cert["name"] == "Introduction to Networks"
+    assert cert["authority"] == "Cisco Networking Academy"
+    assert cert["issued"] == "Jun 2024"
+    assert cert["expires"] == "Jun 2027"
+    assert cert["credentialId"] == "ABC-123"
+    assert cert["url"] == "https://www.credly.com/badges/abc"
+    assert cert["period"] == "Issued Jun 2024 · Expires Jun 2027"
 
 
 def test_a_page_with_no_recognised_section_falls_through():
@@ -1552,6 +1783,7 @@ def test_educations_and_issuer_spellings_both_read():
             "school": "Tarlac State University",
             "degree": "Bachelor of Science, Information Technology",
             "period": "2022 - 2026",
+            "graduationYear": "2026",
         }
     ]
     assert p["certifications"][0]["authority"] == "Cisco Networking Academy"

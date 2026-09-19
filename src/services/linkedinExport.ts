@@ -128,6 +128,10 @@ const RECOGNISERS: Recogniser[] = [
           school: value(row, 'School Name') ?? 'school not stated',
           degree: [value(row, 'Degree Name'), value(row, 'Notes')].filter(Boolean).join(', ') || null,
           period: period(row, ['Start Date'], ['End Date']),
+          // The year the course ended, on its own -- what a CV prints beside a
+          // school when there is no range. The export writes a full date, so
+          // the year is the last four digits of `End Date`.
+          graduationYear: value(row, 'End Date')?.match(/\b(19|20)\d{2}\b/)?.[0] ?? null,
         }))
         .filter((entry) => entry.school !== 'school not stated')
     },
@@ -148,6 +152,13 @@ const RECOGNISERS: Recogniser[] = [
           name: value(row, 'Name') ?? '',
           authority: value(row, 'Authority'),
           period: period(row, ['Started On'], ['Finished On']),
+          // THE EXPORT SPLITS WHAT THE PAGE PRINTS AS ONE LINE, which is the
+          // one thing it does better than any scrape of the profile: two
+          // columns, already parsed, with no labels to strip.
+          issued: value(row, 'Started On'),
+          expires: value(row, 'Finished On'),
+          credentialId: value(row, 'License Number', 'Licence Number'),
+          url: value(row, 'Url', 'URL'),
         }))
         .filter((entry) => entry.name)
     },
@@ -174,6 +185,16 @@ const RECOGNISERS: Recogniser[] = [
           title: value(row, 'Title') ?? '',
           description: value(row, 'Description'),
           url: value(row, 'Url', 'URL'),
+          // AN EXPORT HAS NO REPOSITORY BEHIND IT. The structured half of a
+          // project -- its stack, its stars, the README bullets -- only exists
+          // where the project is code somebody published, so it is left empty
+          // rather than guessed at from a paragraph.
+          highlights: [],
+          tech: [],
+          language: null,
+          stars: null,
+          homepage: null,
+          updatedAt: null,
         }))
         .filter((entry) => entry.title)
     },

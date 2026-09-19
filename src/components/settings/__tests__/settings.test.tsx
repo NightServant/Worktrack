@@ -12,6 +12,37 @@ import {
 
 afterEach(() => cleanup())
 
+/**
+ * A project record at its full shape.
+ *
+ * A HELPER RATHER THAN A LITERAL PER TEST, because a project now carries the
+ * structured half a repository supplies -- the stack, the stars, the README
+ * bullets -- and spelling six nulls out at four call sites is four places to
+ * forget the seventh.
+ */
+const project = (title: string, description: string, url: string) => ({
+  title,
+  description,
+  url,
+  highlights: [],
+  tech: [],
+  language: null,
+  stars: null,
+  homepage: null,
+  updatedAt: null,
+})
+
+/**
+ * Open one of the profile's section tabs.
+ *
+ * THE SECTIONS LIVE BEHIND TABS SINCE 2026-09-19, and only the open one is in
+ * the DOM -- deliberately, so the projects rail never initialises inside a
+ * zero-width hidden panel. A test that wants a section has to open it, the
+ * same as a reader.
+ */
+const openSection = (name: RegExp | string) =>
+  fireEvent.click(screen.getByRole('tab', { name }))
+
 /** One profile, shared by both blocks below. */
 const FILLED = {
   name: 'Elijah Gabe Cervantes',
@@ -34,7 +65,9 @@ const FILLED = {
       description: 'Built the tracker.\nShipped the editor.',
     },
   ],
-  education: [{ school: 'University', degree: 'BSc', period: '2020 – 2024' }],
+  education: [
+    { school: 'University', degree: 'BSc', period: '2020 – 2024', graduationYear: '2024' },
+  ],
   skills: ['React', 'TypeScript'],
   industry: 'Software Development',
   address: 'Block 2, Lot 29, Bamban, Tarlac',
@@ -237,11 +270,43 @@ describe('the profile panel', () => {
     // order is LinkedIn's -- a profile shows where you are and never shows an
     // industry at all -- and this panel mimics it deliberately (2026-09-10).
     expect(screen.getByText(/Baguio, Philippines · Software Development/)).toBeTruthy()
+    // The identity is on screen in every tab; the sections are one click each.
+    openSection(/experience/)
     expect(screen.getByText('Developer')).toBeTruthy()
+    openSection(/education/)
     expect(screen.getByText('University')).toBeTruthy()
     // Skills are TAGS now, one box each, rather than one comma-joined line.
+    openSection(/skills/)
     expect(screen.getByText('React')).toBeTruthy()
     expect(screen.getByText('TypeScript')).toBeTruthy()
+  })
+
+  it('gives a one-section profile no tab strip at all', () => {
+    // Adaptivity, the same rule every other panel here follows: a tab strip
+    // with one tab is chrome that decides nothing.
+    const { container } = render(
+      <SettingsPage
+        prefs={null}
+        profile={{
+          status: 'ready',
+          profile: {
+            ...FILLED,
+            email: null,
+            url: null,
+            address: null,
+            birthDate: null,
+            fetchedAt: null,
+            websites: [],
+            languages: [],
+            education: [],
+            skills: [],
+          },
+        }}
+      />
+    )
+    expect(container.querySelector('[data-profile-nav]')).toBeNull()
+    // And the one section it does have is still drawn, with no tab to open.
+    expect(screen.getByText('Developer')).toBeTruthy()
   })
 
   it('renders a partial profile rather than blanking on missing fields', () => {
@@ -256,7 +321,10 @@ describe('the profile panel', () => {
       />
     )
     expect(screen.getByText('Elijah Gabe Cervantes')).toBeTruthy()
-    expect(screen.queryByText('experience')).toBeNull()
+    // No roles means no experience TAB, which is where a section's absence is
+    // now visible: there is no empty card to look for.
+    expect(screen.queryByRole('tab', { name: /experience/ })).toBeNull()
+    openSection(/education/)
     expect(screen.getByText('University')).toBeTruthy()
   })
 
@@ -328,6 +396,7 @@ describe('the profile panel’s layout', () => {
     const { container } = render(
       <SettingsPage prefs={null} profile={{ status: 'ready', profile: twoRoles }} />
     )
+    openSection(/experience/)
     const experience = container.querySelector('[data-profile-section="experience"]')!
     // A node per entry, and a line between them -- so one fewer rail than
     // nodes, because the last entry ends the line rather than trailing it.
@@ -350,12 +419,23 @@ describe('the profile panel’s layout', () => {
     // carousel now (Gabe: "projects sits too tall at the right column").
     const withBoth = {
       ...FILLED,
-      certifications: [{ name: 'Introduction to Networks', authority: 'Cisco', period: 'Jan 2024' }],
-      projects: [{ title: 'Worktrack', description: 'A tracker.', url: 'https://example.dev' }],
+      certifications: [
+        {
+          name: 'Introduction to Networks',
+          authority: 'Cisco',
+          period: 'Issued Jan 2024',
+          issued: 'Jan 2024',
+          expires: null,
+          credentialId: 'ABC-123',
+          url: 'https://example.org/verify',
+        },
+      ],
+      projects: [project('Worktrack', 'A tracker.', 'https://example.dev')],
     }
     const { container } = render(
       <SettingsPage prefs={null} profile={{ status: 'ready', profile: withBoth }} />
     )
+    openSection(/credentials/)
     const bullets = [...container.querySelectorAll('[data-profile-bullet]')]
     expect(bullets).toHaveLength(1)
     expect(bullets[0].tagName).toBe('LI')
@@ -364,41 +444,82 @@ describe('the profile panel’s layout', () => {
   })
 
   it('puts projects in a rail rather than a column of their own height', () => {
-    const many = Array.from({ length: 10 }, (_, i) => ({
-      title: `Project ${i}`,
-      description: 'A description long enough to take two lines in a card.',
-      url: `https://example.dev/${i}`,
-    }))
+    const many = Array.from({ length: 10 }, (_, i) =>
+      project(
+        `Project ${i}`,
+        'A description long enough to take two lines in a card.',
+        `https://example.dev/${i}`
+      )
+    )
     const { container } = render(
       <SettingsPage prefs={null} profile={{ status: 'ready', profile: { ...FILLED, projects: many } }} />
     )
+    openSection(/projects/)
     expect(container.querySelectorAll('[data-profile-project]')).toHaveLength(10)
     // One track, not ten stacked rows -- the same carousel `up next` uses.
     const section = container.querySelector('[data-profile-section="projects"]')!
     expect(section.querySelectorAll('[data-slot="carousel-content"]')).toHaveLength(1)
-    expect(screen.getByRole('link', { name: 'Project 0' })).toBeTruthy()
+    // A CARD IS A BUTTON NOW, not a link: it opens a dialog on this page
+    // rather than going somewhere (Gabe, 2026-09-19).
+    expect(screen.getByRole('button', { name: /Project 0/ })).toBeTruthy()
   })
 
-  it('names every section it renders, and renders none it has nothing for', () => {
+  it('opens a project card into a dialog carrying its README lines', async () => {
+    // Gabe, 2026-09-19: "each card from the carousel should open a dialog that
+    // contains relevant information of a specific project. Fetch the readme of
+    // every project and display only the relevant information." A card is
+    // 256px wide and one height; the README's sentences do not fit on it.
+    const user = userEvent.setup()
+    const withReadme = {
+      ...FILLED,
+      projects: [
+        {
+          ...project('Worktrack', 'A job search tracker.', 'https://example.dev'),
+          highlights: [
+            'Tracks every application from first contact through to an offer.',
+            'Renders a tailored CV as PDF, DOCX and LaTeX from one document.',
+          ],
+          tech: ['TypeScript', 'Next.js'],
+          stars: 12,
+        },
+      ],
+    }
+    render(<SettingsPage prefs={null} profile={{ status: 'ready', profile: withReadme }} />)
+    openSection(/projects/)
+    await user.click(screen.getByRole('button', { name: /Worktrack/ }))
+    const dialog = await screen.findByRole('dialog')
+    expect(
+      within(dialog).getByText('Tracks every application from first contact through to an offer.')
+    ).toBeTruthy()
+    expect(within(dialog).getByText('12 stars')).toBeTruthy()
+    expect(within(dialog).getByRole('link', { name: /repository/ }).getAttribute('href')).toBe(
+      'https://example.dev'
+    )
+  })
+
+  it('names every section in the tab strip, in order, with its count', () => {
     const { container } = render(
       <SettingsPage prefs={null} profile={{ status: 'ready', profile: FILLED }} />
     )
-    const sections = [...container.querySelectorAll('[data-profile-section]')].map((s) =>
-      s.getAttribute('data-profile-section')
-    )
+    // SCOPED TO THE PROFILE'S OWN NAV. Settings carries a `profile | general`
+    // tab row of its own directly above this one, which is the reason these
+    // two strips are drawn in different voices in the first place.
+    const nav = container.querySelector('[data-profile-nav]') as HTMLElement
+    const tabs = [...nav.querySelectorAll('[role="tab"]')].map((tab) => tab.textContent)
+
     // NO `about` SECTION SINCE 2026-09-18 (Gabe: "remove about section"). The
     // text is still stored -- it opens a generated CV -- it is simply not a
     // panel on this screen any more.
-    expect(sections).not.toContain('about')
-    expect(sections).toContain('experience')
-    expect(sections).toContain('education')
-    expect(sections).toContain('skills')
-    // FILLED carries no projects, so there is no projects section to find.
-    expect(sections).not.toContain('projects')
-    // DETAILS LEADS (Gabe, 2026-09-18: "details first before experience"): it
-    // is four lines of facts a reader came for, and experience is the long
-    // read under them.
-    expect(sections.indexOf('details')).toBeLessThan(sections.indexOf('experience'))
+    expect(tabs).toEqual(['details', 'experience(1)', 'education(1)', 'skills(2)'])
+    // FILLED carries no projects and no certifications, so neither gets a tab:
+    // a section's absence shows as a missing tab rather than an empty card.
+    expect(tabs.some((label) => label?.startsWith('projects'))).toBe(false)
+    expect(tabs.some((label) => label?.startsWith('credentials'))).toBe(false)
+    // THE COUNT IS WHAT TABS COST AND WHAT GIVES IT BACK: the shape of an
+    // import has to be readable without opening anything, or tabbing has only
+    // hidden it.
+    // DETAILS LEADS (Gabe, 2026-09-18: "details first before experience").
+    expect(tabs[0]).toBe('details')
   })
 })
 
@@ -653,6 +774,7 @@ describe('importing a LinkedIn export', () => {
     // The field the whole import exists for: a scrape gives up titles and
     // dates, and this is what a CV is actually written from.
     render(<SettingsPage prefs={null} profile={{ status: 'ready', profile: FILLED }} />)
+    openSection(/experience/)
     const body = screen.getByText(/Built the tracker/)
     expect(body.className).toContain('whitespace-pre-line')
   })
@@ -693,17 +815,42 @@ describe('importing a LinkedIn export', () => {
     expect(banner.querySelectorAll('[data-profile-tag]').length).toBeGreaterThan(0)
   })
 
-  it('puts the email and the profile link in the header', () => {
-    // Every reference screen carries the facts you would copy out of a profile
-    // beside the name; this app had the email nowhere at all.
+  it('keeps the contact facts in details and off the banner', () => {
+    // Gabe, 2026-09-19: "remove the profile and location at the right side of
+    // the banner". Both were already on screen elsewhere -- the location under
+    // the name, the address in the sources form -- so the column was the same
+    // facts said twice across half the banner's width.
     const { container } = render(
       <SettingsPage prefs={null} profile={{ status: 'ready', profile: FILLED }} />
     )
     const banner = container.querySelector('[data-profile-banner]') as HTMLElement
+    expect(banner.querySelector('[data-profile-detail]')).toBeNull()
     expect(
-      within(banner).getByRole('link', { name: 'egabe.cervantes@gmail.com' }).getAttribute('href')
+      screen.getByRole('link', { name: 'egabe.cervantes@gmail.com' }).getAttribute('href')
     ).toBe('mailto:egabe.cervantes@gmail.com')
-    expect(banner.querySelector('[data-profile-detail="location"]')).toBeTruthy()
+    const details = container.querySelector('[data-profile-section="details"]')!
+    expect(details.querySelector('[data-profile-detail="profile"]')).toBeTruthy()
+    // The location is the banner's, once. A row here would be the second copy.
+    expect(details.querySelector('[data-profile-detail="location"]')).toBeNull()
+  })
+
+  it('opens the sources form from the banner rather than a card at the foot', () => {
+    // Five address fields with a hint and an outcome under each is a FORM, and
+    // a form under a career you have to scroll past is one nobody finds twice.
+    const { container } = render(
+      <SettingsPage
+        prefs={null}
+        profile={{ status: 'ready', profile: FILLED }}
+        profileSource={<ProfileSources onFetch={() => {}} hasProfile />}
+      />
+    )
+    const banner = container.querySelector('[data-profile-banner]') as HTMLElement
+    const cta = within(banner).getByRole('button', { name: /update sources/i })
+    // Not on the page until it is asked for: the card at the foot is gone.
+    expect(container.querySelector('[data-profile-fetch]')).toBeNull()
+    fireEvent.click(cta)
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    expect(document.querySelector('[data-profile-fetch]')).toBeTruthy()
   })
 })
 

@@ -149,7 +149,12 @@ export function Records({
                     It can be empty: a signed-out LinkedIn profile routinely
                     withholds the job title, so the employer takes the lead
                     line rather than leaving a blank one above it. */}
-                <p className="break-words text-body-m font-medium text-text-primary">
+                {/* A STEP ABOVE THE EMPLOYER UNDER IT (Gabe, 2026-09-19:
+                    "better typography sizing"). `body-m` at medium weight is
+                    the same 14px as the line below, so a role and its company
+                    were told apart by weight alone -- which is one signal
+                    doing the work of two on the densest list on the screen. */}
+                <p className="break-words text-body-l font-semibold text-text-primary">
                   {row.lead || row.detail || 'untitled'}
                 </p>
                 {row.lead && row.detail && (
@@ -183,6 +188,16 @@ export interface BulletRow {
   period: string | null
   body?: string | null
   href?: string | null
+  /**
+   * The small print under the line -- a credential number, a registry id.
+   *
+   * IT IS THE PART A READER CAN CHECK (Gabe, 2026-09-19, asking for more of
+   * what a certificate actually carries). Kept off the lead line on purpose:
+   * `Introduction to Networks — Cisco Networking Academy · Credential ID
+   * ABC-123` is one line nobody finishes, and the number is looked up rather
+   * than read.
+   */
+  meta?: string | null
 }
 
 /**
@@ -233,6 +248,11 @@ export function Bullets({ rows }: { rows: BulletRow[] }) {
           {row.body && (
             <p className="mt-1 whitespace-pre-line text-body-s leading-[1.6] text-text-secondary">
               {row.body}
+            </p>
+          )}
+          {row.meta && (
+            <p className="mt-0.5 text-caption text-text-muted" data-profile-bullet-meta>
+              {row.meta}
             </p>
           )}
         </li>

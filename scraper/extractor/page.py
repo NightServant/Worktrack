@@ -131,6 +131,54 @@ class Page:
                 items.append(lines)
         return items
 
+    def items_with_links(
+        self, item_css: str, line_css: str, link_css: str
+    ) -> list[tuple[list[str], list[str]]]:
+        """`items`, with each entry's links beside its lines.
+
+        ONE WALK, SO THE TWO STAY ALIGNED. Calling `items` and a separate
+        attribute query would give two lists that only line up while every
+        entry happens to have both -- and a certificate with no `Show
+        credential` link is the common case, so the first missing one would
+        shift every URL below it onto the wrong certificate.
+
+        Entries with neither lines nor links are dropped, matching `items`.
+        """
+        try:
+            found = self._sel.css(item_css)
+        except Exception:
+            return []
+        out: list[tuple[list[str], list[str]]] = []
+        for node in found:
+            lines: list[str] = []
+            try:
+                for line in node.css(line_css):
+                    try:
+                        text = line.get_all_text() if hasattr(line, "get_all_text") else None
+                    except Exception:
+                        text = None
+                    if not text:
+                        continue
+                    cleaned = " ".join(str(text).split())
+                    if cleaned and (not lines or lines[-1] != cleaned):
+                        lines.append(cleaned)
+            except Exception:
+                pass
+            links: list[str] = []
+            try:
+                for link in node.css(link_css):
+                    value = link.get() if hasattr(link, "get") else link
+                    if value is None:
+                        continue
+                    href = str(value).strip()
+                    if href and href not in links:
+                        links.append(href)
+            except Exception:
+                pass
+            if lines or links:
+                out.append((lines, links))
+        return out
+
     def all(self, css: str) -> list[str]:
         try:
             found = self._sel.css(css)

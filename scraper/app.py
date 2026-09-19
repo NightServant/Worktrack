@@ -32,7 +32,7 @@ from extractor.challenge import (
 from extractor.core import extract
 from extractor.net import normalize_target_url, reject_reason
 from extractor.apify_profile import profile_from_apify
-from extractor.github_profile import _login, profile_from_github
+from extractor.github_profile import _login, profile_from_github, projectable
 from extractor.jobstreet_profile import profile_from_jobstreet
 from extractor.linkedin_page import profile_from_linkedin_page
 from extractor.merge_profile import merge_profiles
@@ -111,6 +111,22 @@ GITHUB_TIMEOUT_S = 12.0
 #: How many repositories to look at. The API caps `per_page` at 100, and a
 #: second page would be somebody's archive rather than their best work.
 GITHUB_REPO_PAGE = 100
+
+#: The biggest README this service will read, in bytes.
+#:
+#: A README is prose and a badge row; the ones that run past this are a
+#: vendored document, a changelog, or a file with a base64 image in it, and
+#: none of those hold a CV bullet.
+MAX_README_BYTES = 200_000
+
+#: How many project READMEs one import may fetch.
+#:
+#: THE RATE LIMIT IS THE CONSTRAINT, not the time. GitHub allows 60
+#: unauthenticated requests an hour PER ADDRESS, shared by every deployment on
+#: that egress IP, and one import already spends two. Six leaves the profile
+#: README and the user and repository calls inside a single-digit budget; a
+#: deployment with `GITHUB_TOKEN` set has 5,000 and this number stops mattering.
+MAX_REPO_READMES = 6
 
 FIRECRAWL_ENDPOINT = "https://api.firecrawl.dev/v2/scrape"
 FIRECRAWL_TIMEOUT_S = 60.0
@@ -577,7 +593,55 @@ async def _github_profile(url: str) -> tuple[dict[str, Any] | None, str]:
     except Exception:
         return None, "unreachable"
 
-    return profile_from_github(user, repos, url), "ok"
+    # THE READMES, AFTER THE TWO CALLS THAT CANNOT FAIL SOFTLY (Gabe,
+    # 2026-09-19: the profile README, and one per project). Every one of these
+    # is optional -- a repository with no README is ordinary, and a rate limit
+    # here costs the bullets rather than the import.
+    profile_readme = await _github_readme(login, login, headers)
+    repo_readmes: dict[str, str] = {}
+    for repo in projectable(repos)[:MAX_REPO_READMES]:
+        name = repo.get("name")
+        if not isinstance(name, str) or not name:
+            continue
+        text = await _github_readme(login, name, headers)
+        if text:
+            repo_readmes[name] = text
+
+    return (
+        profile_from_github(user, repos, url, profile_readme, repo_readmes),
+        "ok",
+    )
+
+
+async def _github_readme(
+    owner: str, repo: str, headers: dict[str, str]
+) -> str | None:
+    """One repository's README as markdown, or None.
+
+    RAW MARKDOWN, NOT THE JSON ENVELOPE. `Accept: application/vnd.github.raw`
+    makes GitHub serve the file itself, which saves a base64 decode and a
+    branch lookup -- the endpoint already resolves the default branch and
+    whichever of `README.md`, `readme.md` or `README.rst` exists.
+
+    NEVER RAISES, AND NEVER BLOCKS THE IMPORT. A missing README is a 404 and
+    is the common case; a rate limit is a 403 and costs this repository's
+    bullets. Both return None, because the caller's job is a profile and not a
+    file.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=GITHUB_TIMEOUT_S) as client:
+            response = await client.get(
+                f"{GITHUB_API}/repos/{owner}/{repo}/readme",
+                headers={**headers, "Accept": "application/vnd.github.raw"},
+            )
+    except Exception:
+        return None
+    if response.status_code != 200:
+        return None
+    text = response.text
+    if not text or len(text.encode("utf-8", "ignore")) > MAX_README_BYTES:
+        return None
+    return text
 
 
 async def _linkedin_profile(url: str) -> tuple[dict[str, Any] | None, str]:

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { requireUserId, toError } from './supabaseHelpers'
-import { EMPTY_PROFILE, type UserProfile } from './profile'
+import { normalizeProfile, type UserProfile } from './profile'
 
 /**
  * The read/write half of `user_profiles`: the LinkedIn URL a user gave, and
@@ -41,10 +41,12 @@ export const userProfileService = {
       fetched_at: string | null
     }
     return {
-      // Merged over EMPTY_PROFILE rather than cast: a row written by an older
-      // version of the parser is missing whatever fields were added since, and
-      // the panel would read `undefined.length` on the first list it rendered.
-      profile: row.profile ? { ...EMPTY_PROFILE, ...(row.profile as object) } : null,
+      // Normalised rather than cast: a row written by an older version of the
+      // parser is missing whatever fields were added since, and the panel
+      // would read `undefined.length` on the first list it rendered. The
+      // top-level spread used to be enough; the records inside it are covered
+      // now too -- see `normalizeProfile`, and the crash that earned it.
+      profile: normalizeProfile(row.profile as Partial<UserProfile> | null),
       fetchedAt: row.fetched_at,
     }
   },

@@ -42,7 +42,7 @@ import re
 from typing import Any
 
 from .page import Page
-from .profile import EMPTY_PROFILE, _clean
+from .profile import EMPTY_PROFILE, _clean, graduation_year
 
 #: The in-page anchors, in the order LinkedIn lays them out.
 #:
@@ -173,30 +173,135 @@ def _education(section: str) -> list[dict[str, Any]]:
     for lines in _lines(section):
         if not lines:
             continue
+        school = lines[0]
+        # THE DEGREE IS NEVER THE SCHOOL SAID AGAIN (Gabe, 2026-09-19: "remove
+        # repeating information"). LinkedIn prints the school name in the
+        # entry's heading and again in its link text on some layouts, and the
+        # first non-period line after the heading was then the school over
+        # itself.
+        degree = next(
+            (
+                line
+                for line in lines[1:]
+                if not _looks_like_period(line) and line.casefold() != school.casefold()
+            ),
+            None,
+        )
+        period = next((line for line in lines[1:] if _looks_like_period(line)), None)
         out.append(
             {
-                "school": lines[0],
-                "degree": next(
-                    (line for line in lines[1:] if not _looks_like_period(line)), None
-                ),
-                "period": next((line for line in lines[1:] if _looks_like_period(line)), None),
+                "school": school,
+                "degree": degree,
+                "period": period,
+                "graduationYear": graduation_year(period),
             }
         )
     return out
 
 
+#: `Issued Jun 2024`, `Expires Jun 2027`, `Credential ID ABC-123`.
+#:
+#: LinkedIn prints these three as their own lines under a certificate, each
+#: with the label in front of the value. The label is what tells them apart --
+#: two dates in the same entry are otherwise indistinguishable.
+_ISSUED = re.compile(r"issued\s*:?\s*(.+)", re.I)
+_EXPIRES = re.compile(r"(?:expires|expiry|valid until)\s*:?\s*(.+)", re.I)
+_CREDENTIAL_ID = re.compile(r"credential\s*id\s*:?\s*(.+)", re.I)
+
+#: Lines that are a control rather than a fact.
+_CERT_CHROME = re.compile(r"^(show credential|see credential|show more|…?see more)$", re.I)
+
+
 def _certifications(section: str) -> list[dict[str, Any]]:
+    """Every certificate, with the four things LinkedIn prints under its name.
+
+    WHAT THIS USED TO READ (Gabe, 2026-09-19: "scrape more information about
+    the certifications and licenses such as Date Issued"): the name, the first
+    line that was not a date, and the first line that was. So `Issued Jun 2024
+    · Expires Jun 2027` arrived as one opaque string, the credential number was
+    thrown away, and `Show credential` -- the only link that proves the thing
+    exists -- was never looked at.
+
+    THE LABELS ARE THE PARSER. Splitting on the `·` between them would work on
+    one locale's punctuation and the entry order is not fixed, whereas
+    `Issued`, `Expires` and `Credential ID` are the words LinkedIn writes in
+    front of each value.
+
+    THE LINK COMES FROM THE SAME WALK as the lines -- see
+    `Page.items_with_links` -- because a certificate with no credential link is
+    ordinary, and two separate queries would slide every later URL onto the
+    wrong certificate.
+    """
     out: list[dict[str, Any]] = []
-    for lines in _lines(section):
+    for lines, links in Page(section).items_with_links(
+        "li", 'span[aria-hidden="true"]', "a::attr(href)"
+    ):
         if not lines:
             continue
+        name = lines[0]
+        authority = None
+        issued = None
+        expires = None
+        credential_id = None
+        leftover: list[str] = []
+        for line in lines[1:]:
+            if _CERT_CHROME.match(line):
+                continue
+            found = _ISSUED.match(line)
+            if found:
+                issued = _clean(found.group(1))
+                continue
+            found = _EXPIRES.match(line)
+            if found:
+                expires = _clean(found.group(1))
+                continue
+            found = _CREDENTIAL_ID.match(line)
+            if found:
+                credential_id = _clean(found.group(1))
+                continue
+            # `Issued Jun 2024 · Expires Jun 2027` on one line, which some
+            # layouts do: split it and read each half by its own label.
+            if "·" in line and (_ISSUED.search(line) or _EXPIRES.search(line)):
+                for part in line.split("·"):
+                    part = part.strip()
+                    found = _ISSUED.match(part)
+                    if found:
+                        issued = _clean(found.group(1))
+                    found = _EXPIRES.match(part)
+                    if found:
+                        expires = _clean(found.group(1))
+                continue
+            if _looks_like_period(line):
+                issued = issued or line
+                continue
+            if authority is None and line.casefold() != name.casefold():
+                authority = line
+                continue
+            leftover.append(line)
+        parts = [
+            f"Issued {issued}" if issued else None,
+            f"Expires {expires}" if expires else None,
+        ]
         out.append(
             {
-                "name": lines[0],
-                "authority": next(
-                    (line for line in lines[1:] if not _looks_like_period(line)), None
+                "name": name,
+                "authority": authority,
+                "period": " · ".join(part for part in parts if part) or None,
+                "issued": issued,
+                "expires": expires,
+                "credentialId": credential_id,
+                # THE FIRST OUTBOUND LINK. Everything inside the entry that is
+                # not the credential points back at LinkedIn -- the issuing
+                # company's page, the entry's own anchor -- and a certificate's
+                # proof is by definition somewhere else.
+                "url": next(
+                    (
+                        href
+                        for href in links
+                        if href.startswith("http") and "linkedin.com" not in href
+                    ),
+                    None,
                 ),
-                "period": next((line for line in lines[1:] if _looks_like_period(line)), None),
             }
         )
     return out
@@ -207,12 +312,26 @@ def _projects(section: str) -> list[dict[str, Any]]:
     for lines in _lines(section):
         if not lines:
             continue
-        body = [line for line in lines[1:] if not _looks_like_period(line)]
+        body = [
+            line
+            for line in lines[1:]
+            if not _looks_like_period(line) and line.casefold() != lines[0].casefold()
+        ]
         out.append(
             {
                 "title": lines[0],
                 "description": "\n".join(body) or None,
                 "url": None,
+                # A PROFILE'S PROJECT SECTION IS PROSE. The structured half --
+                # languages, stars, a live address -- only exists where the
+                # project has a repository, so it is left empty here rather
+                # than guessed at from a paragraph.
+                "highlights": [line for line in body if len(line) > 24],
+                "tech": [],
+                "language": None,
+                "stars": None,
+                "homepage": None,
+                "updatedAt": None,
             }
         )
     return out

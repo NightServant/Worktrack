@@ -53,6 +53,49 @@ _SCALARS = (
 #: Plain string lists.
 _STRING_LISTS = ("websites", "skills", "languages")
 
+#: Every key a record of each kind carries, at its empty value.
+#:
+#: THE WIRE CONTRACT, FILLED IN ONE PLACE. Five parsers build these records and
+#: each knows about the fields its own source has -- JobStreet has no
+#: certifications, a LinkedIn capture has no repository stars -- so a record
+#: arriving here is missing whatever its parser had nothing to say about. The
+#: app destructures `UserProfile` directly, and a missing key reads to a user
+#: as a field that did not import rather than as a shape that never existed.
+#:
+#: APPLIED AFTER THE MERGE, not before: `_merge_records` fills a field only
+#: when the copy it holds is empty, and seeding every record with explicit
+#: nulls first would make every record look complete and stop the fill.
+_RECORD_DEFAULTS: dict[str, dict[str, Any]] = {
+    "experiences": {
+        "title": "",
+        "company": None,
+        "period": None,
+        "location": None,
+        "description": None,
+    },
+    "education": {"school": "", "degree": None, "period": None, "graduationYear": None},
+    "certifications": {
+        "name": "",
+        "authority": None,
+        "period": None,
+        "issued": None,
+        "expires": None,
+        "credentialId": None,
+        "url": None,
+    },
+    "projects": {
+        "title": "",
+        "description": None,
+        "url": None,
+        "highlights": [],
+        "tech": [],
+        "language": None,
+        "stars": None,
+        "homepage": None,
+        "updatedAt": None,
+    },
+}
+
 #: Record lists, and the fields that identify one record as the same as another.
 _RECORD_LISTS = {
     "experiences": ("title", "company"),
@@ -292,5 +335,17 @@ def merge_profiles(profiles: list[dict[str, Any]]) -> dict[str, Any]:
                 fuzzy=field in _FUZZY_LISTS,
                 partial=field in _PARTIAL_LISTS,
             )
+
+    # EVERY RECORD LEAVES HERE WITH EVERY KEY. See `_RECORD_DEFAULTS`.
+    for field, defaults in _RECORD_DEFAULTS.items():
+        for record in merged[field]:
+            for key, empty in defaults.items():
+                if isinstance(empty, list):
+                    # A list field is never null on the wire: the app calls
+                    # `.map` on it without checking.
+                    if not isinstance(record.get(key), list):
+                        record[key] = list(empty)
+                elif key not in record:
+                    record[key] = empty
 
     return merged

@@ -2,7 +2,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { userProfileService } from '@/services/userProfileService'
 import { importLinkedInExport, type ImportResult } from '@/services/linkedinExport'
 import { authedFetch } from '@/lib/authedFetch'
-import { EMPTY_PROFILE, type ProfileSource, type UserProfile } from '@/services/profile'
+import {
+  EMPTY_PROFILE,
+  normalizeProfile,
+  type ProfileSource,
+  type UserProfile,
+} from '@/services/profile'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 
@@ -175,9 +180,15 @@ export function useImportProfileFromUrl() {
       merged.sources = sources
       merged.fetchedAt = new Date().toISOString()
 
-      await userProfileService.saveProfile(supabase, merged)
+      // NORMALISED BEFORE IT IS STORED. What comes back is whatever shape the
+      // deployed extractor produces, and a deployment lagging this one by a
+      // release sends records without the fields added since -- see
+      // `normalizeProfile`. Doing it here means the row written is already the
+      // current shape rather than one the next read has to repair.
+      const complete = normalizeProfile(merged) ?? merged
+      await userProfileService.saveProfile(supabase, complete)
       return {
-        profile: merged,
+        profile: complete,
         warnings: ('warnings' in payload && payload.warnings) || [],
         sources,
       }

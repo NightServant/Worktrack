@@ -46,9 +46,42 @@ const FULL: UserProfile = {
       description: null,
     },
   ],
-  education: [{ school: 'University of the Philippines', degree: 'BS Computer Science', period: '2018 - 2022' }],
-  skills: ['TypeScript', 'React', 'PostgreSQL'],
-  projects: [{ title: 'Worktrack', description: 'A job search tracker.', url: 'worktrack.app' }],
+  education: [
+    {
+      school: 'University of the Philippines',
+      degree: 'BS Computer Science',
+      period: '2018 - 2022',
+      graduationYear: '2022',
+    },
+  ],
+  skills: ['TypeScript', 'React', 'PostgreSQL', 'Patient Care', 'Leadership'],
+  certifications: [
+    {
+      name: 'AWS Certified Developer',
+      authority: 'Amazon Web Services',
+      period: 'Issued Mar 2024 · Expires Mar 2027',
+      issued: 'Mar 2024',
+      expires: 'Mar 2027',
+      credentialId: 'AWS-1234',
+      url: 'https://example.org/verify/AWS-1234',
+    },
+  ],
+  projects: [
+    {
+      title: 'Worktrack',
+      description: 'A job search tracker.',
+      url: 'worktrack.app',
+      highlights: [
+        'Tracks every application from first contact through to an offer.',
+        'Renders a tailored CV as PDF, DOCX and LaTeX from one document.',
+      ],
+      tech: ['TypeScript', 'Next.js'],
+      language: 'TypeScript',
+      stars: 12,
+      homepage: null,
+      updatedAt: null,
+    },
+  ],
 }
 
 /** Every string in the tree, joined -- what a reader would actually see. */
@@ -141,7 +174,37 @@ describe('section expansion', () => {
     const out = personalizeTemplate(template, FULL)
     const headings = (out.content ?? []).filter((node) => node.type === 'heading').map(allText)
     expect(headings).toEqual(['Professional Experience', 'Skills'])
-    expect(allText(out)).toContain('TypeScript, React, PostgreSQL')
+    // GROUPED, NOT ONE PARAGRAPH (Gabe, 2026-09-19). The heading is bold and
+    // inline so it cannot outrank the section headings around it.
+    expect(allText(out)).toContain('Programming Languages')
+    expect(allText(out)).toContain('TypeScript')
+  })
+
+  it('files each skill under a heading, across careers rather than one stack', () => {
+    // The classification is not a developer's: the same table has to put
+    // `Patient Care` and `Leadership` somewhere sensible for somebody who
+    // writes no code at all.
+    const out = allText(personalizeTemplate(template, FULL))
+    expect(out).toContain('Clinical & Healthcare: ')
+    expect(out).toContain('Communication & Leadership: ')
+    expect(out).not.toContain('TypeScript, React, PostgreSQL, Patient Care')
+  })
+
+  it('writes the certificate dates and its credential number', () => {
+    // Gabe, 2026-09-19: a certificate is a name, an issuer, a date and the
+    // number that proves it, and only the first two ever reached a CV.
+    const out = allText(
+      personalizeTemplate(doc(heading(2, 'Licenses & Certifications'), para('specimen')), FULL)
+    )
+    expect(out).toContain('AWS Certified Developer | Amazon Web Services')
+    expect(out).toContain('Issued Mar 2024')
+    expect(out).toContain('Credential ID AWS-1234')
+  })
+
+  it('builds project bullets from the README rather than one line', () => {
+    const out = allText(personalizeTemplate(doc(heading(2, 'Projects'), para('specimen')), FULL))
+    expect(out).toContain('Tracks every application from first contact through to an offer.')
+    expect(out).toContain('TypeScript, Next.js')
   })
 
   it('leaves the specimen block alone when the profile has no entries', () => {
@@ -156,7 +219,7 @@ describe('section expansion', () => {
     const variants = doc(heading(2, 'Work Experience'), para('specimen'), heading(2, 'Tech Skills'), para('specimen'))
     const out = personalizeTemplate(variants, FULL)
     expect(allText(out)).toContain('Frontend Engineer | Northwind')
-    expect(allText(out)).toContain('TypeScript, React, PostgreSQL')
+    expect(allText(out)).toContain('Programming Languages')
   })
 })
 

@@ -1,10 +1,13 @@
 import type { JSONContent } from '@tiptap/core'
-import type {
-  ProfileEducation,
-  ProfileExperience,
-  ProfileProject,
-  UserProfile,
+import {
+  professionalSummary,
+  type ProfileCertification,
+  type ProfileEducation,
+  type ProfileExperience,
+  type ProfileProject,
+  type UserProfile,
 } from './profile'
+import { groupSkills } from './skillGroups'
 
 /**
  * Filling a template in with the user's own details before they ever see it.
@@ -90,7 +93,15 @@ function tokenValues(profile: UserProfile): Record<string, string | null> {
     website: clean(profile.websites[0]),
     linkedin: clean(profile.url),
     industry: clean(profile.industry),
-    summary: clean(profile.summary),
+    /*
+     * THE COMPOSED SUMMARY, NOT THE RAW FIELD (Gabe, 2026-09-19). `summary` is
+     * whichever source had an About first, and on a profile where LinkedIn
+     * published none that is a GitHub bio -- so a CV opened with a three-word
+     * joke while a full professional headline sat unused. See
+     * `professionalSummary`, which leads with the longest thing the person
+     * actually wrote and adds the role and the tools under it.
+     */
+    summary: clean(professionalSummary(profile)),
     today: new Date().toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'long',
@@ -208,14 +219,95 @@ function educationNodes(entries: ProfileEducation[]): JSONContent[] {
     // for; with no degree recorded the school takes the top line instead of
     // leaving a bold blank above it.
     const degree = clean(entry.degree)
+    // THE YEAR, WHEN THERE IS NO RANGE (Gabe, 2026-09-19: "add the graduation
+    // year per school"). Most sources give one or the other, never both, and a
+    // school with neither prints without a date rather than with a guess.
+    const when = clean(entry.period) ?? clean(entry.graduationYear)
     return degree === null
-      ? lines(entry.school, entry.period)
-      : lines(degree, joined(entry.school, entry.period))
+      ? lines(entry.school, when)
+      : lines(degree, joined(entry.school, when))
   })
 }
 
+/**
+ * A project as a CV entry: a title line, then what it actually did.
+ *
+ * THE BULLETS ARE THE README'S (Gabe, 2026-09-19: "Fetch the readme of every
+ * project ... that information will be used to build the bullet-formatted
+ * sentences in the CV itself"). A repository description is one line written
+ * for a directory listing, and a CV project that is one line is a link with
+ * extra steps.
+ *
+ * THE STACK RIDES ON THE TITLE LINE rather than as a bullet of its own: it is
+ * a label, not an achievement, and a bullet that reads "TypeScript, Next.js,
+ * Supabase" among three sentences about what was built is the one a reader
+ * skips over the others to find.
+ */
 function projectNodes(entries: ProfileProject[]): JSONContent[] {
-  return entries.map((entry) => lines(entry.title, entry.description, entry.url))
+  return entries.flatMap((entry) => {
+    const stack = entry.tech.length > 0 ? entry.tech.join(', ') : null
+    const heading = lines(entry.title, joined(stack, entry.url ?? entry.homepage))
+    const bullets =
+      entry.highlights.length > 0
+        ? bulletsFrom(entry.highlights.join('\n'))
+        : bulletsFrom(entry.description)
+    return bullets ? [heading, bullets] : [heading]
+  })
+}
+
+/**
+ * A certificate as one line, with what proves it underneath.
+ *
+ * ONE LINE, NOT A BLOCK. A certificate is a name, an issuer and a date -- and
+ * eight of them set as eight dated records makes a short list look like a long
+ * one, which is the same call the panel's bulleted list already makes.
+ *
+ * THE CREDENTIAL NUMBER IS PRINTED WHERE THERE IS ONE, because it is the only
+ * part of a certificate a reader can check.
+ */
+function certificationNodes(entries: ProfileCertification[]): JSONContent[] {
+  return entries.map((entry) =>
+    lines(
+      joined(entry.name, entry.authority),
+      joined(
+        clean(entry.issued) ? `Issued ${entry.issued}` : clean(entry.period),
+        clean(entry.expires) ? `Expires ${entry.expires}` : null,
+        clean(entry.credentialId) ? `Credential ID ${entry.credentialId}` : null
+      )
+    )
+  )
+}
+
+/**
+ * The skills, under the headings a reader scans for.
+ *
+ * WHAT THIS REPLACES (Gabe, 2026-09-19: "CV just display the skills in one
+ * large paragraph"). It was `skills.join(', ')` -- forty-eight entries from
+ * four sources in one run-on line, which is a paragraph nobody reads to the
+ * end of and which an ATS parses as a single blob.
+ *
+ * ONE PARAGRAPH PER GROUP, the heading bold and inline. Bold-inline rather
+ * than a real heading node: these sit UNDER the template's own `Skills`
+ * heading, and a second level of headings inside a section would outrank the
+ * sections around it in every template's outline.
+ *
+ * THE GROUPING IS CAREER-GENERAL. See `skillGroups` -- a category appears only
+ * when something landed in it, so a CV written by a nurse gets clinical
+ * headings and one written by an engineer gets technical ones, from the same
+ * table.
+ */
+function skillNodes(skills: string[]): JSONContent[] {
+  const groups = groupSkills(skills)
+  if (groups.length === 0) return []
+  // ONE GROUP IS NOT A CLASSIFICATION. A single heading over the whole list
+  // adds a label and no structure, so the paragraph stands on its own.
+  if (groups.length === 1) {
+    return [{ type: 'paragraph', content: [text(groups[0].skills.join(', '))] }]
+  }
+  return groups.map((group) => ({
+    type: 'paragraph',
+    content: [bold(`${group.label}: `), text(group.skills.join(', '))],
+  }))
 }
 
 /**
@@ -237,9 +329,16 @@ const SECTIONS: { pattern: RegExp; build: (profile: UserProfile) => JSONContent[
   { pattern: /education|academic/i, build: (p) => educationNodes(p.education) },
   {
     pattern: /skills?|competenc|^\s*stack\s*$/i,
-    build: (p) => (p.skills.length > 0 ? [{ type: 'paragraph', content: [text(p.skills.join(', '))] }] : []),
+    build: (p) => skillNodes(p.skills),
   },
   { pattern: /projects?/i, build: (p) => projectNodes(p.projects) },
+  // AFTER PROJECTS, because `certifications?` would otherwise never be reached
+  // through a heading that reads "Projects & Certifications" -- the first
+  // pattern that hits wins, and that is a projects section.
+  {
+    pattern: /certificat|licen[cs]e|credential|accreditation/i,
+    build: (p) => certificationNodes(p.certifications),
+  },
 ]
 
 function headingLevel(node: JSONContent): number | null {

@@ -1,3 +1,5 @@
+import { groupSkills } from './skillGroups'
+
 /**
  * The profile Worktrack shows on Settings -> Profile.
  *
@@ -32,18 +34,60 @@ export interface ProfileCertification {
   name: string
   authority: string | null
   period: string | null
+  /**
+   * When it was issued and when it lapses, as the source writes them.
+   *
+   * SEPARATE FROM `period`, which is the display string a source hands over
+   * whole ("Issued Jan 2024 · Expires Jan 2027"). These two are the parts, and
+   * they are worth having apart because a CV prints them apart -- "Issued
+   * 2024" under a certificate, an expiry only when there is one.
+   */
+  issued: string | null
+  expires: string | null
+  /** The registry number under the certificate. Printed, never parsed. */
+  credentialId: string | null
+  /** `Show credential` -- where a reader can verify it. */
+  url: string | null
 }
 
 export interface ProfileProject {
   title: string
   description: string | null
   url: string | null
+  /**
+   * What the project's own README says it does, as sentences.
+   *
+   * THE FIELD THE PROJECT DIALOG AND THE CV BULLETS ARE BUILT FROM (Gabe,
+   * 2026-09-19). A repository description is one line -- "a job tracker" --
+   * and a CV entry needs the three things it actually did. The README is the
+   * only place a person has already written those down, so they are read from
+   * it rather than invented, and nothing that is not in the file gets here.
+   */
+  highlights: string[]
+  /** Languages, frameworks and topics the repository declares. */
+  tech: string[]
+  /** GitHub's primary language, when this came from a repository. */
+  language: string | null
+  /** Stars. A number, because a CV reader treats 400 and 4 differently. */
+  stars: number | null
+  /** The deployed thing, if the repository names one. */
+  homepage: string | null
+  /** ISO, when the source has it. Shown so a dead project reads as one. */
+  updatedAt: string | null
 }
 
 export interface ProfileEducation {
   school: string
   degree: string | null
   period: string | null
+  /**
+   * The year the course ended, on its own.
+   *
+   * `period` IS FREE TEXT and often absent; this is the one number a CV prints
+   * beside a school. Derived from whatever dates a source carried rather than
+   * asked for separately, so it is present exactly when a year was.
+   */
+  graduationYear: string | null
 }
 
 /**
@@ -177,4 +221,173 @@ export function hasProfileContent(profile: UserProfile): boolean {
       profile.languages.length ||
       profile.projects.length
   )
+}
+
+/**
+ * The opening paragraph a CV is introduced by.
+ *
+ * WHY IT IS COMPOSED RATHER THAN COPIED (Gabe, 2026-09-19: "professional
+ * summary display the one sentence from GitHub. Headline from LinkedIn or
+ * Jobstreet should be the professional summary (profile) but longer than the
+ * original in CV"). `summary` is whichever source had an About first, and on a
+ * profile where LinkedIn published none that was a GitHub bio -- so a CV
+ * opened with "All will be well." while a full professional headline sat
+ * unused one field away.
+ *
+ * THE LONGEST TRUE THING LEADS. Every candidate here was written by the person
+ * about themselves for an employer to read -- an About, a headline, a bio --
+ * and length is the honest proxy for which of them is the paragraph: a
+ * headline that runs to a sentence about what somebody is looking for beats a
+ * three-word bio, and an About beats both when there is one.
+ *
+ * THEN FACTS, AND ONLY FACTS ALREADY IN THE PROFILE. The two sentences that
+ * may follow name the current role and the tools -- both read straight off
+ * `experiences` and `skills`, never generated. A summary is the one part of a
+ * CV a reader assumes the candidate wrote, so nothing here may be a claim they
+ * would not recognise.
+ *
+ * NOTHING IS SAID TWICE. A sentence is skipped when the lead already contains
+ * its subject, which is why a headline that names the employer does not get
+ * "Currently ... at" underneath it.
+ */
+export function professionalSummary(profile: UserProfile): string | null {
+  const mentions = (haystack: string, needle: string | null): boolean =>
+    !!needle && haystack.toLowerCase().includes(needle.trim().toLowerCase())
+
+  // A CODE HOST'S BIO IS NEVER THE LEAD. It is a 160-character field under an
+  // avatar, and ranking by length alone would still let a long joke win over a
+  // short headline written for a recruiter.
+  const written = profile.about
+    .filter((entry) => !/github/i.test(entry.site))
+    .map((entry) => entry.text)
+  const candidates = [...written, profile.headline, profile.summary]
+    .map((value) => (value ?? '').trim())
+    .filter((value) => value.length > 0)
+  if (candidates.length === 0) return null
+
+  const lead = candidates.reduce((best, value) => (value.length > best.length ? value : best))
+  const sentences = [lead.replace(/\s+/g, ' ')]
+
+  const role = profile.experiences[0]
+  if (role && role.title && !mentions(lead, role.title)) {
+    // `Present` in the period is the only test that works across every
+    // source's date formatting -- the same one the timeline's node uses.
+    const current = /present|now/i.test(role.period ?? '')
+    const where = role.company && !mentions(lead, role.company) ? ` at ${role.company}` : ''
+    sentences.push(
+      `${current ? 'Currently working as' : 'Most recently'} ${role.title}${where}.`
+    )
+  }
+
+  // ONE SKILL PER GROUP, so the line reads as a RANGE rather than as the first
+  // five entries of whatever order the sources happened to merge in. Measured
+  // on Gabe's own profile (2026-09-19), taking the list in order gave
+  // "Livewire, GitHub, Claude Code, IntelliJ IDEA and TypeScript" -- three
+  // editors and a code host, which says less about him than the role sentence
+  // above it. By group it is a language, a styling system, a framework and a
+  // tool, which is what a reader is trying to learn from the line.
+  const spread: string[] = []
+  for (const group of groupSkills(profile.skills)) {
+    if (spread.length >= 5) break
+    const first = group.skills.find((skill) => !mentions(lead, skill))
+    if (first) spread.push(first)
+  }
+  if (spread.length >= 3) {
+    const last = spread[spread.length - 1]
+    sentences.push(`Works with ${spread.slice(0, -1).join(', ')} and ${last}.`)
+  }
+
+  return sentences.join(' ')
+}
+
+/**
+ * A stored profile brought up to the current record shape.
+ *
+ * WHY IT IS NEEDED AT ALL. `user_profiles.profile` is a JSON column, so a row
+ * written last week is exactly the shape the parser had last week -- and every
+ * field added since is simply absent from it. The top-level fields were
+ * already covered by spreading over `EMPTY_PROFILE`; the RECORDS inside were
+ * not, so `project.tech.length` threw on a profile imported before projects
+ * had a `tech` field (2026-09-19).
+ *
+ * AT THE READ BOUNDARY, ONCE. The alternative is a defensive `?? []` at every
+ * call site, which is the same fix written eleven times and forgotten on the
+ * twelfth -- and the panel, the CV templates and three exporters all read
+ * these records directly.
+ *
+ * IT FILLS, IT NEVER REPLACES. Anything the stored row has survives; only the
+ * keys it has never heard of are added, at their empty value.
+ */
+/** Whether a stored photo is a code host's avatar. See `normalizeProfile`. */
+function isCodeHostAvatar(url: string | null | undefined): boolean {
+  if (!url) return false
+  try {
+    const host = new URL(url).hostname.toLowerCase()
+    return host.endsWith('githubusercontent.com') || host.endsWith('gitlab.com')
+  } catch {
+    return false
+  }
+}
+
+export function normalizeProfile(stored: Partial<UserProfile> | null): UserProfile | null {
+  if (!stored) return null
+  const list = <T>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]) : [])
+  const strings = (value: unknown): string[] =>
+    list<unknown>(value).filter((item): item is string => typeof item === 'string')
+
+  return {
+    ...EMPTY_PROFILE,
+    ...stored,
+    /*
+     * A CODE HOST'S AVATAR IS NOT A PROFILE PHOTO (Gabe, 2026-09-19: "Profile
+     * Pic must not come from GitHub. It should come from LinkedIn, Jobstreet,
+     * Glassdoor, and Indeed").
+     *
+     * THE PARSER STOPPED WRITING IT AND THAT IS NOT ENOUGH. The merge never
+     * overwrites a filled field with an empty one -- deliberately, it is what
+     * makes adding a source safe -- so a GitHub avatar already in the database
+     * would have survived every future import and stayed the face on the CV.
+     * Dropped on the way out instead, which is the same repair as the missing
+     * keys below: stored data written under a rule that no longer holds.
+     */
+    pictureUrl: isCodeHostAvatar(stored.pictureUrl) ? null : (stored.pictureUrl ?? null),
+    about: list<ProfileAbout>(stored.about),
+    websites: strings(stored.websites),
+    skills: strings(stored.skills),
+    languages: strings(stored.languages),
+    sources: list<ProfileSource>(stored.sources),
+    experiences: list<Partial<ProfileExperience>>(stored.experiences).map((entry) => ({
+      title: entry.title ?? '',
+      company: entry.company ?? null,
+      period: entry.period ?? null,
+      location: entry.location ?? null,
+      description: entry.description ?? null,
+    })),
+    education: list<Partial<ProfileEducation>>(stored.education).map((entry) => ({
+      school: entry.school ?? '',
+      degree: entry.degree ?? null,
+      period: entry.period ?? null,
+      graduationYear: entry.graduationYear ?? null,
+    })),
+    certifications: list<Partial<ProfileCertification>>(stored.certifications).map((entry) => ({
+      name: entry.name ?? '',
+      authority: entry.authority ?? null,
+      period: entry.period ?? null,
+      issued: entry.issued ?? null,
+      expires: entry.expires ?? null,
+      credentialId: entry.credentialId ?? null,
+      url: entry.url ?? null,
+    })),
+    projects: list<Partial<ProfileProject>>(stored.projects).map((entry) => ({
+      title: entry.title ?? '',
+      description: entry.description ?? null,
+      url: entry.url ?? null,
+      highlights: strings(entry.highlights),
+      tech: strings(entry.tech),
+      language: entry.language ?? null,
+      stars: typeof entry.stars === 'number' ? entry.stars : null,
+      homepage: entry.homepage ?? null,
+      updatedAt: entry.updatedAt ?? null,
+    })),
+  }
 }

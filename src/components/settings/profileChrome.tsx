@@ -4,7 +4,7 @@ import * as React from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Skeleton } from '@/components/ui/skeleton'
-import { icons, type IconName } from '@/components/icons'
+import { MapPinIcon, icons, type IconName } from '@/components/icons'
 import type { UserProfile } from '@/services/profile'
 import { initialsOf } from './initials'
 
@@ -47,6 +47,7 @@ export function Section({
   icon,
   count,
   bare = false,
+  heading = true,
   children,
 }: {
   title: string
@@ -63,9 +64,19 @@ export function Section({
    * roles rail already made, for the same reason. See JobFeed.
    */
   bare?: boolean
+  /**
+   * Whether the card draws its own title row.
+   *
+   * OFF WHEN A TAB ALREADY NAMES IT (2026-09-19). The section tabs carry the
+   * name and the count, so a card heading under them is the same two words
+   * twice, four pixels apart -- the repetition Gabe has now asked to have
+   * removed twice. The `data-profile-section` hook and the accessible name
+   * stay either way, because a panel still has to be findable and announced.
+   */
+  heading?: boolean
   children: React.ReactNode
 }) {
-  const heading = (
+  const title_row = (
     <CardTitle icon={icon}>
       <h3>{title}</h3>
       {count !== undefined && count > 0 && (
@@ -77,7 +88,7 @@ export function Section({
   if (bare) {
     return (
       <section aria-label={title} data-profile-section={title} className="flex flex-col gap-4">
-        {heading}
+        {heading && title_row}
         {children}
       </section>
     )
@@ -85,7 +96,7 @@ export function Section({
 
   return (
     <Card aria-label={title} data-profile-section={title}>
-      <CardHeader>{heading}</CardHeader>
+      {heading && <CardHeader>{title_row}</CardHeader>}
       <CardContent>{children}</CardContent>
     </Card>
   )
@@ -145,25 +156,30 @@ export function Tag({
 }
 
 /**
- * The identity: cover band, overlapping avatar, name, headline, and the facts
- * a reader looks for first.
+ * The identity: cover band, overlapping avatar, name, headline, and the one
+ * control this screen has.
  *
  * THE OVERLAP IS THE WHOLE GESTURE and it is what makes this read as a profile
  * rather than as a row with a picture. `-mt-10` pulls the avatar up over the
  * band by half its height; the band's own height is what reserves the space
  * that pull takes back, so nothing collides at any width.
  *
- * IT CARRIES CONTACT DETAILS NOW (2026-09-18, against the reference screens
- * Gabe supplied). Every one of them puts the identity and the four or five
- * facts you would copy out of it -- email, phone, staff id, location -- in ONE
- * header block, and this app had them scattered: the email was nowhere, the
- * websites were in a `details` card below three other sections, and the header
- * held a name and a place.
+ * THE CONTACT COLUMN IS GONE (Gabe, 2026-09-19: "remove the profile and
+ * location at the right side of the banner and add a CTA button that opens the
+ * dialog for updating sources"). It was added on 2026-09-18 against reference
+ * screens that put four or five copyable facts beside a name -- an employee
+ * record's staff id, phone and desk. This profile has two of them, and both
+ * were already on screen: `location` sat under the headline as well as in the
+ * column, and `profile` was the address typed into the sources form three
+ * cards below. So the column was the same two facts said twice, and it was
+ * half the banner's width.
  *
- * ON THE RIGHT AT WIDTH, UNDER THE NAME BELOW IT. The reference's vertical
- * rule between the two halves is drawn only where there are two halves; at
- * card widths under 3xl they stack, and a rule across a stack is a rule
- * between a name and its own details.
+ * WHAT TOOK ITS PLACE IS THE ACTION. Every reference screen carries a control
+ * in that position -- `Edit Profile`, `Share profile` -- and the honest
+ * equivalent for a profile that is FETCHED rather than typed is "change what it
+ * was built from". It was a text link buried in a row of source tags, which is
+ * the least findable thing on the screen and the one thing somebody arrives
+ * here to do twice.
  *
  * WHAT IS NOT INVENTED: there is no phone number, no staff id and no
  * employment status in this data, so those rows from the reference do not
@@ -173,49 +189,26 @@ export function Identity({
   profile,
   action,
   tags,
+  nav,
 }: {
   profile: UserProfile
+  /** The one control: opposite the name at width, under it below `sm`. */
   action?: React.ReactNode
   /** Rendered under the headline -- what this profile was built from. */
   tags?: React.ReactNode
+  /**
+   * The section navigation, along this card's bottom edge.
+   *
+   * ON THE CARD RATHER THAN UNDER IT, and that is the whole reason it reads
+   * as navigation for a profile instead of as a second settings tab bar
+   * (2026-09-19). Settings already carries a tab row -- `profile | general` --
+   * directly above this card, and two identical rows stacked four pixels
+   * apart is a hierarchy nobody can parse. Attached to the header it belongs
+   * to, it is the arrangement a code host uses for exactly this problem.
+   */
+  nav?: React.ReactNode
 }) {
   const place = [profile.location, profile.industry].filter(Boolean).join(' · ')
-  const facts: { label: string; value: React.ReactNode }[] = []
-  if (profile.email) {
-    facts.push({
-      label: 'email',
-      value: (
-        <a
-          href={`mailto:${profile.email}`}
-          className="break-all text-accent-default underline-offset-4 hover:underline"
-        >
-          {profile.email}
-        </a>
-      ),
-    })
-  }
-  if (profile.url) {
-    facts.push({
-      label: 'profile',
-      value: (
-        <a
-          href={profile.url}
-          target="_blank"
-          rel="noreferrer"
-          className="break-all text-accent-default underline-offset-4 hover:underline"
-        >
-          {profile.url.replace(/^https?:\/\/(www\.)?/, '')}
-        </a>
-      ),
-    })
-  }
-  if (profile.location) facts.push({ label: 'location', value: profile.location })
-  if (profile.fetchedAt) {
-    facts.push({
-      label: 'last read',
-      value: new Date(profile.fetchedAt).toLocaleDateString(),
-    })
-  }
 
   return (
     <Card className="gap-0 py-0" data-profile-banner>
@@ -227,7 +220,7 @@ export function Identity({
       <div aria-hidden className="h-16 bg-accent-surface @sm/profile:h-20" />
 
       <div className="flex flex-col gap-5 p-4 @sm/profile:p-5">
-        <div className="flex flex-col gap-5 @3xl/profile:flex-row @3xl/profile:items-start @3xl/profile:gap-8">
+        <div className="flex flex-col gap-4 @2xl/profile:flex-row @2xl/profile:items-start @2xl/profile:justify-between @2xl/profile:gap-8">
           <div className="flex min-w-0 flex-1 flex-col gap-3">
             <div className="-mt-10 flex flex-col gap-3 @sm/profile:-mt-12">
               <Avatar className="size-16 shrink-0 border-2 border-bg-canvas @sm/profile:size-20">
@@ -239,38 +232,54 @@ export function Identity({
                 </AvatarFallback>
               </Avatar>
 
-              <div className="flex min-w-0 flex-col gap-1">
-                <h3 className="break-words text-heading-m text-text-primary">
+              <div className="flex min-w-0 flex-col gap-1.5">
+                {/* A STEP ABOVE EVERY SECTION HEADING (Gabe, 2026-09-19:
+                    "better typography sizing"). `heading-m` is the same size a
+                    `CardTitle` renders at, so the person's own name read as
+                    level with the word `skills` four cards down. `heading-l`
+                    is the next step the scale has and the only thing on this
+                    screen that wears it. */}
+                <h3 className="break-words text-heading-l text-text-primary">
                   {profile.name ?? 'unnamed'}
                 </h3>
                 {/* THE HEADLINE GETS A MEASURE, NOT A LINE. Out of LinkedIn it
                     is routinely a whole sentence about what someone is looking
                     for. */}
                 {profile.headline && (
-                  <p className="max-w-prose text-body-m leading-[1.5] text-text-secondary">
+                  <p className="max-w-prose text-body-m leading-[1.6] text-text-secondary">
                     {profile.headline}
                   </p>
                 )}
-                {place && <p className="text-body-s text-text-muted">{place}</p>}
+                {place && (
+                  <p className="flex items-center gap-1.5 text-body-s text-text-muted">
+                    <MapPinIcon size={13} aria-hidden className="shrink-0" />
+                    {place}
+                  </p>
+                )}
               </div>
             </div>
 
             {tags && <div className="flex flex-wrap items-center gap-2">{tags}</div>}
           </div>
 
-          {facts.length > 0 && (
-            <div className="grid grid-cols-1 gap-4 @sm/profile:grid-cols-2 @3xl/profile:w-[420px] @3xl/profile:shrink-0 @3xl/profile:border-l @3xl/profile:border-border-subtle @3xl/profile:pl-8">
-              {facts.map((fact) => (
-                <Detail key={fact.label} label={fact.label}>
-                  {fact.value}
-                </Detail>
-              ))}
+          {/* FULL WIDTH ON A NARROW PANEL, natural once the card has room --
+              the standing rule for primary actions on this screen. */}
+          {action && (
+            <div className="flex shrink-0 flex-col @sm/profile:flex-row @2xl/profile:justify-end">
+              {action}
             </div>
           )}
         </div>
-
-        {action}
       </div>
+
+      {/* FULL-BLEED ON THE BOTTOM EDGE, over the card's own hairline. The
+          horizontal padding matches the block above so the first tab lines up
+          with the name. */}
+      {nav && (
+        <div className="border-t border-border-subtle px-4 @sm/profile:px-5" data-profile-nav>
+          {nav}
+        </div>
+      )}
     </Card>
   )
 }
