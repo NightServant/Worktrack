@@ -35,6 +35,46 @@ export interface CvProse {
   projects: { title: string; lead: string; bullets: string[] }[]
 }
 
+/**
+ * How many README lines per project the model is given, and asked back for.
+ *
+ * FOUR IS A CV ENTRY. Gabe's own CV runs three or four bullets per project and
+ * the extractor already caps what it reads at six; passing all six means the
+ * model reads six and writes six, and generation time is roughly linear in
+ * what it writes. This is the single biggest saving available on this call
+ * and it costs nothing a reader wanted.
+ */
+const MAX_README_LINES = 4
+
+/**
+ * The ceiling on the reply.
+ *
+ * SIZED FROM THE SCHEMA WITH HEADROOM, not guessed: a summary is about 80
+ * tokens, each of up to fourteen skill groups about 30, and each project a
+ * lead plus four bullets at about 30 each. That is roughly 1,600 for a full
+ * profile, so 3,000 leaves room for a long one without leaving room to ramble.
+ * A reply cut off mid-string is invalid JSON and costs the whole answer, so
+ * this errs high -- the time control that actually bites is the reasoning
+ * effort and the line cap above it.
+ */
+const MAX_REPLY_TOKENS = 3_000
+
+/**
+ * How long the reader waits before the deterministic CV is used instead.
+ *
+ * TWENTY-FIVE SECONDS, DOWN FROM SIXTY (Gabe, 2026-09-19: "implement shorter
+ * budget for CV writing without loosing quality"). The three changes above
+ * are what make that safe rather than merely shorter: low reasoning effort
+ * removes the thinking tokens that are generated before the first character
+ * of the answer, the line cap cuts roughly a third of what is written, and
+ * the token ceiling stops a model that decides to explain itself.
+ *
+ * IT IS THE ONLY WAY OUT OF THAT SCREEN, which is why it has to be reliable:
+ * `back to documents` is disabled while this runs, deliberately, so a hung
+ * request with no timeout would be a trapped reader rather than a slow one.
+ */
+const WRITE_TIMEOUT_MS = 25_000
+
 const SYSTEM_PROMPT = [
   'You write the prose for somebody\'s CV from the facts they give you.',
   'You must not invent employers, dates, job titles, qualifications, numbers,',
@@ -47,6 +87,8 @@ const SYSTEM_PROMPT = [
   'and no pronoun ("Builds interfaces with...").',
   'Every bullet and every sentence must be a complete sentence with a verb,',
   'ending in a full stop.',
+  `Give at most ${MAX_README_LINES} bullets per project, and keep each under 30 words.`,
+  'Be concise: this is a CV, not a description of one.',
   'Reply with JSON only, in exactly this shape:',
   '{"summary": string|null,',
   '"skills": [{"label": string, "sentence": string}],',
@@ -91,7 +133,12 @@ export function factsFor(profile: UserProfile): string {
         // THE README'S OWN LINES, which are the thing being turned into
         // sentences. They are facts about the project and the only source for
         // what it does.
-        readme: project.highlights,
+        //
+        // CAPPED AT `MAX_README_LINES`. A CV entry is three or four bullets;
+        // sending nine means the model reads nine and writes nine, and both
+        // halves of that are time spent on lines the reader will delete. See
+        // `MAX_README_LINES`.
+        readme: project.highlights.slice(0, MAX_README_LINES),
       })),
     },
     null,
@@ -110,9 +157,14 @@ export async function writeCvProse(
       user: factsFor(profile),
       // Prose wants a little variation; the no-invention rule is the prompt's.
       temperature: 0.3,
-      // A CV is written once, behind a progress state, and a large model on a
-      // free tier is not fast.
-      timeoutMs: 60_000,
+      // See each constant for why this is now a quarter of a minute rather
+      // than a full one, and why that is not the same as hoping it is faster.
+      timeoutMs: WRITE_TIMEOUT_MS,
+      maxTokens: MAX_REPLY_TOKENS,
+      // WRITING IS NOT A REASONING PROBLEM. The facts are already in front of
+      // it; a chain of thought about how to phrase them is generated before
+      // the first character of the answer and buys nothing a reader can see.
+      reasoningEffort: 'low',
     },
     options
   )

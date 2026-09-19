@@ -122,6 +122,48 @@ describe('the shared client', () => {
     expect(sent.response_format).toEqual({ type: 'json_object' })
   })
 
+  it('sends the ceilings that make a short budget safe', async () => {
+    // Gabe, 2026-09-19: "shorter budget for CV writing without loosing
+    // quality". The budget is only safe because the call was made cheaper
+    // first -- reasoning tokens are generated BEFORE the first character of
+    // the answer, so they are pure wait on a writing task.
+    let sent: Record<string, unknown> = {}
+    await askForJson(
+      {
+        task: 'cv',
+        system: 's',
+        user: 'u',
+        maxTokens: 3000,
+        reasoningEffort: 'low',
+      },
+      {
+        config: CONFIG(),
+        fetchImpl: async (_url, init) => {
+          sent = JSON.parse(String((init as RequestInit).body))
+          return new Response(JSON.stringify({ choices: [{ message: { content: '{}' } }] }))
+        },
+      }
+    )
+    expect(sent.max_tokens).toBe(3000)
+    expect(sent.reasoning).toEqual({ effort: 'low' })
+  })
+
+  it('omits both when the caller does not ask, so other tasks are unchanged', async () => {
+    let sent: Record<string, unknown> = {}
+    await askForJson(
+      { task: 'tailor', system: 's', user: 'u' },
+      {
+        config: CONFIG(),
+        fetchImpl: async (_url, init) => {
+          sent = JSON.parse(String((init as RequestInit).body))
+          return new Response(JSON.stringify({ choices: [{ message: { content: '{}' } }] }))
+        },
+      }
+    )
+    expect('max_tokens' in sent).toBe(false)
+    expect('reasoning' in sent).toBe(false)
+  })
+
   it('strips the fences a model adds even when told not to', () => {
     expect(parseJsonReply('```json\n{"a":1}\n```')).toEqual({ ok: true, data: { a: 1 } })
     expect(parseJsonReply('no json here')).toMatchObject({ ok: false, reason: 'bad-response' })
@@ -181,6 +223,31 @@ describe('filling a posting’s gaps', () => {
 })
 
 describe('what the CV writer is allowed to send and keep', () => {
+  it('sends at most four README lines per project', async () => {
+    // Generation time is roughly linear in what is written, and a CV entry is
+    // three or four bullets -- so sending nine means the model reads nine and
+    // writes nine, both of them time spent on lines the reader will delete.
+    const { EMPTY_PROFILE: EMPTY } = await import('../../profile')
+    const facts = factsFor({
+      ...EMPTY,
+      projects: [
+        {
+          title: 'Worktrack',
+          description: 'A tracker.',
+          url: null,
+          highlights: ['one', 'two', 'three', 'four', 'five', 'six'],
+          tech: [],
+          language: null,
+          stars: null,
+          homepage: null,
+          updatedAt: null,
+        },
+      ],
+    })
+    const readme = JSON.parse(facts).projects[0].readme as string[]
+    expect(readme).toEqual(['one', 'two', 'three', 'four'])
+  })
+
   it('never sends the address or the birth date', () => {
     // They are in `UserProfile` and have no business in a prompt to a third
     // party.

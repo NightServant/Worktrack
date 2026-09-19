@@ -48,6 +48,32 @@ export interface LlmRequest {
    * variation. The no-invention rule is carried by the prompt, not by this.
    */
   temperature?: number
+  /**
+   * A ceiling on the reply, so a model cannot spend the budget rambling.
+   *
+   * IT IS A TIME CONTROL, NOT A COST ONE. Generation is roughly linear in
+   * output tokens, so the honest way to make a call finish sooner is to ask
+   * for less -- and every one of these replies is a bounded JSON object whose
+   * size is known from the schema. Set it with headroom: a reply cut off
+   * mid-string is invalid JSON, which costs the whole answer rather than its
+   * tail.
+   */
+  maxTokens?: number
+  /**
+   * How hard the model should think before answering, where it can choose.
+   *
+   * THE BIGGEST LEVER ON LATENCY, and on these tasks it buys almost nothing
+   * (Gabe, 2026-09-19: "implement shorter budget for CV writing without
+   * loosing quality"). Two of the three models configured here are reasoning
+   * models, and reasoning tokens are generated before the first character of
+   * the answer -- so a chain of thought about how to phrase a CV line is pure
+   * wait. Writing prose from facts that are already in front of it is not a
+   * problem that reasoning solves; extraction against a schema is not either.
+   *
+   * OpenRouter normalises this across providers and ignores it for models
+   * that do not support it, so it is safe to send everywhere.
+   */
+  reasoningEffort?: 'low' | 'medium' | 'high'
 }
 
 export interface LlmOptions {
@@ -109,6 +135,10 @@ export async function askForJson<T>(
       body: JSON.stringify({
         model,
         temperature: request.temperature ?? 0.2,
+        ...(request.maxTokens ? { max_tokens: request.maxTokens } : {}),
+        ...(request.reasoningEffort
+          ? { reasoning: { effort: request.reasoningEffort } }
+          : {}),
         // ASKED FOR, NOT HOPED FOR (2026-09-15, and it is why this is shared).
         response_format: { type: 'json_object' },
         messages: [
