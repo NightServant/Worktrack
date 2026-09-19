@@ -108,6 +108,29 @@ RENDER_TIMEOUT_MS = 45_000
 #: MEMORY IS PINNED TO THE ACTOR'S OWN CEILING. `maxMemoryMbytes` on its build
 #: is 512, so asking for the old 1024 is asking for a run it will refuse; the
 #: start event is charged per gigabyte, so the smaller number is also cheaper.
+#: The actors to try, in order, until one returns a profile this app can read.
+#:
+#: CHEAPEST FIRST, PROVEN SECOND (Gabe, 2026-09-19: "can you implement both
+#: actors???", after the cheap one came back as a shape the mapper got nothing
+#: out of). `dev_fusion` is a penny a profile against `supreme_coder`'s $0.51,
+#: so trying it first is worth it on every import where it works -- and falling
+#: through to the one that has been reading this app's profiles since 2026-09-18
+#: means a shape change in the cheap one costs money and latency rather than the
+#: import.
+#:
+#: WHAT THE FALLBACK COSTS, said plainly: when the first actor fails, the run is
+#: billed anyway, so a failing first actor makes every import $0.52 rather than
+#: $0.01. That is the trade for never being blocked by one, and it is why the
+#: failed actor's row SHAPE rides back on the successful read -- a fallback
+#: nobody notices is a fallback that silently doubles the bill forever.
+APIFY_PROFILE_ACTORS: tuple[str, ...] = (
+    "dev_fusion~Linkedin-Profile-Scraper",
+    "supreme_coder~linkedin-profile-scraper",
+)
+
+#: The single-actor override, kept because it is what one deployment sets and
+#: because pinning one actor is how you test one. Either name may be set;
+#: `APIFY_PROFILE_ACTORS` takes a comma-separated chain.
 APIFY_PROFILE_ACTOR = "supreme_coder~linkedin-profile-scraper"
 APIFY_ENDPOINT = "https://api.apify.com/v2/acts/{actor}/run-sync-get-dataset-items"
 APIFY_TIMEOUT_S = 180.0
@@ -472,6 +495,14 @@ def _apify_message(reason: str) -> str:
         return "The profile reader's credit is used up."
     if reason.startswith("http-429"):
         return "The profile reader is rate limiting us. Try again in a minute."
+    if reason.startswith("unmapped-row"):
+        # THE SHAPE RIDES WITH THE SENTENCE. The raw reason is already shown in
+        # parentheses by the client, so the key names reach whoever is looking
+        # without a second round trip to the Apify console.
+        return (
+            "The profile reader returned a shape this app does not recognise — its "
+            "fields may have been renamed."
+        )
     return {
         "no-token": "Profile import is not configured for this deployment.",
         "no-key": "Profile import is not configured for this deployment.",
@@ -490,8 +521,59 @@ def _apify_message(reason: str) -> str:
     }.get(reason, "Could not read that profile page.")
 
 
-async def _apify_profile(url: str) -> tuple[dict[str, Any] | None, str]:
-    """One profile through the Apify actor. Returns `(row, reason)`.
+#: How much of an unrecognised row's shape to report. See `_row_shape`.
+MAX_SHAPE_KEYS = 40
+
+
+def _row_shape(row: dict[str, Any]) -> str:
+    """An unrecognised row's top-level key names, and nothing else.
+
+    NAMES, NEVER VALUES. This string ends up in an error message, in a log and
+    on somebody's screen, so it carries the schema and none of the person: a
+    key is `fullName`, never what the name is. A list or object value is
+    reported as its kind and size -- `experiences[3]`, `currentCompany{}` --
+    because "the key exists but is empty" and "the key holds three of them"
+    are different bugs.
+
+    SPACE-SEPARATED, NOT COMMA-SEPARATED, and that is not cosmetic: this string
+    is embedded in a compound reason that `_linkedin_message` splits on `", "`
+    to find the route that decided the outcome. A shape with commas in it turns
+    one reason into six and the message comes out of the wrong branch.
+    """
+    parts: list[str] = []
+    for key in sorted(row)[:MAX_SHAPE_KEYS]:
+        value = row[key]
+        if isinstance(value, list):
+            parts.append(f"{key}[{len(value)}]")
+        elif isinstance(value, dict):
+            parts.append(f"{key}{{{len(value)}}}")
+        elif value is None or value == "":
+            parts.append(f"{key}=empty")
+        else:
+            parts.append(key)
+    more = "" if len(row) <= MAX_SHAPE_KEYS else f" +{len(row) - MAX_SHAPE_KEYS}-more"
+    return "(" + " ".join(parts) + more + ")"
+
+
+def _profile_actors() -> tuple[str, ...]:
+    """The actor chain this deployment runs, in order.
+
+    AN EXPLICIT SETTING WINS AND IS NOT A CHAIN. `APIFY_PROFILE_ACTOR` names
+    ONE actor, which is what you set when you are testing one; the plural
+    `APIFY_PROFILE_ACTORS` takes a comma-separated list. With neither set the
+    built-in chain runs -- see `APIFY_PROFILE_ACTORS`.
+    """
+    many = os.environ.get("APIFY_PROFILE_ACTORS", "").strip()
+    if many:
+        chain = tuple(name.strip() for name in many.split(",") if name.strip())
+        if chain:
+            return chain
+    one = os.environ.get("APIFY_PROFILE_ACTOR", "").strip()
+    return (one,) if one else APIFY_PROFILE_ACTORS
+
+
+async def _apify_profile(url: str, actor: str) -> tuple[dict[str, Any] | None, str]:
+    """One profile through ONE Apify actor. Returns `(row, reason)`.
 
     The reason is the same contract as `_firecrawl_fetch`'s, and for the same
     reason: this endpoint has no fallback worth the name, so why it failed IS
@@ -502,7 +584,6 @@ async def _apify_profile(url: str) -> tuple[dict[str, Any] | None, str]:
     if not token:
         return None, "no-token"
 
-    actor = os.environ.get("APIFY_PROFILE_ACTOR", "").strip() or APIFY_PROFILE_ACTOR
     endpoint = APIFY_ENDPOINT.format(actor=actor)
     try:
         async with httpx.AsyncClient(timeout=APIFY_TIMEOUT_S) as client:
@@ -709,14 +790,21 @@ async def _github_readme(
 
 
 async def _linkedin_profile(url: str) -> tuple[dict[str, Any] | None, str]:
-    """A LinkedIn profile through Apify, then Firecrawl. `(payload, reason)`.
+    """A LinkedIn profile through the Apify actor chain. `(payload, reason)`.
 
-    APIFY FIRST SINCE 2026-09-10. Firecrawl shipped as the only route and did
-    not get a page on the first real test: it is a fetcher, and what LinkedIn
-    serves a signed-out visitor is an anti-bot challenge. The Apify actor
-    solves that server-side and returns structured JSON, which is also richer
-    than the JSON-LD -- certifications, projects, websites, and the bullet text
-    under each role that the whole import exists for.
+    APIFY IS THE ONLY ROUTE. Firecrawl shipped as the original one and did not
+    get a page on the first real test: it is a fetcher, and what LinkedIn
+    serves a signed-out visitor is an anti-bot challenge. An actor solves that
+    server-side and returns structured JSON, which is also richer than the
+    JSON-LD -- certifications, projects, websites, and the bullet text under
+    each role that the whole import exists for.
+
+    SEVERAL ACTORS, TRIED IN ORDER (Gabe, 2026-09-19: "can you implement both
+    actors???"). One actor is one shape, and a shape can move -- the cheap one
+    came back as a row this mapper got nothing out of the day it was switched
+    on. Walking a chain means that costs a run and a wait rather than the
+    import, and it is what makes trying a cheaper actor safe at all. See
+    `APIFY_PROFILE_ACTORS` for the order and what the fallback costs.
 
     FIRECRAWL IS NO LONGER TRIED HERE, and the reason is a flat refusal rather
     than a failure (measured 2026-09-19, from Gabe's own import): it answers a
@@ -735,20 +823,46 @@ async def _linkedin_profile(url: str) -> tuple[dict[str, Any] | None, str]:
     JobStreet, Indeed and Glassdoor, which it does serve.
     """
     reasons: dict[str, str] = {}
-    if os.environ.get("APIFY_TOKEN", "").strip():
-        row, reason = await _apify_profile(url)
-        reasons["apify"] = reason
-        if row is not None:
-            payload = profile_from_apify(row, url)
-            # A ROW THAT MAPS TO NOTHING IS NOT A READ. The actor changed on
-            # 2026-09-18 and its field names are published only as a feature
-            # list, so the mapper carries both spellings -- and this is the net
-            # under it. No name and no roles means the shape moved again;
-            # Firecrawl below still gets the JSON-LD, and storing a blank over
-            # a good profile would be the worse failure by far.
-            if payload["profile"]["name"] or payload["profile"]["experiences"]:
-                return {**payload, "via": "apify"}, "ok"
-            reasons["apify"] = "unmapped-row"
+    if not os.environ.get("APIFY_TOKEN", "").strip():
+        return None, "no-token"
+
+    # EVERY ACTOR IN THE CHAIN, IN ORDER, until one returns a profile this app
+    # can actually read. See `APIFY_PROFILE_ACTORS` for why the order is
+    # cheapest-first and what the fallback costs.
+    notes: list[str] = []
+    for actor in _profile_actors():
+        # The account name is enough to tell two actors apart in a reason
+        # string, and it is what somebody would search the store for.
+        label = actor.split("~")[0] or actor
+        row, reason = await _apify_profile(url, actor)
+        if row is None:
+            reasons[label] = reason
+            continue
+
+        payload = profile_from_apify(row, url)
+        # A ROW THAT MAPS TO NOTHING IS NOT A READ. No name and no roles means
+        # this actor's shape is not one the mapper knows, and storing a blank
+        # over a good profile would be the worse failure by far.
+        if payload["profile"]["name"] or payload["profile"]["experiences"]:
+            # WHAT THE CHEAPER ACTOR DID, CARRIED ON A SUCCESSFUL READ. A
+            # fallback nobody notices is a fallback that silently doubles the
+            # bill forever -- and the shape is the whole fix for the next
+            # person mapping it.
+            return (
+                {
+                    **payload,
+                    "via": "apify",
+                    "warnings": [*payload.get("warnings", []), *notes],
+                },
+                "ok",
+            )
+
+        shape = _row_shape(row)
+        reasons[label] = f"unmapped-row {shape}"
+        notes.append(
+            f"The cheaper profile reader ({label}) returned fields this app does not "
+            f"recognise, so a slower one was used instead. Its row was {shape}."
+        )
 
     # See the docblock: Firecrawl refuses LinkedIn outright, so there is
     # nothing left to try and the actor's own reason is the whole answer.

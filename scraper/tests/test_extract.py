@@ -864,6 +864,107 @@ DEV_FUSION_ROW = {
 }
 
 
+def test_the_actor_chain_is_configurable_and_defaults_to_cheapest_first(monkeypatch):
+    from app import APIFY_PROFILE_ACTORS, _profile_actors
+
+    monkeypatch.delenv("APIFY_PROFILE_ACTOR", raising=False)
+    monkeypatch.delenv("APIFY_PROFILE_ACTORS", raising=False)
+    assert _profile_actors() == APIFY_PROFILE_ACTORS
+    assert _profile_actors()[0].startswith("dev_fusion")
+
+    # The singular name pins ONE actor, which is how you test one.
+    monkeypatch.setenv("APIFY_PROFILE_ACTOR", "someone~their-scraper")
+    assert _profile_actors() == ("someone~their-scraper",)
+
+    # The plural takes a chain, and outranks the singular.
+    monkeypatch.setenv("APIFY_PROFILE_ACTORS", "a~one, b~two")
+    assert _profile_actors() == ("a~one", "b~two")
+
+
+def test_a_second_actor_rescues_an_import_the_first_could_not_map(monkeypatch):
+    # Gabe, 2026-09-19: "can you implement both actors???" -- after the cheap
+    # one returned a shape the mapper got nothing out of and the import failed
+    # outright. It must cost a run, not the profile.
+    import app as service
+
+    monkeypatch.delenv("APIFY_PROFILE_ACTORS", raising=False)
+    monkeypatch.setenv("APIFY_TOKEN", "x")
+    monkeypatch.setenv("APIFY_PROFILE_ACTORS", "cheap~one, proven~two")
+
+    seen: list[str] = []
+
+    async def fake(url, actor):
+        seen.append(actor)
+        if actor.startswith("cheap"):
+            # A row that maps to nothing: no name, no roles.
+            return {"someOtherShape": 1, "nested": {"a": 2}}, "ok"
+        return {"fullName": "Elijah Gabe Cervantes"}, "ok"
+
+    monkeypatch.setattr(service, "_apify_profile", fake)
+    payload, reason = asyncio.run(service._linkedin_profile("https://www.linkedin.com/in/x/"))
+
+    assert reason == "ok"
+    assert seen == ["cheap~one", "proven~two"]
+    assert payload["profile"]["name"] == "Elijah Gabe Cervantes"
+    # AND IT SAYS THE FALLBACK HAPPENED. One that nobody notices silently
+    # doubles the bill forever.
+    note = " ".join(payload["warnings"])
+    assert "cheap" in note
+    assert "someOtherShape" in note
+
+
+def test_the_chain_gives_up_with_every_actors_reason(monkeypatch):
+    import app as service
+
+    monkeypatch.setenv("APIFY_TOKEN", "x")
+    monkeypatch.setenv("APIFY_PROFILE_ACTORS", "cheap~one, proven~two")
+
+    async def fake(url, actor):
+        return None, "http-402" if actor.startswith("proven") else "no-rows"
+
+    monkeypatch.setattr(service, "_apify_profile", fake)
+    payload, reason = asyncio.run(service._linkedin_profile("https://www.linkedin.com/in/x/"))
+    assert payload is None
+    assert "cheap: no-rows" in reason
+    assert "proven: http-402" in reason
+
+
+def test_an_unrecognised_row_reports_its_shape_and_no_values():
+    # Gabe, 2026-09-19: `unmapped-row` on the new actor, and the row lives in
+    # HIS Apify account -- unreachable from here, so diagnosing a renamed field
+    # meant guessing at it twice. The key NAMES are the whole fix and carry
+    # nothing about the person.
+    from app import _row_shape
+
+    shape = _row_shape(
+        {
+            "fullName": "Elijah Gabe Cervantes",
+            "experiences": [1, 2, 3],
+            "currentCompany": {"name": "Acme"},
+            "email": None,
+            "headline": "",
+        }
+    )
+    # Every key is named, with its kind and size where it has one.
+    assert "fullName" in shape
+    assert "experiences[3]" in shape
+    assert "currentCompany{1}" in shape
+    # An absent value is distinguished from a missing key -- different bugs.
+    assert "email=empty" in shape
+    # NO COMMAS: the compound reason this is embedded in is split on ", ".
+    assert "," not in shape
+    # AND NOT ONE VALUE. This string reaches a screen and a log.
+    assert "Elijah" not in shape
+    assert "Acme" not in shape
+
+
+def test_the_row_shape_is_capped_so_a_huge_row_cannot_flood_a_log():
+    from app import MAX_SHAPE_KEYS, _row_shape
+
+    shape = _row_shape({f"field{i}": i for i in range(MAX_SHAPE_KEYS + 12)})
+    assert "+12-more" in shape
+
+
 def test_a_403_about_permissions_is_not_reported_as_a_bad_token():
     # Gabe, 2026-09-19, switching actors: the reply was `403 This Actor
     # requires full access to your account ... approve its permissions`, and
