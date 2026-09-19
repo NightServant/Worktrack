@@ -25,6 +25,7 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from extractor import seek_api
 from extractor.challenge import (
     autofill_from_url_alone,
     looks_like_bot_challenge,
@@ -508,6 +509,44 @@ def _render(url: str) -> str | None:
         # the static HTML is still what gets parsed, and its own warnings then
         # describe what was missing.
         return None
+
+
+async def _fetch_seek_api(url: str) -> dict[str, Any] | None:
+    """A JobStreet or SEEK posting from the endpoint the board's own pages use.
+
+    None for every other host, for a URL with no job id, and for any failure --
+    the caller then falls through to rendering exactly as it did before, so
+    this can only add postings and can never take one away.
+
+    NO BROWSER AND NO CREDIT. It is one POST with one header. The reason it is
+    tried before `_fetch_rendered` is that it is both cheaper and better: the
+    reply is the record the advert is rendered FROM, where the HTML is the
+    rendering.
+    """
+    request = seek_api.api_request(url)
+    if request is None:
+        return None
+    endpoint, body = request
+    try:
+        async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_S, headers=BROWSER_HEADERS) as client:
+            response = await client.post(endpoint, json=body)
+    except httpx.HTTPError:
+        logger.info("seek api unreachable for %s", url)
+        return None
+    if response.status_code != 200:
+        logger.info("seek api answered %s for %s", response.status_code, url)
+        return None
+    try:
+        job = seek_api.job_from_reply(response.json())
+    except ValueError:
+        logger.info("seek api returned unreadable JSON for %s", url)
+        return None
+    if job is None:
+        # GraphQL answers 200 with an `errors` array, so this is where a
+        # renamed field lands rather than in the status check above.
+        logger.info("seek api returned no job for %s", url)
+        return None
+    return seek_api.envelope_from_job(url, job)
 
 
 async def _fetch_rendered(url: str) -> str | None:
@@ -1387,6 +1426,15 @@ async def extract_endpoint(body: ExtractRequest) -> JSONResponse:
     # said no, and the answer to that is the caller supplying HTML from their
     # own session, not a better disguise.
     if looks_like_bot_challenge(response.status_code, body_text):
+        # THE PLATFORM'S OWN ENDPOINT FIRST, where there is one. SEEK and
+        # JobStreet publish the posting at `/graphql` on the same host,
+        # unauthenticated, and answer it for a bare request while refusing the
+        # HTML to everything that is not a browser. It costs one round trip, no
+        # browser and no Firecrawl credit, and it returns the record the page
+        # is drawn from rather than a scrape of the drawing. See `seek_api`.
+        from_api = await _fetch_seek_api(final_url)
+        if from_api is not None:
+            return JSONResponse(from_api, status_code=200)
         rendered = await _fetch_rendered(final_url)
         if rendered and not looks_like_bot_challenge(200, rendered):
             return JSONResponse(extract(final_url, rendered, 200), status_code=200)

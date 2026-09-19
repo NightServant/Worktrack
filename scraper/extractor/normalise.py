@@ -74,7 +74,11 @@ def normalize_role(raw: str, company: str | None = None) -> str:
     return value.strip()
 
 
-_REMOTE = re.compile(r"(remote|work from home|telecommute|telework)", re.I)
+#: `wfh` IS WORD-BOUNDED because it is three letters that appear inside
+#: nothing else worth matching, and leaving it out cost a real field: the
+#: Philippine boards write "| WFH" in the TITLE where other markets write
+#: "Remote", so every WFH posting read as no work mode at all.
+_REMOTE = re.compile(r"(remote|work from home|\bwfh\b|telecommute|telework)", re.I)
 _HYBRID = re.compile(r"hybrid", re.I)
 _ONSITE = re.compile(r"(on[- ]site|onsite|in[- ]person)", re.I)
 
