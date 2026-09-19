@@ -11,23 +11,28 @@ import { Detail, Facet, Identity, Section, Tag } from './profileChrome'
 import { ProfileProjects } from './ProfileProjects'
 
 /**
- * A profile's content, one section at a time (Gabe, 2026-09-19: "consider to
- * break the profile sections with tab navigations for better UI/UX
- * experience").
+ * A profile's content, in three tabs (Gabe, 2026-09-19: "consider to break the
+ * profile sections with tab navigations", then the grouping itself -- "first
+ * tab: details, experience, and education; second: skills; third: projects and
+ * credentials").
  *
  * WHAT IT REPLACES AND WHAT THAT COST. These six sections were a single
  * stacked column, which on a real profile ran to about 2,400px: checking
  * whether skills imported correctly meant scrolling past a career to find out,
  * and the two shortest cards -- details and certifications -- sat at opposite
- * ends of it. Tabbed, any one of them is one screen.
+ * ends of it. Tabbed, each group is about one screen.
  *
- * The trade is the sweep. Reviewing a whole import used to be one scroll and
- * is now six clicks, and no amount of arranging makes that untrue. TWO THINGS
- * BUY MOST OF IT BACK: every tab carries its own count, so the SHAPE of an
- * import -- one role, two schools, sixty-two skills, nine projects -- is
- * readable without opening anything; and the identity banner stays above the
- * tabs in every one of them, so the thing being described never leaves the
- * screen.
+ * WHY THREE RATHER THAN ONE PER SECTION, which is where this started. Six tabs
+ * is the arrangement that needs no decisions: four of them held a single short
+ * card, and `details` and `education` -- two things a reader checks in the same
+ * breath -- were a click apart for no reason anyone would give. Three groups
+ * answer three questions: who this person is and what they have done, what
+ * they can do, and what they have to show for it.
+ *
+ * The trade is still the sweep. Reviewing a whole import used to be one scroll
+ * and is now three clicks. The identity banner stays above the tabs in every
+ * one of them, so the thing being described never leaves the screen, and each
+ * section inside a group keeps its own heading and count.
  *
  * THE TAB BAR LIVES ON THE BANNER'S BOTTOM EDGE. Settings already has a tab
  * row -- `profile | general` -- immediately above this component, and a second
@@ -59,16 +64,24 @@ export interface ProfileSectionsProps {
   action?: React.ReactNode
 }
 
-interface ProfileSectionTab {
+/** One card inside a tab. */
+interface ProfileSectionPanel {
   id: string
-  /** The tab's label, and the section's accessible name. */
   label: string
   icon: IconName
   /** Omitted where a count means nothing -- `details` is not a list. */
   count?: number
-  /** No card around the panel. See `Section`'s `bare`. */
+  /** No card around it. See `Section`'s `bare`. */
   bare?: boolean
   render: () => React.ReactNode
+}
+
+/** One tab, and the sections it holds. */
+interface ProfileSectionTab {
+  id: string
+  label: string
+  icon: IconName
+  sections: ProfileSectionPanel[]
 }
 
 export function ProfileSections({
@@ -121,9 +134,30 @@ export function ProfileSections({
                 on demand also keeps one copy of each control in the
                 accessibility tree. */}
             {active === tab.id && (
-              <Section title={tab.label} icon={tab.icon} bare={tab.bare} heading={false}>
-                {tab.render()}
-              </Section>
+              <div className="flex flex-col gap-6">
+                {tab.sections.map((section) => (
+                  <Section
+                    key={section.id}
+                    title={section.label}
+                    icon={section.icon}
+                    count={section.count}
+                    bare={section.bare}
+                    // THE HEADING COMES BACK WHEN A TAB HOLDS SEVERAL SECTIONS
+                    // (Gabe, 2026-09-19, grouping them three ways). With
+                    // `experience` and `education` in one panel there has to be
+                    // something between them saying which is which -- and each
+                    // heading carries its own count, which is where the numbers
+                    // went when the tabs stopped being able to carry them.
+                    //
+                    // IT STAYS OFF WHERE THE TAB IS THE HEADING. `skills` is
+                    // its own tab and its own section, so drawing both is the
+                    // same word twice, four pixels apart.
+                    heading={!namesItsOnlySection(tab)}
+                  >
+                    {section.render()}
+                  </Section>
+                ))}
+              </div>
             )}
           </TabsContent>
         ))}
@@ -136,8 +170,14 @@ export function ProfileSections({
   )
 }
 
+/** Whether a tab is just one section wearing the same name. */
+function namesItsOnlySection(tab: ProfileSectionTab): boolean {
+  return tab.sections.length === 1 && tab.sections[0].label === tab.label
+}
+
 /**
- * The tab strip: a glyph, the section's name, and how many are in it.
+ * The tab strip: a glyph, the group's name, and -- where it means one thing --
+ * how many are in it.
  *
  * THE COUNT IS THE POINT, not decoration. It is what a reader loses by having
  * the sections behind tabs, handed back in the one place they can see all six
@@ -193,8 +233,13 @@ function SectionTabs({ tabs }: { tabs: ProfileSectionTab[] }) {
           >
             <Icon size={14} aria-hidden className="shrink-0" />
             {tab.label}
-            {tab.count !== undefined && (
-              <span className="tabular text-caption text-text-muted">({tab.count})</span>
+            {/* ONLY WHERE ONE NUMBER IS HONEST. A tab over three sections has
+                no single count -- see `buildTabs`, where the numbers moved
+                into the section headings instead. */}
+            {namesItsOnlySection(tab) && tab.sections[0].count !== undefined && (
+              <span className="tabular text-caption text-text-muted">
+                ({tab.sections[0].count})
+              </span>
             )}
           </TabsTrigger>
         )
@@ -204,19 +249,31 @@ function SectionTabs({ tabs }: { tabs: ProfileSectionTab[] }) {
 }
 
 /**
- * Which sections this particular profile has, in reading order.
+ * Which sections this profile has, and which tab each one lives in.
  *
- * THE ORDER IS WHO, THEN FACTS, THEN THE LONG READ -- unchanged from the
- * stacked version, because it was right for the same reason: `details` is the
- * handful of facts somebody came for (Gabe, 2026-09-18: "details first before
- * experience"), and everything after it is a list you read one of.
+ * THREE TABS, NOT SIX (Gabe, 2026-09-19): `background` is details, experience
+ * and education; `skills` is its own; `projects & credentials` is the two
+ * things somebody built or earned. Six tabs was one per section, which is the
+ * arrangement that needs no decisions and reads like a filing cabinet -- four
+ * of them held a single short card, and `details` and `education` were a click
+ * apart for no reason a reader would give.
  *
- * A SECTION WITH NOTHING IN IT IS NOT LISTED. Nothing here renders an empty
- * card, so nothing here needs a tab that opens one.
+ * WHAT THE GROUPING COSTS AND WHERE THE COUNTS WENT. A tab over three sections
+ * cannot carry one honest number -- `background (3)` would be the roles and
+ * the schools with the details silently uncounted -- so the counts moved back
+ * into the section headings inside the panel, where each one means exactly one
+ * thing. `skills` keeps its count on the tab, because there it is unambiguous.
+ *
+ * THE ORDER IS WHO, THEN FACTS, THEN THE LONG READ -- unchanged, because it was
+ * right for the same reason: `details` is the handful of facts somebody came
+ * for (Gabe, 2026-09-18: "details first before experience"), and everything
+ * after it is a list you read one of.
+ *
+ * A SECTION WITH NOTHING IN IT IS NOT LISTED, and a tab whose sections are all
+ * empty is not drawn. Nothing here renders an empty card, so nothing here
+ * needs a tab that opens one.
  */
 function buildTabs(profile: UserProfile, skillGroups: SkillGroup[]): ProfileSectionTab[] {
-  const tabs: ProfileSectionTab[] = []
-
   // SKILLS LEFT `details` and became a section of their own, so they no longer
   // decide whether `details` is drawn at all: a profile with skills and
   // nothing else would otherwise render an empty card.
@@ -233,126 +290,144 @@ function buildTabs(profile: UserProfile, skillGroups: SkillGroup[]): ProfileSect
     !!profile.birthDate ||
     !!profile.fetchedAt
 
-  if (facets) {
-    tabs.push({
-      id: 'details',
-      label: 'details',
-      icon: 'Info',
-      render: () => <DetailsPanel profile={profile} />,
-    })
-  }
+  const details: ProfileSectionPanel | null = facets
+    ? {
+        id: 'details',
+        label: 'details',
+        icon: 'Info',
+        render: () => <DetailsPanel profile={profile} />,
+      }
+    : null
 
-  if (profile.experiences.length > 0) {
-    tabs.push({
-      id: 'experience',
-      label: 'experience',
-      icon: 'Briefcase',
-      count: profile.experiences.length,
-      render: () => (
-        <Records
-          icon="Briefcase"
-          rows={profile.experiences.map((e) => ({
-            lead: e.title,
-            detail: e.company,
-            org: e.company,
-            period: e.period,
-            meta: e.location,
-            body: e.description,
-          }))}
-        />
-      ),
-    })
-  }
+  const experience: ProfileSectionPanel | null =
+    profile.experiences.length > 0
+      ? {
+          id: 'experience',
+          label: 'experience',
+          icon: 'Briefcase',
+          count: profile.experiences.length,
+          render: () => (
+            <Records
+              icon="Briefcase"
+              rows={profile.experiences.map((e) => ({
+                lead: e.title,
+                detail: e.company,
+                org: e.company,
+                period: e.period,
+                meta: e.location,
+                body: e.description,
+              }))}
+            />
+          ),
+        }
+      : null
 
-  if (profile.education.length > 0) {
-    tabs.push({
-      id: 'education',
-      label: 'education',
-      icon: 'Documents',
-      count: profile.education.length,
-      /* THE YEAR, AND THE DEGREE SAID ONCE (Gabe, 2026-09-19: "remove
-         repeating information and add the graduation year per school").
+  const education: ProfileSectionPanel | null =
+    profile.education.length > 0
+      ? {
+          id: 'education',
+          label: 'education',
+          icon: 'Documents',
+          count: profile.education.length,
+          /* THE YEAR, AND THE DEGREE SAID ONCE (Gabe, 2026-09-19: "remove
+             repeating information and add the graduation year per school").
 
-         `period ?? graduationYear` because most sources give one or the other
-         and never both -- a range where the export was read, a bare year where
-         only the end date came through. A school with neither prints without a
-         date rather than with a guess.
+             `period ?? graduationYear` because most sources give one or the
+             other and never both -- a range where the export was read, a bare
+             year where only the end date came through. A school with neither
+             prints without a date rather than with a guess.
 
-         THE DEGREE IS DROPPED WHEN IT IS THE SCHOOL AGAIN. The parsers already
-         refuse to write the same words twice, and this is the second net under
-         that: a row stored before those fixes landed is still in the database,
-         and re-importing is the user's choice rather than a condition of
-         reading their own profile. */
-      render: () => (
-        <Records
-          icon="Documents"
-          rows={profile.education.map((e) => ({
-            lead: e.school,
-            detail:
-              e.degree && e.degree.trim().toLowerCase() !== e.school.trim().toLowerCase()
-                ? e.degree
-                : null,
-            org: e.school,
-            period: e.period ?? e.graduationYear,
-          }))}
-        />
-      ),
-    })
-  }
+             THE DEGREE IS DROPPED WHEN IT IS THE SCHOOL AGAIN. The parsers
+             already refuse to write the same words twice, and this is the
+             second net under that: a row stored before those fixes landed is
+             still in the database, and re-importing is the user's choice
+             rather than a condition of reading their own profile. */
+          render: () => (
+            <Records
+              icon="Documents"
+              rows={profile.education.map((e) => ({
+                lead: e.school,
+                detail:
+                  e.degree && e.degree.trim().toLowerCase() !== e.school.trim().toLowerCase()
+                    ? e.degree
+                    : null,
+                org: e.school,
+                period: e.period ?? e.graduationYear,
+              }))}
+            />
+          ),
+        }
+      : null
 
-  if (skillGroups.length > 0) {
-    tabs.push({
-      id: 'skills',
-      label: 'skills',
-      icon: 'Tag',
-      count: profile.skills.length,
-      render: () => <SkillsPanel groups={skillGroups} />,
-    })
-  }
+  const skills: ProfileSectionPanel | null =
+    skillGroups.length > 0
+      ? {
+          id: 'skills',
+          label: 'skills',
+          icon: 'Tag',
+          count: profile.skills.length,
+          render: () => <SkillsPanel groups={skillGroups} />,
+        }
+      : null
 
-  if (profile.projects.length > 0) {
-    tabs.push({
-      id: 'projects',
-      label: 'projects',
-      icon: 'Code',
-      count: profile.projects.length,
-      // NO CARD. The rail's own cards are the boxes; a second frame a few
-      // pixels outside them made the projects look nested inside something --
-      // the same call the calendar's roles rail already made.
-      bare: true,
-      render: () => <ProfileProjects projects={profile.projects} />,
-    })
-  }
+  const projects: ProfileSectionPanel | null =
+    profile.projects.length > 0
+      ? {
+          id: 'projects',
+          label: 'projects',
+          icon: 'Code',
+          count: profile.projects.length,
+          // NO CARD. The rail's own cards are the boxes; a second frame a few
+          // pixels outside them made the projects look nested inside something
+          // -- the same call the calendar's roles rail already made.
+          bare: true,
+          render: () => <ProfileProjects projects={profile.projects} />,
+        }
+      : null
 
-  if (profile.certifications.length > 0) {
-    tabs.push({
-      id: 'credentials',
-      // SHORTER THAN THE OLD HEADING, because a tab is read in a row with five
-      // others: `licenses & certifications` was 27 characters and pushed the
-      // strip into a scroll on every width. It names the same thing.
-      label: 'credentials',
-      icon: 'ShieldCheck',
-      count: profile.certifications.length,
-      /* WHAT A CERTIFICATE ACTUALLY CARRIES (Gabe, 2026-09-19). The panel
-         showed a name and an issuer, because that was all the extractor read --
-         the issue date, the expiry and the credential number were on the page
-         and thrown away, and the credential link is the only part of a
-         certificate a reader can check. */
-      render: () => (
-        <Bullets
-          rows={profile.certifications.map((c) => ({
-            lead: c.name,
-            detail: c.authority,
-            period: c.period,
-            meta: c.credentialId ? `Credential ID ${c.credentialId}` : null,
-            href: c.url,
-          }))}
-        />
-      ),
-    })
-  }
+  const credentials: ProfileSectionPanel | null =
+    profile.certifications.length > 0
+      ? {
+          id: 'credentials',
+          label: 'credentials',
+          icon: 'ShieldCheck',
+          count: profile.certifications.length,
+          /* WHAT A CERTIFICATE ACTUALLY CARRIES (Gabe, 2026-09-19). The panel
+             showed a name and an issuer, because that was all the extractor
+             read -- the issue date, the expiry and the credential number were
+             on the page and thrown away, and the credential link is the only
+             part of a certificate a reader can check. */
+          render: () => (
+            <Bullets
+              rows={profile.certifications.map((c) => ({
+                lead: c.name,
+                detail: c.authority,
+                period: c.period,
+                meta: c.credentialId ? `Credential ID ${c.credentialId}` : null,
+                href: c.url,
+              }))}
+            />
+          ),
+        }
+      : null
 
-  return tabs
+  const groups: { id: string; label: string; icon: IconName; of: (ProfileSectionPanel | null)[] }[] =
+    [
+      { id: 'background', label: 'background', icon: 'UserRound', of: [details, experience, education] },
+      { id: 'skills', label: 'skills', icon: 'Tag', of: [skills] },
+      {
+        id: 'work',
+        label: 'projects & credentials',
+        icon: 'Code',
+        of: [projects, credentials],
+      },
+    ]
+
+  return groups.flatMap((group) => {
+    const sections = group.of.filter((section): section is ProfileSectionPanel => section !== null)
+    if (sections.length === 0) return []
+    return [{ id: group.id, label: group.label, icon: group.icon, sections }]
+  })
 }
 
 /**
