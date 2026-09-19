@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useCreateResume, useDeleteResume, useResume, useUpdateResume } from '@/hooks/useResumes'
+import { usePolishDraft } from '@/components/cv/usePolishDraft'
 import { useJobs } from '@/hooks/useJobs'
 import { usePinDocumentLink, useResumeLinks } from '@/hooks/useDocumentLinks'
 import { useToast } from '@/contexts/ToastContext'
@@ -122,6 +123,12 @@ function CvRoute() {
   // editors stay renderable with plain props and no QueryClient.
   const { data: jobs = [] } = useJobs()
   const draftParam = searchParams.get('draft')
+  /**
+   * `?polish=<templateId|blank>` -- a document that was just created and is
+   * waiting on its AI pass. See `usePolishDraft`: while it is set the editor
+   * is a skeleton, which is what makes the rewrite safe.
+   */
+  const polishParam = searchParams.get('polish')
   const isNew = draftParam === 'new'
 
   const { success, error: showError } = useToast()
@@ -249,11 +256,31 @@ function CvRoute() {
     content: ResumeContent
   ) => updateResume.mutateAsync({ id: draftId, patch: { title, mode, content } })
 
+  /*
+   * THE AI PASS, BETWEEN THE WRITE AND THE EDITOR (Gabe, 2026-09-19). The row
+   * already exists and is already a complete document; this rewrites it from
+   * the same template with the model's prose and then drops `?polish=`, which
+   * is what puts the editor on screen. Every failure drops the flag too, so
+   * the worst case is the document that was already saved.
+   */
+  const polishing = usePolishDraft({
+    draft: draftQuery.data ?? null,
+    templateId: polishParam,
+    save: (content) =>
+      updateResume.mutateAsync({ id: draftParam as string, patch: { content } }),
+    onDone: () => router.replace(`/cv?draft=${draftParam}`),
+  })
+
   if (!draftParam) return <RouteSkeleton variant="detail" />
 
   if (isNew) return <NewDocumentPrompt />
 
   if (draftQuery.isLoading) return <RouteSkeleton variant="detail" />
+
+  // THE SAME SKELETON THE LOAD USES, deliberately: to the reader this IS still
+  // the document opening, and a second, different waiting state would be two
+  // answers to one question.
+  if (polishing) return <RouteSkeleton variant="detail" />
 
   // A failed read and a CV that is not there are different facts, and the
   // second one cannot be fixed by reloading the same URL -- RLS makes a bad id

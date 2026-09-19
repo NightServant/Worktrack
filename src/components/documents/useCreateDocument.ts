@@ -77,7 +77,7 @@ const KIND: Record<ResumeMode, string> = { word: 'CV', cover_letter: 'cover lett
  * an empty doc anyway, and an explicit paragraph is a document with a cursor
  * in it rather than one the editor has to repair on open.
  */
-const BLANK_LETTER: ResumeContent = {
+export const BLANK_LETTER: ResumeContent = {
   type: 'doc',
   content: [
     {
@@ -124,11 +124,30 @@ export function useCreateDocument({ notify, replace = false }: CreateDocumentOpt
   const { data: stored } = useUserProfile()
   const profile = stored?.profile ?? null
 
-  const write = async (mode: ResumeMode, title: string, content: ResumeContent, message: string) => {
+  const write = async (
+    mode: ResumeMode,
+    title: string,
+    content: ResumeContent,
+    message: string,
+    /**
+     * Which template this came from, so the editor can re-run it against the
+     * model's prose. `blank` for the from-scratch starters.
+     *
+     * IT TRAVELS AS A QUERY PARAM because the editor is a different route, and
+     * the alternative -- keeping the template in memory across a navigation --
+     * is state that does not survive a refresh. See `usePolishDraft`.
+     */
+    polish?: string
+  ) => {
     try {
       const created = await createResume.mutateAsync({ mode, title, content })
       notify('info', 'Draft created', message)
-      const href = `/cv?draft=${created.id}`
+      // NO POLISH WITHOUT A PROFILE. There would be no facts to write from,
+      // and the editor would show a skeleton while a request was made to be
+      // told so.
+      const href = polish && profile
+        ? `/cv?draft=${created.id}&polish=${encodeURIComponent(polish)}`
+        : `/cv?draft=${created.id}`
       if (replace) router.replace(href)
       else router.push(href)
     } catch (err) {
@@ -141,8 +160,9 @@ export function useCreateDocument({ notify, replace = false }: CreateDocumentOpt
   }
 
   /*
-   * NO MODEL ON THIS PATH (Gabe, 2026-09-19: "generating new CV files became
-   * slower").
+   * NO MODEL ON THIS PATH, AND NO WAIT (Gabe, 2026-09-19: "generating new CV
+   * files became slower", then "how about instant creation, then model runs
+   * after generation? Skeleton loader for the document then boom").
    *
    * Creating a document used to be one database write and a navigation. For
    * about an hour it also waited on a 120B model over a free tier before it
@@ -151,12 +171,13 @@ export function useCreateDocument({ notify, replace = false }: CreateDocumentOpt
    * for a document. The wait was real and it was on the critical path of the
    * one action this hook exists to make fast.
    *
-   * THE PROSE IS NOT GONE, IT IS UNPLACED. `/api/cv-write`,
-   * `writeCvProse` and `personalizeTemplate`'s `prose` argument are all intact
-   * and tested; what they need is a trigger the user chooses, next to the AI
-   * tailoring that already lives in the editor's rail, where a twenty-second
-   * wait is the point rather than an ambush. Putting it back here would be
-   * choosing the slow path again on somebody's behalf.
+   * THE PROSE HAPPENS AFTER THE ROW EXISTS, in the editor, behind a skeleton.
+   * That is Gabe's design and it is better than both of the previous ones: the
+   * write is instant because nothing is waited on, and the race that made a
+   * background rewrite unsafe cannot happen, because a skeleton means there is
+   * no editor to type into yet. The template id rides along so the editor can
+   * re-run `personalizeTemplate` with the model's prose -- see
+   * `usePolishDraft`.
    */
 
   return {
@@ -181,7 +202,8 @@ export function useCreateDocument({ notify, replace = false }: CreateDocumentOpt
           mode === 'cover_letter' ? BLANK_LETTER : DEFAULT_WORD_CONTENT,
           profile ?? EMPTY_PROFILE
         ),
-        profile ? FILLED : UNFILLED
+        profile ? FILLED : UNFILLED,
+        'blank'
       ),
 
     /**
@@ -209,7 +231,8 @@ export function useCreateDocument({ notify, replace = false }: CreateDocumentOpt
         mode,
         `${template.name} ${KIND[mode]}`,
         personalizeTemplate(template.content, profile ?? EMPTY_PROFILE),
-        profile ? FILLED : UNFILLED
+        profile ? FILLED : UNFILLED,
+        template.id
       ),
 
     /**

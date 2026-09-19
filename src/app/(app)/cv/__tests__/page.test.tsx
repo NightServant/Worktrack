@@ -64,6 +64,16 @@ const resumeLinksMock = vi.hoisted(() =>
   }))
 )
 const pinMutate = vi.hoisted(() => vi.fn().mockResolvedValue({}))
+/**
+ * The AI polish pass reads the stored profile (`usePolishDraft`), so this
+ * route now has a second query hook in it. Mocked empty: these tests are about
+ * the route's states, and a profile-less account is the one where no polish is
+ * attempted at all.
+ */
+vi.mock('@/hooks/useUserProfile', () => ({
+  useUserProfile: () => ({ data: { profile: null, fetchedAt: null } }),
+}))
+
 vi.mock('@/hooks/useDocumentLinks', () => ({
   useResumeLinks: () => resumeLinksMock(),
   usePinDocumentLink: () => ({ mutateAsync: pinMutate, isPending: false }),
