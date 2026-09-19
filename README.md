@@ -93,11 +93,12 @@ The dates move with the clock. A fixture pinned to literal dates would say "appl
 - One record dialog that reads and edits the same application: what the job is, the posting itself, and how your CV scores against it
 
 ### Calendar
+- **`up next` opens the screen**: what is booked, then what has gone quiet, then what recently happened. The middle one is why it exists — an account with fifty applications and no interviews booked yet has no events at all, so a rail reading the calendar alone was empty for the person using the app hardest. Anything in flight and untouched for 14 days is a chase, by the same rule the overview's nudge uses rather than a second copy of it
 - Interviews, deadlines, take-homes and follow-ups on a month grid, with a week strip and an agenda on a phone
 - Setting an application's status to *interviewing* takes a date and time, which writes the interview to the calendar
 - Applications you sent are plotted on the day you sent them
-- Public holidays for your country, from [Nager.Date](https://github.com/nager/nager.date) — keyless, and the country is a picker rather than a guess
-- A rail of newly posted remote roles from [Jobicy](https://jobicy.com); *track it* hands the URL to the add flow, which reads the employer's own page
+- Public holidays for your country, from [Nager.Date](https://github.com/nager/nager.date) — keyless, and settled by a picker. It opens on the machine's time zone rather than its language, and a bare `en` yields nothing rather than being maximised to `US`: a language tag says what somebody reads, not where they are
+- A rail of newly posted remote roles from [Jobicy](https://jobicy.com), below your own commitments rather than above them; *track it* hands the URL to the add flow, which reads the employer's own page
 
 ### Analytics
 - Conversion and offer rates, applications over time, status distribution
@@ -117,8 +118,11 @@ The dates move with the clock. A fixture pinned to literal dates would say "appl
 - Tailoring against a job description, through your own OpenAI-compatible endpoint rather than a credit meter. Unset the `TAILORING_*` variables and every model feature switches off and says why, rather than failing at the point of use
 
 ### Profile
-- Import your LinkedIn profile by pasting its public address; the roles, education, certifications and projects feed CV tailoring
-- What a public profile does **not** carry — skills, languages, the paragraph under each role — is said out loud rather than left looking like a failed import
+- **Several public addresses, read and merged into one profile**: LinkedIn, GitHub, JobStreet, Indeed and Glassdoor. One source is half a person — a signed-out LinkedIn page carries roles and dates and no skills at all, while GitHub carries what you have built and in which languages and has no concept of employment
+- The order of the rows is authority rather than arrival. The first non-empty value wins each field, lists are unioned, and the same role from two sources is matched and then filled in field by field. Nothing is overwritten with emptiness, which is what makes adding a source safe
+- GitHub is read from its own JSON API rather than scraped — keyless, structured and free, where the other sources need a paid hosted browser to see anything at all. Its profile README is read too: the opening paragraph, and the stack named on its badges
+- What each source withholds is said on that source's own row, after the read. Two of the five do not publish a candidate profile to a signed-out visitor at all. A warning states the limit and prescribes nothing — every remedy this app has ever named on one of those rows has outlived its own sentence
+- A bookmarklet hands over your own LinkedIn page from the session already looking at it, along with the `/details/` subpages, because the profile page itself renders only the first two or three of a long section. **Chrome will not run it on LinkedIn**: the site's content security policy names script hashes and hosts with no `unsafe-inline`, so the browser lands on `about:blank#blocked` instead. Firefox exempts bookmarklets from CSP and does run it. The posting bookmarklet is unaffected
 
 ### How Worktrack compares
 
@@ -178,7 +182,7 @@ xychart-beta
 
 Stated plainly, because a comparison that only runs one way is an advertisement:
 
-- **A browser extension.** Both list one; Huntr's "Chrome Job Clipper" saves a posting in a click and its **application autofill** fills employer forms for you. Worktrack has neither — you paste a URL and it reads the page.
+- **A browser extension.** Both list one; Huntr's "Chrome Job Clipper" saves a posting in a click and its **application autofill** fills employer forms for you. Worktrack has no extension, and a bookmarklet covers the clipper's half of that — one click hands over the posting your browser is already showing, which is the only way to read a board that answers a server with a challenge. It installs by dragging a link rather than through a store listing and a review queue. Nothing here fills an employer's form for you.
 - **A job board of their own.** Teal and Huntr surface listings and company data in-product. Worktrack shows a third-party remote feed and nothing else.
 - **Contact management.** Huntr lists it as unlimited on the free tier. Worktrack removed contacts from the record on purpose; the columns still exist, nothing renders them.
 - **AI cover letters.** Both list generation; Worktrack tailors CVs and does not write cover letters.
