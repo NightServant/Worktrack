@@ -3,9 +3,8 @@
 import { useRouter } from 'next/navigation'
 import { useCreateResume } from '@/hooks/useResumes'
 import { useUserProfile } from '@/hooks/useUserProfile'
-import { personalizeTemplate, type CvWriting } from '@/services/templatePersonalization'
-import { EMPTY_PROFILE, type UserProfile } from '@/services/profile'
-import { authedFetch } from '@/lib/authedFetch'
+import { personalizeTemplate } from '@/services/templatePersonalization'
+import { EMPTY_PROFILE } from '@/services/profile'
 import { DEFAULT_WORD_CONTENT } from '@/components/cv/content'
 import type { NoticeKind } from './DocumentsNotice'
 import type { TemplateChoice } from './TemplateGallery'
@@ -141,35 +140,24 @@ export function useCreateDocument({ notify, replace = false }: CreateDocumentOpt
     }
   }
 
-  /**
-   * The model's prose for this profile, or null.
+  /*
+   * NO MODEL ON THIS PATH (Gabe, 2026-09-19: "generating new CV files became
+   * slower").
    *
-   * NEVER THROWS AND NEVER BLOCKS THE DOCUMENT (Gabe, 2026-09-19: "wire all
-   * three"). Everything here is a fallback away from working: no key, a
-   * rate-limited free tier, a model that answers nonsense, a network that is
-   * not there -- all of them return null, `personalizeTemplate` composes the
-   * deterministic version, and the CV is created exactly as it was before any
-   * model was involved. A document the user asked for must not depend on a
-   * third party being up.
+   * Creating a document used to be one database write and a navigation. For
+   * about an hour it also waited on a 120B model over a free tier before it
+   * would write anything, because that is where the prose was being composed
+   * -- and a person pressing "New CV" is not asking for prose, they are asking
+   * for a document. The wait was real and it was on the critical path of the
+   * one action this hook exists to make fast.
    *
-   * SKIPPED ENTIRELY WITH NO PROFILE, because there would be no facts to write
-   * from and the request would spend a free-tier call to be told so.
+   * THE PROSE IS NOT GONE, IT IS UNPLACED. `/api/cv-write`,
+   * `writeCvProse` and `personalizeTemplate`'s `prose` argument are all intact
+   * and tested; what they need is a trigger the user chooses, next to the AI
+   * tailoring that already lives in the editor's rail, where a twenty-second
+   * wait is the point rather than an ambush. Putting it back here would be
+   * choosing the slow path again on somebody's behalf.
    */
-  const proseFor = async (person: UserProfile | null): Promise<CvWriting> => {
-    if (!person) return null
-    try {
-      const response = await authedFetch('/api/cv-write', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ profile: person }),
-      })
-      if (!response.ok) return null
-      const body = (await response.json()) as { ok?: boolean; prose?: CvWriting }
-      return body.ok && body.prose ? body.prose : null
-    } catch {
-      return null
-    }
-  }
 
   return {
     creating: createResume.isPending,
@@ -185,14 +173,13 @@ export function useCreateDocument({ notify, replace = false }: CreateDocumentOpt
      * this is not optional: `EMPTY_PROFILE` when nothing is stored, never a
      * skipped call.
      */
-    createBlank: async (mode: ResumeMode) =>
+    createBlank: (mode: ResumeMode) =>
       write(
         mode,
         `Untitled ${KIND[mode]}`,
         personalizeTemplate(
           mode === 'cover_letter' ? BLANK_LETTER : DEFAULT_WORD_CONTENT,
-          profile ?? EMPTY_PROFILE,
-          await proseFor(profile ?? null)
+          profile ?? EMPTY_PROFILE
         ),
         profile ? FILLED : UNFILLED
       ),
@@ -217,15 +204,11 @@ export function useCreateDocument({ notify, replace = false }: CreateDocumentOpt
      * a second visit -- it is the message slot of a toast that was already
      * going to appear.
      */
-    createFromTemplate: async ({ mode, template }: TemplateChoice) =>
+    createFromTemplate: ({ mode, template }: TemplateChoice) =>
       write(
         mode,
         `${template.name} ${KIND[mode]}`,
-        personalizeTemplate(
-          template.content,
-          profile ?? EMPTY_PROFILE,
-          await proseFor(profile ?? null)
-        ),
+        personalizeTemplate(template.content, profile ?? EMPTY_PROFILE),
         profile ? FILLED : UNFILLED
       ),
 
