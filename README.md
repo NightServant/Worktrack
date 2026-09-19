@@ -235,9 +235,27 @@ npm start                  # serve the production build
 npm run lint               # eslint
 npm test                   # the unit suite, single run
 npm run test:watch
-npm run test:integration   # against a live Supabase project; needs .env
+npm run test:integration   # against a live Supabase project; SKIPS without TEST_USER_* in .env
 npx tsc --noEmit           # types, including every test file
 ```
+
+**The integration suite is dormant, and that is worth knowing before you trust
+a green run of it.** Its twenty tests are the only ones that touch the real
+database: fifteen in `rlsSecurity.integration.test.ts` act as a stranger
+holding the anon key — which ships in every browser by design — and assert that
+each of the eleven user tables returns nothing, and that anonymous insert,
+update and delete are all refused against a row that genuinely exists. The
+other five round-trip the M2 services and a tailored CV.
+
+They need a dedicated Supabase account, and there is not one: `TEST_USER_EMAIL`
+and `TEST_USER_PASSWORD` are blank, so `describeIntegration` resolves to
+`describe.skip` and all twenty report as skipped. `npm test` never sees them at
+all — `vitest.config.ts` excludes `**/*.integration.test.ts` — so this does not
+show up as a failure anywhere.
+
+Nothing is broken; it is unconfigured. Create the account, fill in those two
+variables, and all twenty run with no code change. Until then the RLS policies
+are covered by their own definitions and by review, not by an executable check.
 
 `tsc` covers `src/**/__tests__/**` deliberately. The exclusion that used to hide type errors in test files is gone, and a guard test fails if it comes back.
 
