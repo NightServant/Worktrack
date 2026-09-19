@@ -186,6 +186,51 @@ describe('a description the reader pasted is tidied on save', () => {
     expect(onSubmit.mock.calls[0][0].description).toBe(RESULT().description)
   })
 
+  it('fills the form while the reader is still looking at it', async () => {
+    // Gabe, 2026-09-19: "the model must fill the information after I clicked
+    // fill it in button". A board that refuses the fetch leaves the review
+    // step empty, and the paste is the text that was missing -- so it is read
+    // when the reader clicks away from it, not after the dialog has closed.
+    const onDigest = vi.fn().mockResolvedValue(
+      RESULT({ fields: { location: 'Pasig City', work_mode: 'hybrid' } })
+    )
+    render(
+      <AddApplicationDialog
+        open
+        onOpenChange={vi.fn()}
+        defaultCurrency={CURRENCY}
+        onSubmit={vi.fn()}
+        onAutofill={vi.fn().mockRejectedValue(new Error('Could not fetch page (status 403)'))}
+        onDigest={onDigest}
+      />
+    )
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText(/job posting url/i), 'https://www.jobstreet.com.ph/job/1')
+    await user.click(screen.getByRole('button', { name: /continue/i }))
+    await user.click(screen.getByRole('button', { name: /fill it in/i }))
+    await screen.findByRole('button', { name: /save application/i })
+
+    await user.click(screen.getByPlaceholderText(/paste the posting here/i))
+    await user.paste('a posting that states where the job is')
+    // Clicking away is the first evidence the paste is finished.
+    await user.click(screen.getByLabelText(/company/i))
+
+    await vi.waitFor(() => expect(onDigest).toHaveBeenCalledWith('a posting that states where the job is'))
+    // VISIBLE, not merely saved -- which is the whole point of moving it.
+    await vi.waitFor(() =>
+      expect(screen.getByLabelText(/location/i)).toHaveValue('Pasig City')
+    )
+  })
+
+  it('spends one model call, not one per click away', async () => {
+    // The companion: `digested` guards this exactly as it guards the save, so
+    // moving the call earlier must not turn it into two.
+    const onDigest = vi.fn().mockResolvedValue(RESULT())
+    const { onSubmit } = await pasteAndSave({ onDigest, pasted: 'pasted once' })
+    await vi.waitFor(() => expect(onSubmit).toHaveBeenCalled())
+    expect(onDigest).toHaveBeenCalledTimes(1)
+  })
+
   it('fills the application with the fields the digest mined out of the paste', async () => {
     // Gabe, 2026-09-19: "it does not fill the application overview dialog".
     // The digest reports fields as well as restructuring text, and this path
@@ -194,10 +239,10 @@ describe('a description the reader pasted is tidied on save', () => {
     const onDigest = vi.fn().mockResolvedValue(
       RESULT({
         fields: {
-          company: 'Digest Corp',
           location: 'Pasig City',
           work_mode: 'hybrid',
           salary_min: 50000,
+          salary_max: 90000,
           salary_currency: 'PHP',
           tech_stack: ['React', 'TypeScript'],
           tags: ['Full-Time'],
@@ -210,13 +255,32 @@ describe('a description the reader pasted is tidied on save', () => {
     expect(saved.location).toBe('Pasig City')
     expect(saved.work_mode).toBe('hybrid')
     expect(saved.salary_min).toBe(50000)
+    expect(saved.salary_max).toBe(90000)
     expect(saved.salary_currency).toBe('PHP')
     expect(saved.tech_stack).toEqual(['React', 'TypeScript'])
     expect(saved.tags).toEqual(['Full-Time'])
-    // AND NEVER OVER A PERSON'S OWN TYPING. The harness types the company in
-    // by hand to get past validation, so this is the assertion that keeps the
-    // fix from becoming an overwrite.
+    // The typed company survives untouched. `fillEmpty` owns the wider
+    // no-overwrite rule and is tested on it above.
     expect(saved.company).toBe('Acme')
+  })
+
+  it('leaves a one-sided salary alone rather than blocking the save', async () => {
+    // `jobValidation`: "If salary minimum is set, maximum must also be set."
+    // Half the postings that mention money state only a floor, so filling the
+    // minimum out of one turns a missing field into a form that cannot be
+    // saved until the reader invents a maximum. The app cannot store half a
+    // range anyway.
+    const onDigest = vi.fn().mockResolvedValue(
+      RESULT({ fields: { salary_min: 50000, salary_currency: 'PHP', location: 'Cebu' } })
+    )
+    const { onSubmit } = await pasteAndSave({ onDigest, pasted: 'pays from PHP 50,000' })
+    await vi.waitFor(() => expect(onSubmit).toHaveBeenCalled())
+    const saved = onSubmit.mock.calls[0][0]
+    expect(saved.salary_min).toBeFalsy()
+    expect(saved.salary_max).toBeFalsy()
+    // The rest of the posting still lands: one unusable field is not a reason
+    // to drop the ones that are fine.
+    expect(saved.location).toBe('Cebu')
   })
 
   it('does not run it twice on a posting the fetch already digested', async () => {
@@ -311,7 +375,12 @@ describe('the posting is tidied and summarised on the way in', () => {
   it('ignores a currency the record cannot store', async () => {
     // It arrives from a remote page, and an unrecognised code would fail the
     // jobs_salary_currency_check constraint at the insert rather than here.
-    await digestWith(RESULT({ fields: { salary_min: 1000, salary_currency: 'XYZ' as never } }))
+    // A FULL RANGE, because a one-sided one is now refused outright -- the
+    // form cannot save a minimum with no maximum. See "leaves a one-sided
+    // salary alone". This test is about the currency beside the figures.
+    await digestWith(
+      RESULT({ fields: { salary_min: 1000, salary_max: 2000, salary_currency: 'XYZ' as never } })
+    )
     expect(screen.getByLabelText(/min salary/i)).toHaveValue(1000)
     expect(screen.getByLabelText(/currency/i)).not.toHaveTextContent('XYZ')
   })

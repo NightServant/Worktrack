@@ -18,7 +18,7 @@ import { WizardProgress } from './wizardSteps'
 import { STEPS, type StepId } from './wizardStepModel'
 import { autofillPosting } from './autofillPosting'
 import { draftFromJob, normalizePostingUrl, useRecordDraft, type RecordDraft } from './useRecordDraft'
-import { applyMinedFields, type PostingDigestResult } from './digest'
+import { applyMinedFields, minedDraftFields, type PostingDigestResult } from './digest'
 import type { SupportedCurrency } from '@/services/userPreferences'
 import type { JobAutofillResult, JobFormData } from '@/types'
 
@@ -217,6 +217,50 @@ export function AddApplicationDialog({
       // looking right.
       html: draft.url === initialUrl ? (initialHtml ?? undefined) : undefined,
     })
+
+  /**
+   * Reads a pasted posting the moment the reader clicks away from it.
+   *
+   * WHY IT MOVED OFF THE SAVE (Gabe, 2026-09-19: "the model must fill the
+   * information after I clicked fill it in button"). The wizard's third step
+   * says `the model fills it in`, and on a board that refuses to be fetched it
+   * filled nothing -- correctly, because nothing had been read. The reader's
+   * own paste is the text that was missing, and running it at SAVE meant the
+   * form sat visibly empty through the whole review step and then filled after
+   * the dialog had closed. The application came out right and looked broken
+   * getting there.
+   *
+   * IT IS NOT AN EXTRA CALL. `digested` guards it exactly as it guards the
+   * save, so this is the SAME one call, moved to the moment the paste is
+   * finished instead of the moment the form is submitted. `submitWithDigest`
+   * stays as the path for a paste that was never blurred.
+   *
+   * ON THE PASTE ITSELF, which is forced by the editor rather than chosen:
+   * the empty-state textarea is replaced by the section editor on its first
+   * change, so a paste destroys the node a blur would have come from and no
+   * event escapes the column. The gesture is also the honest signal -- a whole
+   * posting arriving at once is precisely the thing worth reading.
+   *
+   * IT TAKES THE TEXT AS AN ARGUMENT because `draft.description` has not been
+   * updated when the paste event fires.
+   */
+  const readPastedPosting = async (text: string) => {
+    const pasted = text.trim()
+    if (!onDigest || digested.current || !pasted) return
+    setDigesting(true)
+    try {
+      const digest = await onDigest(pasted)
+      digested.current = true
+      replace({ description: digest.description })
+      // EMPTY FIELDS ONLY. Anything on the form was typed by a person, and a
+      // person outranks a model reading prose. See `minedDraftFields`.
+      fillEmpty(minedDraftFields(digest.fields))
+    } catch {
+      // Keep the verbatim paste. Same reasoning as the save path below.
+    } finally {
+      setDigesting(false)
+    }
+  }
 
   /**
    * Tidies a PASTED description on the way to saving it.
@@ -522,6 +566,7 @@ export function AddApplicationDialog({
               // spinner would describe our architecture rather than their
               // action.
               saving={saving || digesting}
+              onPostingPasted={readPastedPosting}
               onSubmit={submitWithDigest}
               resumes={resumes}
               linkedResumeId={resumeId || null}

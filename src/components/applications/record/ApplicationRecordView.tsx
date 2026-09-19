@@ -98,6 +98,14 @@ export interface ApplicationRecordViewProps {
    */
   onReadMore?: () => void
   /**
+   * A whole posting was pasted into the empty description box.
+   *
+   * THE ADD WIZARD ONLY. It runs the paste through the model there and then,
+   * so the fields fill while the reader is still looking at them instead of
+   * after the dialog has closed. Handed to `RecordDescription` untouched.
+   */
+  onPostingPasted?: (text: string) => void
+  /**
    * Back from the posting to the record. The dialog owns which view is
    * showing, so it owns the way back; the control that calls this now lives in
    * the posting's own control row rather than in the dialog's header.
@@ -295,6 +303,7 @@ export function ApplicationRecordView({
   onLinkedResumeChange,
   layout = 'record',
   onReadMore,
+  onPostingPasted,
   onBack,
   postingOpen = false,
   submitLabel,
@@ -501,6 +510,10 @@ export function ApplicationRecordView({
       showHeading={false}
       value={draft.description}
       onChange={(next) => set('description', next)}
+      // STRAIGHT THROUGH, AND OPTIONAL. Only the add wizard passes this: it is
+      // what lets a pasted posting be read the moment the reader clicks away,
+      // rather than at save. An existing record has no reading left to do.
+      onPostingPasted={onPostingPasted}
       onReadMore={onReadMore}
     />
   )
@@ -656,6 +669,12 @@ export function ApplicationRecordView({
               className="@2xl/record:border-l @2xl/record:border-border-subtle @2xl/record:pl-6"
               value={draft.description}
               onChange={(next) => set('description', next)}
+              // THE REVIEW STEP IS THE PASTE TARGET. This layout renders its
+              // own copy rather than the shared `descriptionPanel`, so the
+              // wizard's hook has to be passed here too -- wiring only the
+              // shared one left the add wizard, the single surface that uses
+              // this prop, without it.
+              onPostingPasted={onPostingPasted}
             />
           </>
         ) : wide ? (

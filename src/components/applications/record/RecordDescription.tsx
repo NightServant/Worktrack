@@ -87,6 +87,23 @@ export interface RecordDescriptionProps {
   value: string
   onChange: (value: string) => void
   /**
+   * A whole posting was just pasted into the empty-state box.
+   *
+   * THE PASTE EVENT, NOT A BLUR, and that is forced rather than preferred:
+   * the textarea hands off to the section editor on its FIRST change, so a
+   * paste destroys the node any `onBlur` would be attached to and focus lands
+   * on `<body>` with no event bubbling out of this column at all. The paste
+   * gesture fires before that swap and carries the text with it, which also
+   * spares the caller a round trip through draft state.
+   *
+   * THE TEXT IS THE ARGUMENT for the same reason. `value` has not been updated
+   * when this fires.
+   *
+   * The wizard reads it through the model there and then. The record's own
+   * view does not pass this: an existing posting has been read already.
+   */
+  onPostingPasted?: (text: string) => void
+  /**
    * Opens the posting's own view. PRESENT MEANS PREVIEW.
    *
    * One prop rather than a `variant`, because there is exactly one thing a
@@ -421,6 +438,7 @@ function NameSectionDialog({
 export function RecordDescription({
   value,
   onChange,
+  onPostingPasted,
   onReadMore,
   showHeading = true,
   onBack,
@@ -656,6 +674,8 @@ export function RecordDescription({
           aria-label="job description"
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          // SEE `onPostingPasted`: this is the last moment this node exists.
+          onPaste={(e) => onPostingPasted?.(e.clipboardData.getData('text'))}
           autoSize
           className="min-h-64"
           placeholder="paste the posting here, or let the link fill it in."

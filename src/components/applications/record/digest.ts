@@ -1,4 +1,5 @@
-import { isSupportedCurrency } from '@/services/userPreferences'
+import { isSupportedCurrency, type SupportedCurrency } from '@/services/userPreferences'
+import type { RecordDraft } from './useRecordDraft'
 import type { JobFormData, WorkMode } from '@/types'
 
 /**
@@ -52,8 +53,17 @@ export function applyMinedFields(
   if (blank(next.company) && fields.company) next.company = fields.company
   if (blank(next.role) && fields.role) next.role = fields.role
   if (blank(next.location) && fields.location) next.location = fields.location
-  if (blank(next.salary_min) && fields.salary_min != null) next.salary_min = fields.salary_min
-  if (blank(next.salary_max) && fields.salary_max != null) next.salary_max = fields.salary_max
+  // A PAIR OR NEITHER, and only over a form holding neither -- see
+  // `minedDraftFields` for why half a range is a blocked save.
+  if (
+    blank(next.salary_min) &&
+    blank(next.salary_max) &&
+    fields.salary_min != null &&
+    fields.salary_max != null
+  ) {
+    next.salary_min = fields.salary_min
+    next.salary_max = fields.salary_max
+  }
   if (blank(next.tech_stack) && fields.tech_stack?.length) next.tech_stack = fields.tech_stack
   if (blank(next.tags) && fields.tags?.length) next.tags = fields.tags
   if (
@@ -74,4 +84,51 @@ export function applyMinedFields(
     next.salary_currency = fields.salary_currency
   }
   return next
+}
+
+/**
+ * The same mined fields, in the shape the wizard's draft speaks.
+ *
+ * TWO CALLERS, ONE SET OF GUARDS. The read step fills the draft and the paste
+ * fills it too; both have to reject a work mode outside the three the form
+ * knows and a currency the record cannot store, because both values arrive
+ * from a model reading somebody else's web page. Writing those checks twice is
+ * how one copy gets a third case added and the other does not.
+ *
+ * The draft speaks strings -- it is what the inputs are bound to -- so the
+ * numbers are stringified here rather than at each call site.
+ */
+export function minedDraftFields(
+  fields: PostingDigestResult['fields']
+): Partial<RecordDraft> {
+  const pair = fields.salary_min != null && fields.salary_max != null
+  return {
+    company: fields.company ?? undefined,
+    role: fields.role ?? undefined,
+    location: fields.location ?? undefined,
+    // A PAIR OR NEITHER. `jobValidation` refuses a minimum with no maximum
+    // ("If salary minimum is set, maximum must also be set"), so filling one
+    // side of a posting that states only a floor -- "from PHP 50,000", which
+    // is how half of them are written -- hands back a form that cannot be
+    // saved until the reader invents the other number. The app cannot store a
+    // one-sided range at all, so offering half of one is worse than offering
+    // none: it converts a missing field into a blocked save.
+    salaryMin: pair ? String(fields.salary_min) : undefined,
+    salaryMax: pair ? String(fields.salary_max) : undefined,
+    techStack: fields.tech_stack?.length ? fields.tech_stack.join(', ') : undefined,
+    // THE ROLE OVERVIEW'S HOMELESS TERMS: employment type, the shift, the
+    // office pattern -- facts a reader decides on that this app has no column
+    // for. See `PostingFields.tags`.
+    tags: fields.tags?.length ? fields.tags.join(', ') : undefined,
+    workMode:
+      fields.work_mode && ['remote', 'hybrid', 'onsite'].includes(fields.work_mode)
+        ? (fields.work_mode as WorkMode)
+        : undefined,
+    // THE CURRENCY TRAVELS WITH THE FIGURES. A code with no range relabels
+    // nothing and outlives the posting it came from.
+    currency:
+      pair && fields.salary_currency && isSupportedCurrency(fields.salary_currency)
+        ? (fields.salary_currency as SupportedCurrency)
+        : undefined,
+  }
 }
