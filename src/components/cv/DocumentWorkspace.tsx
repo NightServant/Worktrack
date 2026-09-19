@@ -68,6 +68,17 @@ export interface DocumentWorkspaceProps {
   /** e.g. "saved 7:43 am". Rendered under the name, muted. */
   savedLabel: string
   dirty?: boolean
+  /**
+   * A write is in flight.
+   *
+   * IT IS WHAT THE SAVE BUTTON USED TO SAY (Gabe, 2026-09-19: "remove the save
+   * button ... and implement auto-save"). With a button, `saving` was a
+   * spinner inside the control the reader had just pressed, so they already
+   * knew. With none, this line is the only place the editor can answer "did
+   * that go through" -- and it has to answer, because the question is now
+   * asked by somebody who did not press anything.
+   */
+  saving?: boolean
   /** Save, export, versions, reset. Ranked by the caller; rendered as given. */
   actions: React.ReactNode
   /** Delete, or anything else that destroys. Kept apart from `actions`. */

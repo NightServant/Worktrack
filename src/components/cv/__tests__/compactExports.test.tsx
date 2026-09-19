@@ -120,12 +120,17 @@ describe('the export formats on offer', () => {
   it('keeps reset and delete reachable below lg too', async () => {
     // The row `.tex` joined is the same one that carries these, and the sheet
     // grid was re-cut to fit a fourth cell. Nothing may fall out of it.
+    //
+    // SAVE LEFT THE SHEET ON 2026-09-19 (Gabe: "remove the save button in the
+    // document editor and implement auto-save feature"), so it is asserted
+    // ABSENT rather than dropped from the list -- a phone's overflow is
+    // exactly where a removed desktop control comes back unnoticed.
     const user = userEvent.setup()
     setWidth(390)
     renderEditor()
     await user.click(screen.getByRole('button', { name: /more actions/i }))
     expect(screen.getByRole('button', { name: /^reset$/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^save$/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /delete meridian cv/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^save$/i })).toBeNull()
   })
 })

@@ -6,7 +6,6 @@ import { WORD_EDITOR_EXTENSIONS } from './editorExtensions'
 import type { Editor, JSONContent } from '@tiptap/core'
 import { Button } from '@/components/ui/button'
 import {
-  CheckIcon,
   ChevronDownIcon,
   DownloadIcon,
   RotateCcwIcon,
@@ -21,7 +20,6 @@ import {
   PopoverTitle,
   PopoverTrigger,
 } from '@/components/ui/popover'
-import { CssSpinner } from '@/components/ui/css-spinner'
 import { iconMotion } from '@/components/icons/motion'
 import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/contexts/ToastContext'
@@ -681,11 +679,83 @@ export function WordResumeEditor({
     }
   }
 
-  /** The explicit Save button: persists the draft, then forces a checkpoint snapshot. */
-  const handleSave = async () => {
-    const saved = await saveDraft(true)
-    if (saved) void writeSnapshot({ force: true })
-  }
+  /**
+   * The debounce, flushed when the editor goes away.
+   *
+   * THE OTHER HALF OF THE GAP. `beforeunload` covers the tab closing; this
+   * covers the reader navigating inside the app, where React simply unmounts
+   * this component and the pending `setTimeout` is cleared by its own cleanup
+   * -- taking the unwritten document with it. The documents link already
+   * saves before it leaves, explicitly; every other route out did not, and
+   * with a Save button on screen that was survivable because the reader had a
+   * way to be sure. It is not survivable now.
+   *
+   * THROUGH A REF BECAUSE AN UNMOUNT CLEANUP CANNOT SEE THIS RENDER. A
+   * `[]`-keyed cleanup closes over the first render's `saveDraft`, which holds
+   * the first render's editor content -- it would faithfully write the
+   * document as it was when the page opened. The ref is refreshed every
+   * render, so the cleanup calls the newest one.
+   *
+   * IT REUSES `saveDraft` rather than writing its own request, so the
+   * never-rewind guard and the error toast behave the same on the way out as
+   * they do in the ordinary case. Its `setState` calls land on an unmounted
+   * component and are no-ops; the write itself completes.
+   */
+  const flushRef = useRef<() => void>(() => {})
+  useEffect(() => {
+    flushRef.current = () => {
+      if (editor && isDirty) void saveDraft(false)
+    }
+  })
+  useEffect(() => () => flushRef.current(), [])
+
+  /**
+   * The two things the Save button was quietly also doing.
+   *
+   * A DEBOUNCE IS A PROMISE WITH A GAP IN IT. Between the last keystroke and
+   * 1200ms later the work exists only in the DOM, and the button used to be
+   * how a reader closed that gap themselves. With it gone, the editor has to
+   * close it: `beforeunload` while anything is outstanding hands the decision
+   * back to the browser, which is the one mechanism that can still stop a tab
+   * closing over unwritten work. A background write cannot -- an unload
+   * cancels in-flight requests, so "save quickly and hope" would lose the
+   * document AND say nothing.
+   *
+   * IT ASKS ONLY WHEN THERE IS SOMETHING TO ASK ABOUT. `isDirty` is false
+   * within a second or so of typing stopping, so in practice this fires for
+   * the reader who closes the tab mid-sentence and for nobody else.
+   */
+  useEffect(() => {
+    if (!isDirty && !isSaving) return
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault()
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [isDirty, isSaving])
+
+  /**
+   * ⌘S and Ctrl+S answer, rather than doing nothing (Gabe, 2026-09-19).
+   *
+   * THE HABIT OUTLIVES THE BUTTON. Anybody who has used an editor presses this
+   * without thinking, and the browser's own answer -- a "save this page as"
+   * dialog over a document that is already saved -- is worse than no answer at
+   * all. It is intercepted and turned into the reassurance the keystroke was
+   * really asking for.
+   *
+   * IT DOES NOT TRIGGER A SAVE, deliberately. Saying "already handled" and
+   * then doing the thing anyway would make the sentence a lie the first time
+   * somebody watched the network tab; the autosave below is either about to
+   * run or has already run.
+   */
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 's' && event.key !== 'S') return
+      if (!event.metaKey && !event.ctrlKey) return
+      event.preventDefault()
+      info('No need to save', "You're good to go, the system automatically saves your document.")
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [info])
 
   useEffect(() => {
     if (!editor || !isDirty) return
@@ -976,6 +1046,11 @@ export function WordResumeEditor({
       }}
       savedLabel={formatSaveTime(lastSavedAt)}
       dirty={isDirty}
+      // WITH NO BUTTON TO PRESS, THIS LINE IS THE WHOLE FEEDBACK LOOP. `dirty`
+      // alone said only that something was outstanding; it never said anything
+      // was happening about it, which over a slow connection reads as the
+      // editor having stopped caring.
+      saving={isSaving}
       actions={
         <>
           {/* VERSION HISTORY IS DESKTOP-ONLY (Gabe, 2026-09-06). It is the one
@@ -1179,15 +1254,19 @@ export function WordResumeEditor({
           )}
 
           {/*
-            SAVE IS PRIMARY, and Export is not. Before this, Export PDF was the
-            only filled control on the screen while Save was plain text --
-            which told the eye that leaving with a file mattered more than
-            keeping the work. In an editor the verb is Save.
+            NO SAVE BUTTON (Gabe, 2026-09-19: "remove the save button in the
+            document editor and implement auto-save feature"). The autosave
+            below has been the thing that actually writes since it was added --
+            1200ms after the last keystroke -- so the button was a second way
+            to do what had already happened, and its only unique effect was
+            forcing a version checkpoint that the 5s snapshot timer takes
+            anyway.
+            A BUTTON REMOVED IS A PROMISE TAKEN ON. What replaces it is the
+            state line in the chrome, which now says `saving` while a write is
+            in flight as well as `unsaved changes` before one starts -- and the
+            two guards below, which are what make "it saves itself" true rather
+            than merely usual.
           */}
-          <Button size="s" onClick={() => void handleSave()} disabled={!editor || isSaving}>
-            {isSaving ? <CssSpinner size={14} /> : <CheckIcon size={14} aria-hidden />}
-            {isSaving ? 'saving' : 'save'}
-          </Button>
         </>
       }
       /* DELETE IS IN THE MENU ON A DESKTOP, so only the compact sheet still

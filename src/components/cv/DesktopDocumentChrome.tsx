@@ -216,6 +216,7 @@ export function DesktopDocumentChrome({
   onTitleChange,
   savedLabel,
   dirty = false,
+  saving = false,
   actions,
   destructiveActions,
   tools,
@@ -501,9 +502,16 @@ export function DesktopDocumentChrome({
             {/* "unsaved changes", not "unsaved": the shorter form reads as a
                 state the document is in rather than work that is pending, and
                 two tests assert the longer one because it is what a person
-                needs to see. */}
-            {dirty && (
-              <span className="ml-2 text-status-interviewing-mark">unsaved changes</span>
+                needs to see.
+
+                SAVING OUTRANKS IT, being the newer fact -- the write for those
+                changes has already started. With the Save button gone this
+                line is the editor's only answer to "did that go through", and
+                it is now asked by somebody who pressed nothing. */}
+            {saving ? (
+              <span className="ml-2 text-text-muted">saving</span>
+            ) : (
+              dirty && <span className="ml-2 text-status-interviewing-mark">unsaved changes</span>
             )}
           </span>
         </div>

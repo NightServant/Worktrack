@@ -132,6 +132,7 @@ export function CompactDocumentChrome({
   onTitleChange,
   savedLabel,
   dirty = false,
+  saving = false,
   actions,
   destructiveActions,
   tools,
@@ -263,7 +264,14 @@ export function CompactDocumentChrome({
 
         <p className="min-w-0 flex-1 truncate px-1 text-caption text-text-muted">
           {savedLabel}
-          {dirty && <span className="ml-2 text-status-interviewing-mark">unsaved</span>}
+          {/* SAVING OUTRANKS UNSAVED, because it is the newer fact: the write
+              for those changes has started. Showing both would be two labels
+              for one state on a bar this narrow. */}
+          {saving ? (
+            <span className="ml-2 text-text-muted">saving</span>
+          ) : (
+            dirty && <span className="ml-2 text-status-interviewing-mark">unsaved</span>
+          )}
         </p>
 
         <button

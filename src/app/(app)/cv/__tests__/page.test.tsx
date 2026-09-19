@@ -19,6 +19,8 @@ const routerReplace = vi.hoisted(() => vi.fn())
 const useResumeMock = vi.hoisted(() => vi.fn())
 const createMutate = vi.hoisted(() => vi.fn())
 const updateMutate = vi.hoisted(() => vi.fn())
+/** The reassurance ⌘S now answers with; hoisted so it can be asserted on. */
+const toastInfo = vi.hoisted(() => vi.fn())
 const deleteMutate = vi.hoisted(() => vi.fn())
 const createSnapshotMock = vi.hoisted(() => vi.fn())
 const maybeCreateSnapshotMock = vi.hoisted(() => vi.fn())
@@ -98,7 +100,7 @@ vi.mock('@/contexts/AuthContext', () => ({
 }))
 
 vi.mock('@/contexts/ToastContext', () => ({
-  useToast: () => ({ success: vi.fn(), error: vi.fn(), info: vi.fn() }),
+  useToast: () => ({ success: vi.fn(), error: vi.fn(), info: toastInfo }),
 }))
 
 vi.mock('@/services/resumeSnapshotService', () => ({
@@ -339,49 +341,107 @@ describe('the editor still saves', () => {
     )
   })
 
-  it('saves on demand as well as on a timer', async () => {
+  it('answers ⌘S and Ctrl+S instead of letting the browser offer to save the page', async () => {
+    // Gabe, 2026-09-19. The habit outlives the button: anybody who has used an
+    // editor presses this without thinking, and the browser's own answer -- a
+    // "save this page as" dialog over a document that is already saved -- is
+    // worse than no answer. Both modifiers, because the reader's platform is
+    // not ours to assume.
     params('cv-1')
     resolved(wordDraft())
     render(<Page />)
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
-    })
-    expect(updateMutate).toHaveBeenCalled()
+
+    for (const modifier of [{ metaKey: true }, { ctrlKey: true }]) {
+      toastInfo.mockClear()
+      fireEvent.keyDown(window, { key: 's', ...modifier })
+      expect(toastInfo).toHaveBeenCalledWith(
+        'No need to save',
+        "You're good to go, the system automatically saves your document."
+      )
+    }
+
+    // AND IT DOES NOT SECRETLY SAVE. Saying "already handled" and then doing
+    // the thing anyway makes the sentence a lie the first time somebody
+    // watches the network tab.
+    expect(updateMutate).not.toHaveBeenCalled()
   })
 
-  it('forces a checkpoint snapshot on an explicit Save, bypassing the 5-minute floor', async () => {
+  it('writes the pending edit when the editor unmounts mid-debounce', async () => {
+    // THE GAP THE BUTTON USED TO COVER. Between the last keystroke and 1200ms
+    // later the work exists only in the DOM, and the debounce's own cleanup
+    // clears the timer on the way out -- so before this, navigating inside the
+    // app during that second took the edit with it.
+    vi.useFakeTimers()
+    params('cv-1')
+    resolved(wordDraft())
+    const view = render(<Page />)
+
+    fireEvent.change(screen.getByLabelText(/cv title/i), { target: { value: 'Renamed CV' } })
+    expect(updateMutate).not.toHaveBeenCalled()
+
+    await act(async () => {
+      view.unmount()
+    })
+    expect(updateMutate).toHaveBeenCalledWith({
+      id: 'cv-1',
+      patch: expect.objectContaining({ title: 'Renamed CV' }),
+    })
+  })
+
+  it('never forces a checkpoint now, so the 5-minute floor is the whole policy', async () => {
+    // WHAT THE BUTTON TOOK WITH IT. `{ force: true }` bypassed the floor in
+    // `resumeSnapshotService`, and it was reachable only from the explicit
+    // Save. With autosave alone the cadence IS the policy -- a version at most
+    // every five minutes -- which is what that floor was written to express.
+    // Asserted rather than assumed, because a forced write arriving on every
+    // 1200ms autosave would fill version history with one entry per sentence.
+    vi.useFakeTimers()
     params('cv-1')
     resolved(wordDraft())
     render(<Page />)
+
+    fireEvent.change(screen.getByLabelText(/cv title/i), { target: { value: 'Renamed CV' } })
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
+      vi.advanceTimersByTime(5000)
     })
     expect(maybeCreateSnapshotMock).toHaveBeenCalledWith(
       expect.anything(),
       'cv-1',
       'user-1',
       expect.anything(),
-      { force: true }
+      {}
     )
   })
 
 })
 
 describe('the editor chrome', () => {
-  it('renders Save as a LABELLED button, glyph and all', () => {
-    // REVERSED IN PART, 2026-09-05. This asserted Save had no glyph, "one of
-    // the four icons the set eliminated" in M5. Gabe asked for icons on CTA
-    // buttons and then on tertiary and danger ones, which supersedes that.
+  it('has no Save button, because the document saves itself', () => {
+    // Gabe, 2026-09-19: "remove the save button in the document editor and
+    // implement auto-save feature". The autosave had been the thing that
+    // actually wrote since it was added -- 1200ms after the last keystroke --
+    // so the button was a second way to do what had already happened.
     //
-    // The half of the old rule that still holds -- and that M5 was actually
-    // protecting -- is asserted instead: an editor's Save says the word. A
-    // glyph beside it is fine; a glyph INSTEAD of it is what was eliminated.
+    // WHAT THIS REPLACED, and why the replacement is not weaker: it used to
+    // assert Save was a LABELLED button, glyph and all, which was the residue
+    // of an M5 rule about icon-only controls. The rule it was protecting is
+    // that an editor must SAY what state the work is in. It still must; the
+    // sentence below is where it says it now.
     params('cv-1')
     resolved(wordDraft())
     render(<Page />)
-    const save = screen.getByRole('button', { name: /^save$/i })
-    expect(save.textContent!.trim()).toBe('save')
-    expect(save.querySelectorAll('svg').length).toBe(1)
+    expect(screen.queryByRole('button', { name: /^save$/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^saving$/i })).toBeNull()
+  })
+
+  it('says where the work stands, having taken the button away', () => {
+    // THE PROMISE A REMOVED BUTTON TAKES ON. A reader who presses nothing has
+    // no moment of their own to read, so the chrome carries the state instead
+    // -- and this is the one assertion that fails if it stops.
+    params('cv-1')
+    resolved(wordDraft())
+    render(<Page />)
+    expect(screen.getByText(/saved/i)).toBeInTheDocument()
   })
 
   it('leaves the drafts list reachable from the editor', () => {
