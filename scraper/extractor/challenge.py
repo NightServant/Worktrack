@@ -158,36 +158,17 @@ def autofill_from_url_alone(url: str) -> Envelope:
     # So the unreadable aggregator is a prompt to go one step upstream, where
     # the answer was always better. A paid unlocker pointed at the mirror buys
     # a worse extraction than this sentence does.
-    # THE BOOKMARKLET IS NAMED HERE, and it should have been from the start
-    # (Gabe, 2026-09-19: "issue persists in production"). This service ships
-    # one for exactly this case -- `src/app/bookmarklet` -- and nothing in the
-    # app links to it, so the reader most in need of it is the one person who
-    # never hears it exists. Measured the same day on ph.jobstreet.com: the
-    # page a refused server cannot have is served to an ordinary browser with
-    # no CSP and a full `JobPosting` JSON-LD block in it, which is the single
-    # best source this parser has. Their browser already has the page; the
-    # bookmarklet is only the handover.
-    #
-    # ORDERED BY WHAT THE ANSWER IS WORTH: the employer's own posting parses
-    # natively at 0.90-0.95 a field, the handed-over page carries the same
-    # JSON-LD, and a pasted description is text a model then reads. Each step
-    # down is a real drop, so the best one goes first.
     warning = (
         f"{name} blocks automated reads, so the posting could not be fetched. "
         f"Most {name} listings are copies: if the same job is on the employer's "
         "own careers page, paste THAT link instead -- it reads better than any "
-        "aggregator. Otherwise open the posting in your own browser and click "
-        "the Worktrack bookmarklet (install it from the /bookmarklet page): it "
-        "hands over the page your browser already has. Failing that, paste the "
-        "description into the column beside the fields and it will be tidied "
-        "and summarised when you save."
+        "aggregator. Otherwise paste the description into the column beside the "
+        "fields and it will be tidied and summarised when you save."
         if name
         else "That page could not be read automatically. If the job is also on "
-        "the employer's own careers page, that link reads best. Otherwise open "
-        "it in your own browser and click the Worktrack bookmarklet (install it "
-        "from the /bookmarklet page). Failing that, paste the description into "
-        "the column beside the fields and it will be tidied and summarised when "
-        "you save."
+        "the employer's own careers page, that link reads best. Otherwise paste "
+        "the description into the column beside the fields and it will be tidied "
+        "and summarised when you save."
     )
     return {"values": values, "confidence": confidence, "warnings": [warning]}
 
