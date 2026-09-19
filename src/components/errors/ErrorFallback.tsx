@@ -1,4 +1,4 @@
-import { runtimeFlags } from '@/lib/env'
+import * as Sentry from '@sentry/nextjs'
 
 type FallbackProps = {
   error: unknown
@@ -18,7 +18,14 @@ function getErrorMessage(error: unknown): string {
 }
 
 export default function ErrorFallback({ error, eventId, resetError }: FallbackProps) {
-  const sentryEnabled = Boolean(runtimeFlags.sentryDsn)
+  // ASK THE SDK, NOT THE ENVIRONMENT. This read `runtimeFlags.sentryDsn`,
+  // which is a variable nothing sets any more -- `instrumentation-client.ts`
+  // carries the DSN literally, the way Sentry's own setup does, because a DSN
+  // is public by design. Reading the env var here would have printed "an error
+  // report was sent" exactly when it was NOT sent, and stopped printing it
+  // once reporting started working. `getClient()` is undefined until
+  // `Sentry.init` has run, so this sentence is true whenever it appears.
+  const sentryEnabled = Boolean(Sentry.getClient())
   const message = getErrorMessage(error)
 
   const handleTryAgain = () => {

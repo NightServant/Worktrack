@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import type { JobStatus } from '@/types'
-import * as Sentry from '@sentry/react'
+import * as Sentry from '@sentry/nextjs'
 
 /**
  * The running totals the two grouping loops below accumulate before they are

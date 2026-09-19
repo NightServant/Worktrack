@@ -26,11 +26,15 @@ const PLACEHOLDER_KEY = ['placeholder', 'anon-key-value', 'your-anon-key']
  *
  * So `?? source.VITE_SENTRY_DSN` looked like it was keeping error reporting
  * alive on the old variable name, and Sentry had in fact been dark in
- * production since the migration: the DSN was set in Vercel under
- * `VITE_SENTRY_DSN` alone, `sentryDsn` resolved to `''` in every browser, and
- * `initSentry()` returned early without a word. A fallback that cannot fire is
- * worse than no fallback, because it answers the question "is this
- * configured?" with a yes nobody checks.
+ * production since the migration. A fallback that cannot fire is worse than no
+ * fallback, because it answers the question "is this configured?" with a yes
+ * nobody checks.
+ *
+ * The Sentry fields left this object entirely on 2026-09-19: `@sentry/nextjs`
+ * initialises from `src/instrumentation-client.ts` and the two config files at
+ * the root, which carry the DSN literally the way Sentry's own setup does.
+ * There is no env var left for this to read, and `ErrorFallback` asks the SDK
+ * directly whether a client exists.
  */
 export function readSupabaseConfig(source: Record<string, string | undefined>): SupabaseConfig {
   const url = source.NEXT_PUBLIC_SUPABASE_URL ?? ''
@@ -57,8 +61,6 @@ function nextPublicEnv(): Record<string, string | undefined> {
     return {
       NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
       NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN,
-      NEXT_PUBLIC_SENTRY_ENVIRONMENT: process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT,
       NEXT_PUBLIC_APP_VERSION: process.env.NEXT_PUBLIC_APP_VERSION,
       NEXT_PUBLIC_BUILD_SHA: process.env.NEXT_PUBLIC_BUILD_SHA,
       NEXT_PUBLIC_BUILD_TIME: process.env.NEXT_PUBLIC_BUILD_TIME,
@@ -96,8 +98,6 @@ export interface RuntimeFlags {
   isDev: boolean
   isProd: boolean
   mode: string
-  sentryDsn: string
-  sentryEnvironment: string
   appVersion: string
   buildSha: string
   buildTime: string
@@ -120,8 +120,6 @@ export function readRuntimeFlags(source: Record<string, string | undefined>): Ru
     isDev: !isProd,
     isProd,
     mode,
-    sentryDsn: (source.NEXT_PUBLIC_SENTRY_DSN ?? '').trim(),
-    sentryEnvironment: (source.NEXT_PUBLIC_SENTRY_ENVIRONMENT ?? '').trim(),
     appVersion: source.NEXT_PUBLIC_APP_VERSION ?? '0.0.0',
     buildSha: source.NEXT_PUBLIC_BUILD_SHA ?? 'dev',
     buildTime: source.NEXT_PUBLIC_BUILD_TIME ?? '',

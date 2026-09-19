@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import * as Sentry from '@sentry/react'
+import * as Sentry from '@sentry/nextjs'
 import ErrorFallback from './ErrorFallback'
 import { runtimeFlags } from '@/lib/env'
 

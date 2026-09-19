@@ -63,3 +63,6 @@ scraper/.venv/
 scraper/**/__pycache__/
 scraper/.pytest_cache/
 *.pyc
+
+# Sentry Config File
+.env.sentry-build-plugin
