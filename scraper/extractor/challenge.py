@@ -82,6 +82,27 @@ _CHALLENGE_MARKERS = (
 )
 
 
+#: A sign-in wall wearing a posting's URL.
+#:
+#: MEASURED 2026-09-19, rendering `ph.indeed.com/viewjob?jk=...` with a real
+#: browser: Indeed redirects to `secure.indeed.com/auth` and answers 200 with
+#: 205KB of login page. Nothing above caught it -- the status is fine, and none
+#: of the Cloudflare markers appear -- so `extract()` parsed the wall as a
+#: posting and filled the form with `role: "Sign In"` and 316 characters of
+#: description, with no warning at all. Garbage stated confidently is worse
+#: than the refusal it replaced: the reader saves it.
+#:
+#: THIS IS THE SECOND HALF OF THE 401 NOTE BELOW. That one says Indeed's login
+#: redirect IS its bot detection; this is the same wall arriving with a 200
+#: after a render, which is the one route that skipped the check.
+#:
+#: MATCHED ON THE TITLE ALONE, because a real Indeed posting links to
+#: `secure.indeed.com` in its own header -- the host is on every page and only
+#: the title says which page this is. A posting's is "<role> - <company> -
+#: Indeed.com".
+_WALL_TITLE = re.compile(r"<title[^>]*>\s*sign\s*in\s*\|\s*indeed\s+accounts", re.I)
+
+
 def challenged_site_name(hostname: str) -> str | None:
     host = re.sub(r"^www\.", "", hostname.strip().lower())
     for pattern, name in _CHALLENGED_HOSTS:
@@ -107,6 +128,12 @@ def looks_like_bot_challenge(status: int, body: str) -> bool:
     # 200 from `autofill_from_url_alone` that names the site and asks for a
     # paste instead of blaming a valid link.
     if status in (401, 403, 503):
+        return True
+    # THE TITLE IS READ FROM THE WHOLE DOCUMENT, not from the head window
+    # below, and that is the difference between catching this and not:
+    # `secure.indeed.com` opens with 4KB of inline error-logging script, so
+    # `<title>` lands well past 4,000 characters.
+    if _WALL_TITLE.search(body):
         return True
     head = body[:4000]
     return any(marker.search(head) for marker in _CHALLENGE_MARKERS)

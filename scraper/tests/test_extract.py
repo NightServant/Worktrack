@@ -2251,3 +2251,39 @@ def test_the_company_may_arrive_as_an_object():
     # And the work mode is not part of the place: this app records that on an
     # application, not on a person.
     assert role["location"] == "Capas, Central Luzon, Philippines"
+
+
+def test_a_sign_in_wall_is_not_a_posting():
+    """Indeed's login page, arriving with a 200 after a render.
+
+    MEASURED 2026-09-19: rendering `ph.indeed.com/viewjob?jk=...` with a real
+    browser follows a redirect to `secure.indeed.com/auth` and returns 205KB of
+    login page under a 200. The status is fine and no Cloudflare marker
+    appears, so this was the one route that reached `extract()` unchallenged --
+    and it filled the form with `role: "Sign In"` and 316 characters of
+    description, silently. A confident wrong answer is worse than the refusal
+    it replaced, because the reader saves it.
+
+    THE TITLE IS THE ONLY HONEST SIGNAL. A real Indeed posting links to
+    `secure.indeed.com` from its own header, so the host appears on every page;
+    only the title says which page this is.
+    """
+    # The head is padded past the 4,000-character window on purpose: the real
+    # page opens with inline error-logging script and its `<title>` lands well
+    # outside it.
+    wall = "<html><head>" + ("<script>var a=1;</script>" * 300) + (
+        "<title>Sign In | Indeed Accounts</title></head><body>Sign in to continue</body></html>"
+    )
+    assert looks_like_bot_challenge(200, wall) is True
+    envelope = extract("https://ph.indeed.com/viewjob?jk=abc", wall, 200)
+    assert "role" not in envelope["values"]
+    assert envelope["warnings"], "a refused page has to say so"
+
+    # AND THE POSTING ITSELF STILL PASSES, which is the half that stops this
+    # becoming a refusal of every Indeed page.
+    posting = (
+        "<html><head><title>Java Developer - Accenture - Indeed.com</title></head>"
+        '<body><a href="https://secure.indeed.com/auth">Sign in</a>'
+        "<h1>Java Developer</h1></body></html>"
+    )
+    assert looks_like_bot_challenge(200, posting) is False
