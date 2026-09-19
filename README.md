@@ -428,7 +428,7 @@ The work they were meant to do runs where it can be tested from a laptop:
 - **Leaked-password protection is a Pro feature, and is therefore off.** Supabase checks new passwords against HaveIBeenPwned only on paid plans; the toggle renders and refuses to save. The length and character rules are enforced server-side, so what is missing is specifically the "this password is already on a list" check — which no client-side rule can honestly provide, so none is pretended. The same gate keeps server-side session expiry off; see [`docs/SECURITY.md`](docs/SECURITY.md).
 - **There is no third-party sign-in.** Email and password only. Google and Microsoft buttons existed and were deleted once it was established that neither provider had ever been enabled on the project — a control that cannot work reads as a broken app rather than a feature that is not set up.
 - **Client-side rate limiting is an affordance, not a boundary.** `src/lib/authRateLimit.ts` throttles repeated attempts from one browser and anyone with a console walks past it. The real boundary is server-side, and `docs/SECURITY.md` tables the dashboard controls that have to be switched on.
-- **`/` redirects a signed-in visitor after hydration, not before.** The session lives in `localStorage`, so there is no auth cookie for middleware to read, and the landing page paints for a frame before the redirect. Removing that frame needs cookie-backed sessions via `@supabase/ssr`, which is a migration rather than a fix.
+- **`/` still paints for a frame when a session appears mid-visit.** The frame this list used to describe is gone: sessions have been cookie-backed via `@supabase/ssr` since 2026-09-11, so [`src/middleware.ts`](src/middleware.ts) reads the cookie and redirects a signed-in visitor before the landing page is generated. What remains is the case middleware structurally cannot see — a session that comes into existence *while* the page is open, where there was nothing to redirect at request time. `SignedInRedirect` catches that one after hydration, which is why the component is still mounted on `/`, `/login` and `/signup`.
 - **`resumes.sections` is never written**, so the ATS column reads "not checked" for CVs created through the editors.
 - **No accessibility audit has been done.** Keyboard navigation and `aria-current` are handled on the primary surfaces, `prefers-reduced-motion` is honoured throughout, and colour is never the only carrier of state — but a full screen-reader pass has not happened.
 - **Some job boards cannot be read from a server, and no amount of code changes that.** Indeed answers an anonymous request with a Cloudflare 401; JobStreet and SEEK answer 403. Where a board publishes its postings through its own API, that is used. Where one does not, the hosted fetcher is tried, and where that fails too the app says which board refused and points at the employer's own careers page — which parses at 0.90–0.95 confidence a field, against 0.40–0.70 for an aggregator mirror even when the mirror *can* be read. Nothing here wears a disguise: no challenge is solved, no session borrowed, no residential proxy bought.
@@ -438,10 +438,12 @@ The work they were meant to do runs where it can be tested from a laptop:
 
 Done since this list was last written: the Next.js and Vercel migration, the design-system pass, the landing page, the auth rebuild, and the demo.
 
-- [ ] Break up the oversized page components
-- [ ] Grammar and spelling checks in the CV editor
-- [ ] AI-assisted CV tailoring against a job description
-- [ ] Cookie-backed sessions, so `/` can decide server-side rather than after hydration
+- [x] Break up the oversized page components — the route files under `src/app/(app)` are compositions now rather than the screens themselves. The weight moved into components rather than away, though, and nothing enforces a ceiling on those.
+- [x] Grammar and spelling checks in the CV editor — [`src/services/grammar.ts`](src/services/grammar.ts) and `useProofread`, called straight from the browser against LanguageTool's keyless endpoint, because its free tier is rate limited per IP and a proxy would put every user behind one address
+- [x] AI-assisted CV tailoring against a job description — [`src/app/api/tailor/route.ts`](src/app/api/tailor/route.ts), with its own model behind `MODEL_TAILOR`
+- [x] Cookie-backed sessions, so `/` can decide server-side rather than after hydration — done 2026-09-11. It is a Vercel-specific fight rather than a Vercel-specific exemption: `vercel.json` uses `services`, which reject Edge Function output, so the middleware pins `runtime: 'nodejs'` — and that line alone, without `experimental.nodeMiddleware` in [`next.config.ts`](next.config.ts), makes Next 15.5 emit no middleware at all while still reporting a successful build.
+
+Nothing is open. The next entries go here when there are some.
 
 ## Licence
 
