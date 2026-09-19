@@ -17,12 +17,24 @@ const PLACEHOLDER_KEY = ['placeholder', 'anon-key-value', 'your-anon-key']
  * Taking the source as an argument is what makes this testable: import.meta.env
  * and process.env are both ambient and neither can be varied per test.
  *
- * NEXT_PUBLIC_ wins over VITE_ so a half-migrated repo prefers the new names
- * while the Vite app keeps running on the old ones.
+ * THE `VITE_` FALLBACKS ARE GONE (2026-09-19), AND THEY COST A REAL OUTAGE.
+ * They read as a safety net for a half-migrated repo. They are not one under
+ * Next: a `VITE_` name can only arrive through `import.meta.env`, which does
+ * not exist in the Next build, because `nextPublicEnv()` below returns a FIXED
+ * LIST of `process.env.NEXT_PUBLIC_*` literals -- Next substitutes only the
+ * exact text.
+ *
+ * So `?? source.VITE_SENTRY_DSN` looked like it was keeping error reporting
+ * alive on the old variable name, and Sentry had in fact been dark in
+ * production since the migration: the DSN was set in Vercel under
+ * `VITE_SENTRY_DSN` alone, `sentryDsn` resolved to `''` in every browser, and
+ * `initSentry()` returned early without a word. A fallback that cannot fire is
+ * worse than no fallback, because it answers the question "is this
+ * configured?" with a yes nobody checks.
  */
 export function readSupabaseConfig(source: Record<string, string | undefined>): SupabaseConfig {
-  const url = source.NEXT_PUBLIC_SUPABASE_URL ?? source.VITE_SUPABASE_URL ?? ''
-  const anonKey = source.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? source.VITE_SUPABASE_ANON_KEY ?? ''
+  const url = source.NEXT_PUBLIC_SUPABASE_URL ?? ''
+  const anonKey = source.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
   const isConfigured =
     !!url &&
     !!anonKey &&
@@ -108,8 +120,8 @@ export function readRuntimeFlags(source: Record<string, string | undefined>): Ru
     isDev: !isProd,
     isProd,
     mode,
-    sentryDsn: (source.NEXT_PUBLIC_SENTRY_DSN ?? source.VITE_SENTRY_DSN ?? '').trim(),
-    sentryEnvironment: (source.NEXT_PUBLIC_SENTRY_ENVIRONMENT ?? source.VITE_SENTRY_ENVIRONMENT ?? '').trim(),
+    sentryDsn: (source.NEXT_PUBLIC_SENTRY_DSN ?? '').trim(),
+    sentryEnvironment: (source.NEXT_PUBLIC_SENTRY_ENVIRONMENT ?? '').trim(),
     appVersion: source.NEXT_PUBLIC_APP_VERSION ?? '0.0.0',
     buildSha: source.NEXT_PUBLIC_BUILD_SHA ?? 'dev',
     buildTime: source.NEXT_PUBLIC_BUILD_TIME ?? '',

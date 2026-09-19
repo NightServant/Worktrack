@@ -1,16 +1,16 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { describe } from 'vitest'
 
-const url = process.env.VITE_SUPABASE_URL
-const anonKey = process.env.VITE_SUPABASE_ANON_KEY
+const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.VITE_SUPABASE_URL
+const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY
 const email = process.env.TEST_USER_EMAIL
 const password = process.env.TEST_USER_PASSWORD
 
 export const integrationConfigured = Boolean(url && anonKey && email && password)
 
 export const missingIntegrationConfig = [
-  !url && 'VITE_SUPABASE_URL',
-  !anonKey && 'VITE_SUPABASE_ANON_KEY',
+  !url && 'NEXT_PUBLIC_SUPABASE_URL',
+  !anonKey && 'NEXT_PUBLIC_SUPABASE_ANON_KEY',
   !email && 'TEST_USER_EMAIL',
   !password && 'TEST_USER_PASSWORD',
 ].filter(Boolean)
