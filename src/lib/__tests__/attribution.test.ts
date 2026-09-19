@@ -84,7 +84,7 @@ describe('the README describes this repository', () => {
     const text = readme()
     expect(text).toContain('](/login')
     expect(text).toContain('](/signup')
-    expect(text).toContain('/demo/dashboard')
+    expect(text).toContain('/demo/overview')
     // Tolerant of the section NUMBER, not of the section being absent. The
     // README follows the numbered-heading structure used across these repos,
     // so a literal '## Demo' would fail on '## 4. Demo' and force the
@@ -97,7 +97,7 @@ describe('the README describes this repository', () => {
     // possible way for a README to be wrong.
     const text = readme()
     // `overview`, not `dashboard`: the captures are named for the screen the
-    // app's own nav shows, and the route file is still /dashboard.
+    // app's own nav shows, and the route file is still /overview.
     for (const shot of ['overview', 'applications', 'analytics']) {
       expect(text, `README does not embed the ${shot} screenshot`).toMatch(
         new RegExp(`/screens/[a-z]+/[a-z]+/${shot}\\.(?:jpg|png)`)

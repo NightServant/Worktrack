@@ -50,7 +50,7 @@ export default function Page() {
   const { data: jobs = [] } = useJobs()
 
   // Holidays and the fresh-roles feed, plus the per-browser choices in front
-  // of them. Shared with /demo/calendar, which renders the same two panels
+  // of them. Shared with /demo/planner, which renders the same two panels
   // over a fixture -- see useCalendarExtras for why they are not inlined here.
   const extras = useCalendarExtras()
 

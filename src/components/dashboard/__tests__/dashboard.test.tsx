@@ -276,7 +276,7 @@ describe('Overview layout and copy', () => {
     }
     expect(routes.get('applications over time')).toBe('/analytics')
     expect(routes.get('by status')).toBe('/applications')
-    expect(routes.get('upcoming events')).toBe('/calendar')
+    expect(routes.get('upcoming events')).toBe('/planner')
     expect(routes.get('by source')).toBe('/analytics')
     expect(routes.get('recent applications')).toBe('/applications')
   })
@@ -488,7 +488,7 @@ describe('source chart colours', () => {
  *
  * WHAT WENT WRONG. `UpcomingEvents` carried its own "open calendar" link at
  * the foot of its body, from before every panel got a `CardAction`. Once the
- * actions landed, the events card had two links to /calendar -- one top-right
+ * actions landed, the events card had two links to /planner -- one top-right
  * and one bottom-left -- and the footer one rendered even in the empty state,
  * where `EmptyState` already points at the calendar. Gabe spotted it on the
  * overview 2026-09-06.
@@ -518,7 +518,7 @@ describe('panel links', () => {
       (c) => c.querySelector('h2')!.textContent === 'upcoming events'
     )!
     expect(card.querySelector('[data-events-empty]')).not.toBeNull()
-    expect(card.querySelectorAll('a[href="/calendar"]')).toHaveLength(1)
+    expect(card.querySelectorAll('a[href="/planner"]')).toHaveLength(1)
   })
 })
 

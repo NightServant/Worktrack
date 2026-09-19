@@ -104,7 +104,7 @@ export function NotFound() {
           {!loading &&
             (user ? (
               <Link
-                href="/dashboard"
+                href="/overview"
                 data-variant="primary"
                 data-cta="dashboard"
                 className={`${ICON_MOTION_GROUP} ${buttonVariants({ variant: 'primary', size: 'm' })} group`}

@@ -12,7 +12,7 @@ import type { Metadata } from 'next'
  */
 export const metadata: Metadata = {
   // `Planner`, not `Calendar` (Gabe, 2026-09-11, catching the browser tab the
-  // rename missed). The path is still /calendar -- every bookmark and the
+  // rename missed). The path is still /planner -- every bookmark and the
   // Overview's own link point at it -- but nothing a reader SEES should still
   // say calendar: not the sidebar, not the heading, and not the tab.
   title: 'Planner',

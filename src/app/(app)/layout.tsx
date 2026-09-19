@@ -38,10 +38,10 @@ const SKELETON_BY_PREFIX: ReadonlyArray<readonly [string, RouteSkeletonVariant]>
   ['/applications', 'table'],
   ['/analytics', 'analytics'],
   ['/documents', 'documents'],
-  ['/calendar', 'calendar'],
+  ['/planner', 'calendar'],
   ['/cv', 'detail'],
   ['/settings', 'detail'],
-  ['/dashboard', 'dashboard'],
+  ['/overview', 'dashboard'],
 ]
 
 function skeletonVariantFor(pathname: string | null): RouteSkeletonVariant {

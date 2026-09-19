@@ -8,9 +8,7 @@ import { Field } from '@/components/ui/field'
 import { Input, PasswordInput } from '@/components/ui/input'
 import { LockIcon, UserRoundIcon } from '@/components/icons'
 import { iconMotion } from '@/components/icons/motion'
-import type { OAuthProviderId } from '@/lib/oauthProviders'
 import { AuthBrandPanel } from './AuthBrandPanel'
-import { OAuthButtons } from './OAuthButtons'
 
 /**
  * Sign in and sign up, as one screen in two modes.
@@ -56,11 +54,6 @@ export interface AuthScreenProps {
   mode: AuthMode
   /** Rejects with an Error whose message is shown to the user. */
   onSubmit: (email: string, password: string) => Promise<void>
-  /**
-   * Starts an OAuth round trip. Optional: without it the providers are not
-   * offered at all, rather than rendered as buttons that do nothing.
-   */
-  onProvider?: (provider: OAuthProviderId) => Promise<void>
 }
 
 const COPY = {
@@ -92,7 +85,7 @@ const COPY = {
   },
 } as const
 
-export function AuthScreen({ mode, onSubmit, onProvider }: AuthScreenProps) {
+export function AuthScreen({ mode, onSubmit }: AuthScreenProps) {
   const copy = COPY[mode]
   const isSignUp = mode === 'signup'
 
@@ -123,7 +116,7 @@ export function AuthScreen({ mode, onSubmit, onProvider }: AuthScreenProps) {
         1.5 seconds after it was pressed -- caught in a screen recording on
         2026-09-15.
 
-        `onSubmit` here ends in `router.push('/dashboard')`, which RETURNS
+        `onSubmit` here ends in `router.push('/overview')`, which RETURNS
         IMMEDIATELY: it starts a navigation, it does not wait for one. So the
         promise resolved, the `finally` cleared `busy`, and the form sat there
         looking idle and re-submittable for the whole time the next route was
@@ -284,16 +277,6 @@ export function AuthScreen({ mode, onSubmit, onProvider }: AuthScreenProps) {
               ))}
             {copy.submit}
           </Button>
-
-          {/*
-            AFTER the form, matching the sign-up screen. Gabe settled the order
-            there on 2026-09-02 and asked for the same buttons here on
-            2026-09-03: the manual fields state the default, the divider then
-            offers the shortcut. Two auth screens that disagree about where
-            the providers live would be the same inconsistency the input merge
-            just removed.
-          */}
-          {onProvider && <OAuthButtons onSelect={onProvider} disabled={busy} />}
 
           <div data-switch-mobile className="text-body-s lg:hidden">
             {switchLink}

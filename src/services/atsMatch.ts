@@ -186,7 +186,18 @@ function isRequirementCandidate(token: string): boolean {
   if (token.length < 2) return false
   if (STOPWORDS.has(token)) return false
   if (NUMBER_WORDS.has(token)) return false
-  if (/^\d+$/.test(token)) return false
+  // A TOKEN WITH NO LETTER IN IT IS A QUANTITY, NEVER A REQUIREMENT. This was
+  // `/^\d+$/`, which caught `500` and `2024` and missed everything the
+  // tokenizer deliberately keeps punctuation for: `500+`, `1.5`, `3.5`. Those
+  // three came back as things a CV was "missing" from one posting (Gabe,
+  // 2026-09-19: "Bare numbers do not count"), and no CV can contain them --
+  // the number in "500+ hours" is an amount of the noun beside it, and the
+  // noun is the term worth matching.
+  //
+  // `[a-z]` rather than `\D`, because `+`, `#` and `.` are not letters and are
+  // exactly what dresses a bare number up. `c++`, `c#`, `node.js`, `es6` and
+  // `3d` all carry a letter and are unaffected.
+  if (!/[a-z]/.test(token)) return false
   if (/^\d+(st|nd|rd|th)$/.test(token)) return false
   return true
 }

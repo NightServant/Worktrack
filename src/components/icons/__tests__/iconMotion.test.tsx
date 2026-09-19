@@ -239,7 +239,7 @@ describe('the one-shot state animations', () => {
 
 describe('where the vocabulary is applied', () => {
   it('drives a nav icon from the whole row, not from the glyph', () => {
-    const { container } = render(<NavItem href="/dashboard" label="overview" icon="Overview" />)
+    const { container } = render(<NavItem href="/overview" label="overview" icon="Overview" />)
     const row = container.querySelector('a') as HTMLElement
     expect(row.className).toContain(ICON_MOTION_GROUP)
     expect(row.querySelector('.icon-motion')).toBeTruthy()
@@ -251,7 +251,7 @@ describe('where the vocabulary is applied', () => {
     // glyph whose own form describes a motion. Asserted as a DIFFERENCE, so it
     // fails both if settings stops turning and if a destination starts.
     const { container: nav } = render(
-      <NavItem href="/dashboard" label="overview" icon="Overview" />
+      <NavItem href="/overview" label="overview" icon="Overview" />
     )
     const { container: settings } = render(
       <NavItem href="/settings" label="settings" icon="Settings" />

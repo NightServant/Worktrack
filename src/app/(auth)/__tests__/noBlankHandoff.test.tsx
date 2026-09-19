@@ -10,7 +10,7 @@ import { render, screen } from '@testing-library/react'
  * The white in his recording was `SignedOutOnly` returning `null`: the instant
  * `signIn` resolves and `onAuthStateChange` sets a user, this component
  * emptied the whole /login document, and it stayed empty for the ~900ms that
- * `router.push('/dashboard')` took to land.
+ * `router.push('/overview')` took to land.
  *
  * WHY IT ASSERTS ON VISIBLE TEXT rather than on any particular component: the
  * requirement is "the page is not blank", and every previous attempt passed a

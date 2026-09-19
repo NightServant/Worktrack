@@ -9,10 +9,10 @@ import {
 describe('which routes need a session', () => {
   it('covers every screen behind the app shell, including child routes', () => {
     for (const path of [
-      '/dashboard',
+      '/overview',
       '/applications',
       '/applications/abc-123',
-      '/calendar',
+      '/planner',
       '/documents',
       '/documents/templates',
       '/cv',
@@ -27,7 +27,7 @@ describe('which routes need a session', () => {
     // None of these needs a session to READ. `/` and the auth pages move a
     // signed-in visitor along, which is a different rule -- see below -- and
     // not a reason to demand a session from a signed-out one.
-    for (const path of ['/', '/privacy', '/login', '/signup', '/demo/dashboard']) {
+    for (const path of ['/', '/privacy', '/login', '/signup', '/demo/overview']) {
       expect(isPrivatePath(path), path).toBe(false)
     }
   })
@@ -57,8 +57,8 @@ describe('which routes move a signed-in visitor along', () => {
     // nothing here is either.
     for (const path of [
       '/privacy',
-      '/demo/dashboard',
-      '/dashboard',
+      '/demo/overview',
+      '/overview',
       '/applications/abc-123',
       '/settings',
     ]) {
@@ -83,8 +83,8 @@ describe('decideRoute', () => {
   })
 
   it('sends a signed-in visitor off the auth pages', () => {
-    expect(decideRoute('/login', true).redirectTo).toBe('/dashboard')
-    expect(decideRoute('/signup', true).redirectTo).toBe('/dashboard')
+    expect(decideRoute('/login', true).redirectTo).toBe('/overview')
+    expect(decideRoute('/signup', true).redirectTo).toBe('/overview')
   })
 
   it('sends a signed-in visitor off the landing page too', () => {
@@ -92,7 +92,7 @@ describe('decideRoute', () => {
     // left to a client-side redirect -- so that the marketing route could stay
     // static. It is still static for everyone signed out; what changed is that
     // a signed-in visitor no longer watches the pitch paint and then vanish.
-    expect(decideRoute('/', true).redirectTo).toBe('/dashboard')
+    expect(decideRoute('/', true).redirectTo).toBe('/overview')
   })
 
   it('still serves the landing page to everyone signed out', () => {
@@ -104,7 +104,7 @@ describe('decideRoute', () => {
     expect(decideRoute('/login', false).redirectTo).toBeNull()
     expect(decideRoute('/privacy', true).redirectTo).toBeNull()
     expect(decideRoute('/privacy', false).redirectTo).toBeNull()
-    expect(decideRoute('/demo/dashboard', false).redirectTo).toBeNull()
+    expect(decideRoute('/demo/overview', false).redirectTo).toBeNull()
   })
 })
 

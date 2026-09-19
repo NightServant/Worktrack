@@ -5,7 +5,7 @@ import { SCREENS } from '@/components/landing/screens'
 /**
  * The public landing page, and the homepage for everyone.
  *
- * SIGNED-OUT VISITORS GET THE LANDING PAGE; SIGNED-IN ONES GO TO /dashboard.
+ * SIGNED-OUT VISITORS GET THE LANDING PAGE; SIGNED-IN ONES GO TO /overview.
  * That is Gabe's 2026-09-03 ruling and it partially reverses 2026-09-02, when
  * `/` was made the homepage for everyone and redirected nobody. What survives
  * from that decision is the important half: this route is still STATIC and
@@ -14,7 +14,7 @@ import { SCREENS } from '@/components/landing/screens'
  * THE REDIRECT MOVED TO MIDDLEWARE on 2026-09-11. It used to be a client
  * island because the session lived in localStorage and there was nothing on
  * the server to read; cookie-backed sessions ended that, and `decideRoute`
- * now sends a signed-in visitor to /dashboard before this component is ever
+ * now sends a signed-in visitor to /overview before this component is ever
  * invoked. The route is STILL STATIC -- middleware runs in front of it and
  * nothing here reads a session -- so the anonymous majority still gets the
  * cached render.

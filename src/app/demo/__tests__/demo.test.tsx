@@ -30,7 +30,7 @@ vi.mock('next-themes', () => ({
   useTheme: () => ({ resolvedTheme: 'light', setTheme: vi.fn() }),
 }))
 
-const pathname = vi.hoisted(() => ({ value: '/demo/dashboard' }))
+const pathname = vi.hoisted(() => ({ value: '/demo/overview' }))
 // The calendar's two live panels -- holidays and the remote-roles feed -- are
 // third-party reads behind react-query. Mocked so this suite neither stands up
 // a QueryClient nor depends on somebody else's uptime; the fixture is what
@@ -52,10 +52,10 @@ vi.mock('next/navigation', () => ({
   redirect: vi.fn(),
 }))
 
-import DemoDashboard from '../dashboard/page'
+import DemoDashboard from '../overview/page'
 import DemoApplications from '../applications/page'
 import DemoAnalytics from '../analytics/page'
-import DemoCalendar from '../calendar/page'
+import DemoCalendar from '../planner/page'
 import DemoDocuments from '../documents/page'
 import DemoLayout from '../layout'
 
@@ -109,7 +109,7 @@ describe('the demo shell', () => {
 
   it('keeps every link the SCREENS render inside the demo too', () => {
     // The nav was only half the escape. The demo renders the REAL screens, and
-    // their rows link to absolute paths -- /applications/<id>, /calendar,
+    // their rows link to absolute paths -- /applications/<id>, /planner,
     // /cv?draft=<id>. Unprefixed, a visitor clicking any application row
     // leaves the demo, hits the (app) auth guard and lands on /login, which
     // reads as the demo being broken rather than as a boundary working. This

@@ -42,8 +42,8 @@ export function HomeOrDashboardLink({ className }: { className?: string }) {
         Back to the home page
         <ArrowRightIcon size={14} aria-hidden className={iconMotion('forward')} />
       </Link>
-      <Link href="/dashboard" data-variant="secondary" data-when-signed-in className={shape}>
-        Back to the dashboard
+      <Link href="/overview" data-variant="secondary" data-when-signed-in className={shape}>
+        Back to the overview
         <OverviewIcon size={14} aria-hidden className={iconMotion('lift')} />
       </Link>
     </>

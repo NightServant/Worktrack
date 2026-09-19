@@ -22,7 +22,7 @@ import { describe, it, expect } from 'vitest'
  *
  * IT IS NOT A SUBSTITUTE FOR CHECKING THE REAL THING. Both halves being
  * present is necessary, not sufficient -- `next start` and a signed-out GET to
- * /dashboard expecting 307 is what actually proves the gate runs, because
+ * /overview expecting 307 is what actually proves the gate runs, because
  * middleware-manifest.json reports `{"middleware":{}}` for node middleware
  * even when it is working. This catches the regression that arrives by
  * somebody deleting a line, which is the likely one.

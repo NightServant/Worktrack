@@ -18,8 +18,11 @@
  * forever. Deploying it would have replaced correct numbers with frozen,
  * coarser ones: worse than the empty request it was making.
  *
- * `analytics_cache` and `upsert_analytics_cache` are still in the schema,
- * holding nothing, because nothing ever wrote to them.
+ * `analytics_cache` and `upsert_analytics_cache` were dropped on 2026-09-19
+ * (Gabe: "Remove the dead table"). They held nothing, because nothing ever
+ * wrote to them -- and an empty table with RLS on and no policies is a
+ * database-linter finding and a line on the public privacy page, which is a
+ * high price for a cache the app does not want.
  */
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'

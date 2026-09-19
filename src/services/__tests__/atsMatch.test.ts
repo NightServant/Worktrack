@@ -71,6 +71,22 @@ describe('what counts as a requirement at all', () => {
     expect([...missing, ...matched]).not.toContain('500')
   })
 
+  it('does not treat a number wearing punctuation as a skill either', () => {
+    // THE HOLE THE `/^\d+$/` RULE LEFT. The tokenizer keeps `+`, `#` and `.`
+    // so that `c++`, `c#` and `node.js` survive it -- which also carried
+    // `500+`, `1.5` and `3.5` straight past a check anchored on digits alone.
+    // All three were being reported as terms a CV was missing.
+    const { missing, matched } = matchKeywords(
+      'Node.js developer, C++ on the side.',
+      'Requires 500+ hours, 1.5 years of Node.js, a 3.5 GPA and C++.'
+    )
+    const terms = [...missing, ...matched]
+    for (const n of ['500+', '1.5', '3.5']) expect(terms).not.toContain(n)
+    // The languages the punctuation is really there for still come through.
+    expect(matched).toContain('node.js')
+    expect(matched).toContain('c++')
+  })
+
   it('does not treat a spelled-out quantity as a skill either', () => {
     // The same sentence as "500 hours", written out. Measured 2026-09-17
     // across four adverts: `one`, `two`, `three` and `thousands` were all

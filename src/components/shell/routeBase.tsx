@@ -8,7 +8,7 @@ import * as React from 'react'
  * `''` in the real app, `'/demo'` inside /demo/*.
  *
  * It exists because the demo renders the REAL screens, and those screens link
- * to each other with absolute paths -- `/applications/<id>`, `/calendar`,
+ * to each other with absolute paths -- `/applications/<id>`, `/planner`,
  * `/cv?draft=<id>`. Left alone, a demo visitor clicking any application row
  * leaves the demo, hits the (app) auth guard, and is bounced to /login. The
  * nav was fixed for exactly this reason; these seven links are the same bug

@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation'
 import { AppShell } from '../AppShell'
 
 vi.mock('next-themes', () => ({ useTheme: () => ({ resolvedTheme: 'light', setTheme: vi.fn() }) }))
-vi.mock('next/navigation', () => ({ usePathname: vi.fn(() => '/dashboard') }))
+vi.mock('next/navigation', () => ({ usePathname: vi.fn(() => '/overview') }))
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({ user: null, loading: false, signOut: vi.fn(), signIn: vi.fn(), signUp: vi.fn() }),
 }))
@@ -14,7 +14,7 @@ vi.mock('@/contexts/ToastContext', () => ({
 
 describe('AppShell', () => {
   beforeEach(() => {
-    vi.mocked(usePathname).mockReturnValue('/dashboard')
+    vi.mocked(usePathname).mockReturnValue('/overview')
   })
 
   it('gives the mobile top bar 44px controls in a 64px bar', () => {
@@ -92,7 +92,7 @@ describe('AppShell', () => {
  */
 describe('the mobile/desktop tier switch', () => {
   beforeEach(() => {
-    vi.mocked(usePathname).mockReturnValue('/dashboard')
+    vi.mocked(usePathname).mockReturnValue('/overview')
   })
 
   it('hands tablets the same chrome as phones: sidebar from lg, bars below it', () => {
@@ -168,7 +168,7 @@ describe('the mobile/desktop tier switch', () => {
 
 describe('the bottom nav on a phone', () => {
   beforeEach(() => {
-    vi.mocked(usePathname).mockReturnValue('/dashboard')
+    vi.mocked(usePathname).mockReturnValue('/overview')
   })
 
   it('hides the labels visually but keeps them as the link names', () => {
@@ -189,7 +189,7 @@ describe('the bottom nav on a phone', () => {
     const nav = container.querySelector('[data-bottom-nav]')!
     const labels = [...nav.querySelectorAll('span')].filter((s) =>
       // `planner` was `calendar` until 2026-09-11; the route is still
-      // /calendar, only the label moved. See the note on NAV.
+      // /planner, only the label moved. See the note on NAV.
       /^(overview|applications|planner|documents|analytics)$/.test(s.textContent ?? '')
     )
     expect(labels).toHaveLength(5)

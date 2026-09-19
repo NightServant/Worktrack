@@ -167,9 +167,15 @@ site_url = "env(SUPABASE_AUTH_SITE_URL)"
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
 # EVERY ENTRY ENDS IN `/**`, AND THE BARE ORIGINS THAT USED TO BE HERE WERE
 # WRONG. These are matched as patterns against the WHOLE redirect URL, path
-# included, and the app sends `${origin}/dashboard` -- so a bare
+# included, and the app sends `${origin}/overview` -- so a bare
 # `https://worktrack-jobs.vercel.app` matches nothing the app ever asks for.
-# It would have pushed cleanly and rejected every OAuth return.
+# It would have pushed cleanly and rejected every return.
+#
+# The `/**` is also why the 2026-09-19 route rename needed nothing here: a
+# pattern that matches any path matched the new one already. Had these been
+# exact paths, renaming `/dashboard` would have broken every auth return
+# silently and remotely, which is the failure this wildcard was chosen to make
+# impossible.
 #
 # THE OLD DOMAIN IS LISTED ON PURPOSE. It still resolves, still serves, and is
 # what existing links point at; a Vercel project may hold several .vercel.app
@@ -212,6 +218,36 @@ minimum_password_length = 10
 # Passwords that do not meet the following requirements will be rejected as weak. Supported values
 # are: `letters_digits`, `lower_upper_letters_digits`, `lower_upper_letters_digits_symbols`
 password_requirements = "lower_upper_letters_digits_symbols"
+# LEAKED-PASSWORD PROTECTION IS NOT CONFIGURABLE FROM THIS FILE, and the way
+# that was discovered is worth keeping. `password_hibp_enabled` is a real
+# Supabase setting -- checking a new password against HaveIBeenPwned by
+# k-anonymity, so only the first five characters of the SHA-1 hash leave the
+# server -- and the string IS in the CLI binary. It is there as `json:` only:
+# it is a Management API field, with no `toml:` tag, so config.toml has no key
+# for it. The four it does accept are `minimum_password_length`,
+# `password_requirements`, `password_verification_attempt` and
+# `secure_password_change`.
+#
+# Writing it here anyway did not fail on that line. `supabase db push` PARSES
+# THE WHOLE CONFIG FIRST, so one unknown key aborted the command before it
+# looked at a single migration -- the same blast radius as the Pro-only
+# `[auth.sessions]` block below, from a different cause.
+#
+# AND IT IS PRO-ONLY ANYWAY, which is the part that actually settles it. The
+# toggle renders at Authentication -> Sign In / Providers -> Email and refuses
+# to save on the free tier: "Configuring leaked password protection via
+# HaveIBeenPwned.org is available on Pro Plans and up." (2026-09-19.) So this
+# is the SECOND Pro-gated auth setting on this project, after [auth.sessions]
+# below -- and unlike that one it cannot even be written here to wait for an
+# upgrade, because the key does not exist in this CLI.
+#
+# THE GAP IS REAL AND IS NOT WORTH FAKING. The length and character rules above
+# stop a lazy password; only this stops one that is already on a list, and
+# `Tr0ub4dor&3` satisfies both rules and is breached. A client-side call to the
+# Pwned Passwords API would look like the same control and would not be one --
+# anyone who does not run our client skips it -- which is the objection this
+# repo already makes about lib/authRateLimit. The database linter reports this
+# as disabled, and that report is accurate.
 
 # Configure passkey sign-ins.
 # [auth.passkey]

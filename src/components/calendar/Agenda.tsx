@@ -44,7 +44,7 @@ function formatDayHeading(key: string): string {
  * `companyByJobId` is the client-side join fix round 1 added: roadmap 5.7
  * requires the mobile agenda carry "time, duration, title and company", but
  * `CalendarEvent` (from `eventService.listFrom`) has no company of its
- * own -- only `job_id`. `src/app/(app)/calendar/page.tsx` builds this map
+ * own -- only `job_id`. `src/app/(app)/planner/page.tsx` builds this map
  * from `useJobs()` -- the same `['jobs', user?.id]` cache every other screen
  * in this branch already reads -- and threads it down through `Calendar`,
  * rather than this component or `Calendar` itself adding a second query.

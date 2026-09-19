@@ -73,7 +73,7 @@ export function SignedOutOnly({ children }: { children: React.ReactNode }) {
     the form is pressed, and roughly 900ms of PURE WHITE sits between it and
     the dashboard. This line is where the white came from. `signIn` resolves,
     `onAuthStateChange` sets `user`, and this component empties the entire
-    /login document -- while `router.push('/dashboard')` is still fetching the
+    /login document -- while `router.push('/overview')` is still fetching the
     next route. Rendering nothing was correct about the FORM and wrong about
     the PAGE.
 

@@ -22,7 +22,7 @@ export default function Page() {
       onRequest={requestPasswordReset}
       onVerify={verifyRecoveryOtp}
       onSetPassword={updatePassword}
-      onDone={() => router.replace('/dashboard')}
+      onDone={() => router.replace('/overview')}
     />
   )
 }

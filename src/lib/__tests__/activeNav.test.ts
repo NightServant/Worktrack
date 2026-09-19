@@ -3,7 +3,7 @@ import { activeNavHref } from '../activeNav'
 
 describe('activeNavHref', () => {
   it('treats a detail route as a child of its section', () => {
-    expect(activeNavHref('/applications/abc', ['/dashboard', '/applications'])).toBe(
+    expect(activeNavHref('/applications/abc', ['/overview', '/applications'])).toBe(
       '/applications'
     )
   })
@@ -13,7 +13,7 @@ describe('activeNavHref', () => {
     // (isUnder('/settings', '/settings') is true) and the sort would pick it.
     // The clause exists precisely to override that: settings is chrome, not
     // a nav destination, no matter what the caller passes.
-    expect(activeNavHref('/settings', ['/dashboard', '/applications', '/settings'])).toBeNull()
+    expect(activeNavHref('/settings', ['/overview', '/applications', '/settings'])).toBeNull()
   })
 
   it('does not match a prefix that is not a path segment', () => {

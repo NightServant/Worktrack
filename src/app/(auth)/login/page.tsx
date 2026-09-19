@@ -50,7 +50,7 @@ export default function Page() {
         const next = safeNextPath(
           new URLSearchParams(window.location.search).get('next')
         )
-        router.push(next ?? '/dashboard')
+        router.push(next ?? '/overview')
       }}
     />
   )

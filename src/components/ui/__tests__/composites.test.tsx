@@ -159,7 +159,7 @@ describe('Sidebar', () => {
   it('shows the mark beside the wordmark', () => {
     // Item 1: the Figma Logo (19:4) is a 23px 2x2 mark plus the wordmark. The
     // M5 sidebar rendered the word alone.
-    const { container } = render(<Sidebar pathname="/dashboard" />)
+    const { container } = render(<Sidebar pathname="/overview" />)
     const logo = container.querySelector('[data-sidebar-logo]')!
     expect(logo.querySelector('svg'), 'the brand mark is missing').toBeTruthy()
     expect(logo.textContent).toContain('worktrack')
@@ -168,7 +168,7 @@ describe('Sidebar', () => {
   it('offers a control that collapses it', () => {
     // Not in the Figma -- Gabe asked for it, and it comes from shadcn's
     // SidebarTrigger. Asserted here so it cannot quietly disappear.
-    render(<Sidebar pathname="/dashboard" />)
+    render(<Sidebar pathname="/overview" />)
     expect(screen.getByRole('button', { name: /toggle sidebar/i })).toBeTruthy()
   })
 
@@ -189,7 +189,7 @@ describe('Sidebar', () => {
   it('never fills a nav item background', () => {
     // The Figma Nav Item description: "no filled background, which would spend
     // colour the status system needs." M5 added hover:bg-bg-inset.
-    const { container } = render(<Sidebar pathname="/dashboard" />)
+    const { container } = render(<Sidebar pathname="/overview" />)
     for (const item of container.querySelectorAll('[data-nav-item]')) {
       expect(item.className, `${item.textContent} has a background fill`).not.toMatch(/\bbg-/)
     }
@@ -239,11 +239,11 @@ describe('Sidebar', () => {
     // Gabe: "collapsing currently hides the whole nav and leaves an empty
     // column." Collapsed must keep every destination reachable, not blank
     // the sidebar out.
-    render(<Sidebar pathname="/dashboard" />)
+    render(<Sidebar pathname="/overview" />)
     fireEvent.click(screen.getByRole('button', { name: /toggle sidebar/i }))
 
     const links = screen.getAllByRole('link')
-    const overview = links.find((l) => l.getAttribute('href') === '/dashboard')!
+    const overview = links.find((l) => l.getAttribute('href') === '/overview')!
     expect(overview.querySelector('[data-nav-index]'), 'no index anywhere any more').toBeNull()
     expect(overview.querySelector('svg'), 'icon should still render').toBeTruthy()
     // The label is visually hidden (sr-only) but still in the DOM, so the
@@ -259,13 +259,13 @@ describe('Sidebar', () => {
     // Not in Figma (109:2402 is a bare hairline square, no text) -- Gabe
     // asked for an indicator so the icon is not orphaned. Chrome, so
     // lowercase, not an acronym.
-    render(<Sidebar pathname="/dashboard" />)
+    render(<Sidebar pathname="/overview" />)
     // next-themes is mocked resolvedTheme: 'light' at the top of this file.
     expect(screen.getByText('light')).toBeTruthy()
   })
 
   it('gives the theme section the same divider-and-section rhythm as settings', () => {
-    const { container } = render(<Sidebar pathname="/dashboard" />)
+    const { container } = render(<Sidebar pathname="/overview" />)
     const nav = container.querySelector('nav')!
     const kids = Array.from(nav.children)
     const dividers = kids.filter((k) => k.tagName === 'HR')
@@ -282,11 +282,11 @@ describe('Sidebar', () => {
     // Gabe: "the brand mark sits hard against the left edge while the
     // trigger and the nav icons below it are centred... Everything in the
     // rail must centre on one axis, in identically-sized hit boxes."
-    render(<Sidebar pathname="/dashboard" />)
+    render(<Sidebar pathname="/overview" />)
     fireEvent.click(screen.getByRole('button', { name: /toggle sidebar/i }))
 
     const logoBox = document.querySelector('[data-sidebar-logo]')!.parentElement!
-    const overview = screen.getAllByRole('link').find((l) => l.getAttribute('href') === '/dashboard')!
+    const overview = screen.getAllByRole('link').find((l) => l.getAttribute('href') === '/overview')!
     const trigger = screen.getByRole('button', { name: /toggle sidebar/i })
     const themeToggle = document.querySelector('[data-theme-toggle]')!.parentElement!
 
@@ -335,7 +335,7 @@ describe('Sidebar', () => {
     // (not a percentage that depends on an ancestor's resolved height) +
     // shrink-0 so a wide main cannot squeeze it + overflow-y-auto as the
     // fallback for a viewport shorter than the nav's own content.
-    const { container } = render(<Sidebar pathname="/dashboard" />)
+    const { container } = render(<Sidebar pathname="/overview" />)
     const nav = container.querySelector('nav')!
     const classes = nav.className.split(' ')
     expect(classes, 'sticky').toContain('sticky')

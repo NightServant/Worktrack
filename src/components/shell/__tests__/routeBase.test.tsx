@@ -18,6 +18,6 @@ describe('the route base', () => {
       wrapper: ({ children }) => <RouteBaseProvider base="/demo">{children}</RouteBaseProvider>,
     })
     expect(result.current('/applications/abc')).toBe('/demo/applications/abc')
-    expect(result.current('/calendar')).toBe('/demo/calendar')
+    expect(result.current('/planner')).toBe('/demo/planner')
   })
 })

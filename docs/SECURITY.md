@@ -118,8 +118,8 @@ These are the actual boundary and none of them live in this repository:
 | Custom SMTP | Dashboard → Project Settings → Auth, or `[auth.email.smtp]` | **Blocking the OTP step.** Without it the free tier refuses email-template changes, so no verification code is ever sent. See below. |
 | CAPTCHA (hCaptcha or Turnstile) | Dashboard → Authentication → Bot and Abuse Protection | The control that actually stops automated sign-up floods. |
 | ~~Email confirmations ON~~ | now `supabase/config.toml` | Moved into the repo and **pushed** on 2026-09-03. |
-| Redirect allow-list | Dashboard → Authentication → URL Configuration | Constrains where an OAuth flow may return a token. |
-| Leaked-password protection | Dashboard → Authentication → Password | Rejects passwords in known breach corpora, which no client-side rule can. |
+| Redirect allow-list | now `supabase/config.toml` | Constrains where an auth flow may return a token. No longer an OAuth concern — the provider buttons were deleted on 2026-09-19 — but it still bounds email-link returns. |
+| ~~Leaked-password protection~~ | **Pro plan only** — not available | Would reject passwords in known breach corpora, which no client-side rule can. Attempted 2026-09-19 and refused: *"Configuring leaked password protection via HaveIBeenPwned.org is available on Pro Plans and up."* The toggle renders on Authentication → Sign In / Providers → Email (not → Password) and fails on save. The database linter will keep reporting this, and the report is correct. |
 
 ## The OTP step is configured in this repo, not in the dashboard
 

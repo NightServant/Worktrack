@@ -6,7 +6,6 @@ import { hasValidSupabaseConfig, supabase, supabaseConfigError } from '@/lib/sup
 import { clearStoredSession } from '@/lib/supabaseSession'
 import { currentEnvSource, readSupabaseConfig } from '@/lib/env'
 import { normalizeEmail } from '@/lib/credentials'
-import { OAUTH_SCOPES, type OAuthProviderId } from '@/lib/oauthProviders'
 import { ExistingAccountError } from '@/lib/existingAccount'
 
 /**
@@ -103,8 +102,6 @@ interface AuthContextType {
   verifyRecoveryOtp: (email: string, token: string) => Promise<void>
   /** Sets a new password for the session `verifyRecoveryOtp` just created. */
   updatePassword: (password: string) => Promise<void>
-  /** Starts an OAuth redirect. Resolves when the browser is handed over. */
-  signInWithProvider: (provider: OAuthProviderId) => Promise<void>
 }
 
 /**
@@ -357,28 +354,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) throw authError(error)
   }
 
-  const signInWithProvider = async (provider: OAuthProviderId) => {
-    if (!hasValidSupabaseConfig) {
-      throw new Error(supabaseConfigError || 'Supabase is not configured')
-    }
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider,
-      options: {
-        // Back to the app, not to a URL the caller supplied: an
-        // attacker-controlled redirectTo on an OAuth flow is how a token ends
-        // up somewhere it should not. window.location.origin is ours by
-        // definition. The destination must also be listed in the Supabase
-        // dashboard's redirect allow-list, which is the real enforcement.
-        redirectTo: `${window.location.origin}/dashboard`,
-        // Undefined for providers that need nothing extra, which the SDK
-        // treats as "the defaults". Azure is the one that does -- see
-        // OAUTH_SCOPES for why its email has to be asked for by name.
-        scopes: OAUTH_SCOPES[provider],
-      },
-    })
-    if (error) throw new Error(error.message)
-  }
-
   /**
    * Sign out of this browser, unconditionally.
    *
@@ -463,7 +438,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         requestPasswordReset,
         verifyRecoveryOtp,
         updatePassword,
-        signInWithProvider,
         signOut,
       }}
     >

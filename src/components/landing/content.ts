@@ -288,7 +288,7 @@ export const FAQ: { heading: string; entries: FaqEntry[] } = {
 export const CLOSING_CTA = {
   heading: 'open the demo, or start your own',
   body: 'The demo needs nothing from you. An account takes an email and a password.',
-  primary: { label: 'open the demo', href: '/demo/dashboard' },
+  primary: { label: 'open the demo', href: '/demo/overview' },
   secondary: { label: 'create an account', href: '/signup' },
   /**
    * THE RETURNING VISITOR'S ROUTE, moved here from the footer on 2026-09-03.

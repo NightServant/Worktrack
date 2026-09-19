@@ -9,7 +9,7 @@ import userEvent from '@testing-library/user-event'
  * SIGNS THE PERSON IN -- that is how Supabase recovery works, and it is the
  * only reason step three can set a password without asking for the old one.
  * But both guards in the (auth) layout treat a new session as a reason to
- * leave: SignedInRedirect navigates to /dashboard, SignedOutOnly returns null
+ * leave: SignedInRedirect navigates to /overview, SignedOutOnly returns null
  * for the whole subtree.
  *
  * So without the hold, entering a correct code would throw somebody onto the
@@ -133,7 +133,7 @@ describe('resetting a password inside the real auth layout', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Save and continue' }))
 
     await waitFor(() => expect(updatePassword).toHaveBeenCalledWith(STRONG))
-    expect(replace).toHaveBeenCalledWith('/dashboard')
+    expect(replace).toHaveBeenCalledWith('/overview')
   })
 
   it('leaves the guards armed on the steps before the session exists', async () => {
@@ -144,6 +144,6 @@ describe('resetting a password inside the real auth layout', () => {
     // No manual rerender needed now: the mock notifies consumers, exactly as
     // a session arriving in another tab would.
     setSignedIn(true)
-    await waitFor(() => expect(replace).toHaveBeenCalledWith('/dashboard'))
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/overview'))
   })
 })

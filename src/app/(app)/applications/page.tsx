@@ -187,7 +187,7 @@ function ApplicationsRoute() {
    * makes no event request.
    *
    * `useScheduleInterview` invalidates `['events']` on success, which is the
-   * single cache entry both /calendar and the Overview's "upcoming events"
+   * single cache entry both /planner and the Overview's "upcoming events"
    * card read -- so both move on their own the moment this lands.
    */
   const saveInterview = async (

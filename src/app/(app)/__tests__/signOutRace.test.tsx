@@ -37,7 +37,7 @@ let emitAuthChange: ((session: null) => void) | null = null
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ replace: replaceMock, push: pushMock, refresh: vi.fn() }),
-  usePathname: () => '/dashboard',
+  usePathname: () => '/overview',
 }))
 vi.mock('@/components/shell/AppShell', () => ({
   AppShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -180,6 +180,6 @@ describe('signing out of the authenticated shell', () => {
     emitAuthChange!(null)
 
     await userEvent.click(await screen.findByRole('button', { name: 'sign in again' }))
-    expect(pushMock).toHaveBeenCalledWith('/login?next=%2Fdashboard')
+    expect(pushMock).toHaveBeenCalledWith('/login?next=%2Foverview')
   })
 })

@@ -7,7 +7,7 @@ import userEvent from '@testing-library/user-event'
  *
  * THIS IS THE TEST THAT WAS MISSING, and its absence is the whole story.
  * `SignUpFlow` has had a third step since it was written -- a success screen
- * that holds for 2.5s and then leaves for /dashboard -- and it was covered by
+ * that holds for 2.5s and then leaves for /overview -- and it was covered by
  * tests that passed. Those tests mounted `SignUpFlow` DIRECTLY. In a browser
  * the flow renders inside the (auth) layout, which mounts two guards, and
  * verifying the code creates a session that makes both of them act at once:
@@ -129,9 +129,9 @@ describe('signing up inside the real auth layout', () => {
     await userEvent.type(field, '123456')
 
     await screen.findByText('you are all set')
-    expect(screen.getByRole('link', { name: /go to the dashboard now/i })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /go to the overview now/i })).toHaveAttribute(
       'href',
-      '/dashboard'
+      '/overview'
     )
   })
 
@@ -144,6 +144,6 @@ describe('signing up inside the real auth layout', () => {
     // No manual rerender: the mock notifies consumers, as a session arriving
     // in another tab would.
     setSignedIn(true)
-    await waitFor(() => expect(replace).toHaveBeenCalledWith('/dashboard'))
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/overview'))
   })
 })

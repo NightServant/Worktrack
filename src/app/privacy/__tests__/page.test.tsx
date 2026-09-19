@@ -28,6 +28,15 @@ function tablesInSchema(): string[] {
   for (const m of sql.matchAll(/CREATE TABLE\s+(?:IF NOT EXISTS\s+)?(?:public\.)?([a-z_]+)/gi)) {
     names.add(m[1].toLowerCase())
   }
+  // AND THE DROPS, or the migrations only ever add. `analytics_cache` was
+  // dropped on 2026-09-19 and this helper went on reporting it as part of the
+  // schema, so the test demanded the privacy page name a table that no longer
+  // exists. The files are read in name order, which is apply order, so a table
+  // created and dropped later nets out -- and one dropped and recreated comes
+  // back, because the CREATE is read after the DROP.
+  for (const m of sql.matchAll(/DROP TABLE\s+(?:IF EXISTS\s+)?(?:public\.)?([a-z_]+)/gi)) {
+    names.delete(m[1].toLowerCase())
+  }
   return [...names].sort()
 }
 

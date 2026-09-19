@@ -27,16 +27,16 @@ import type { IconName } from '@/components/icons'
  * not the roadmap's abbreviated `apps`/`docs`/`stats` wording, which the
  * Figma frame disagrees with.
  */
-// `/calendar` IS LABELLED `planner` (Gabe, 2026-09-11: "rename the page
+// `/planner` IS LABELLED `planner` (Gabe, 2026-09-11: "rename the page
 // properly"). The path does not move -- the Overview's "open the calendar"
 // link, the follow-up nudge and every bookmark point at it -- but the word
 // does. "Calendar" named a month grid; the screen now opens with roles posted
 // in the last few days, carries public holidays, and closes with what is
 // booked. A calendar is a thing you look at. This is a thing you act on.
 export const NAV: { href: string; label: string; icon: IconName }[] = [
-  { href: '/dashboard', label: 'overview', icon: 'Overview' },
+  { href: '/overview', label: 'overview', icon: 'Overview' },
   { href: '/applications', label: 'applications', icon: 'Applications' },
-  { href: '/calendar', label: 'planner', icon: 'Calendar' },
+  { href: '/planner', label: 'planner', icon: 'Calendar' },
   { href: '/documents', label: 'documents', icon: 'Documents' },
   { href: '/analytics', label: 'analytics', icon: 'Analytics' },
 ]
@@ -173,7 +173,7 @@ function ThemeSection({ collapsed }: { collapsed: boolean }) {
  * exactly the state a "collapse" control must not produce.
  */
 function SidebarNav({
-  pathname = '/dashboard',
+  pathname = '/overview',
   activeHref,
   nav = NAV,
   settingsHref = '/settings',

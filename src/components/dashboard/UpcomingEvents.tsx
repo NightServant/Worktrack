@@ -35,7 +35,7 @@ export interface UpcomingEventsProps {
  * The old block did not read the calendar at all: it printed the literal
  * string `N interviews in progress`, derived from job statuses, so there was
  * nothing to be empty about and nothing to show when something *was*
- * scheduled. `useEvents` already existed and `/calendar` already used it; the
+ * scheduled. `useEvents` already existed and `/planner` already used it; the
  * Overview simply never called it.
  *
  * Three states, kept apart on purpose. Loading is a skeleton, not an empty
@@ -47,7 +47,7 @@ export interface UpcomingEventsProps {
  *
  * Event rows use no status colour. An event kind is not an application status,
  * and the five hues mean one specific thing everywhere else — the same rule
- * `/calendar`'s agenda follows.
+ * `/planner`'s agenda follows.
  */
 export function UpcomingEvents({
   events,

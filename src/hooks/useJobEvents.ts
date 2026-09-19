@@ -33,7 +33,7 @@ export function useJobEvents(jobId?: string) {
  * write, or the interview lands in the database and none of the three screens
  * showing events moves:
  *
- *   `['events', user, 'upcoming']`  -- /calendar AND the Overview's
+ *   `['events', user, 'upcoming']`  -- /planner AND the Overview's
  *                                      "upcoming events" card, which is the
  *                                      same cache entry read twice.
  *   `['job-events', user, jobId]`   -- the record's own next-event panel.

@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useAuthHeld } from './authHold'
 
 /**
- * Sends a signed-in visitor from a public route to `/dashboard`.
+ * Sends a signed-in visitor from a public route to `/overview`.
  *
  * IT IS NO LONGER THE GATE. Middleware answers all three of the routes that
  * mount it -- `/`, `/login` and `/signup` -- before a page is sent, so a
@@ -51,7 +51,7 @@ export function SignedInRedirect() {
     // thank-you, which this redirect used to delete before it painted. See
     // ./authHold. Without a provider it is always false, so `/` is unchanged.
     if (held) return
-    if (!loading && user) router.replace('/dashboard')
+    if (!loading && user) router.replace('/overview')
   }, [loading, user, held, router])
 
   return null

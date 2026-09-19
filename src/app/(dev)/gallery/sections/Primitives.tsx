@@ -71,7 +71,7 @@ export function Primitives() {
 
       <Row title="breadcrumb" note="The last crumb is the current page, so it is text rather than a link.">
         <Breadcrumb
-          items={[{ label: 'Dashboard', href: '/dashboard' }, { label: 'Applications', href: '/applications' }, { label: 'Senior Engineer' }]}
+          items={[{ label: 'Dashboard', href: '/overview' }, { label: 'Applications', href: '/applications' }, { label: 'Senior Engineer' }]}
         />
       </Row>
 

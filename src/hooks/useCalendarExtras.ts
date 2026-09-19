@@ -12,8 +12,8 @@ import type { CalendarProps } from '@/components/calendar/Calendar'
  * The two THIRD-PARTY reads the calendar screen carries, and the per-browser
  * choices in front of them.
  *
- * A SHARED HOOK BECAUSE THERE ARE TWO CALENDARS. `/calendar` reads the user's
- * own events; `/demo/calendar` renders a fixture. Holidays and the job feed
+ * A SHARED HOOK BECAUSE THERE ARE TWO CALENDARS. `/planner` reads the user's
+ * own events; `/demo/planner` renders a fixture. Holidays and the job feed
  * are identical on both -- they are public data with nothing to do with the
  * account -- so a second hand-written copy in the demo would be two places to
  * keep a localStorage key, a sentinel value and a fallback in step.

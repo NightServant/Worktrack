@@ -27,9 +27,8 @@ function verdictFor(score: number): AtsResult {
  * case would look like a genuinely bad match instead of an absent one.
  *
  * `error` is a third state, distinct from both loading and empty, matching
- * `ActivityTimeline`/`LinkedCv`/`NextEvent`: a failed `resumes` read for the
- * linked CV must not render the same "link a CV" copy an application with
- * genuinely no linked CV gets.
+ * `LinkedCv`: a failed `resumes` read for the linked CV must not render the
+ * same "link a CV" copy an application with genuinely no linked CV gets.
  *
  * The score-plus-two-lists content below keeps its own `gap-4` wrapper
  * rather than inheriting `PanelSection`'s section-level `gap-3` -- that gap is

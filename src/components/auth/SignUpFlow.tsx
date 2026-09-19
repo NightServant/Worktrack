@@ -16,9 +16,7 @@ import {
   PASSWORD_MAX_LENGTH,
 } from '@/lib/credentials'
 import { takeAuthAttempt, resetAuthAttempts } from '@/lib/authRateLimit'
-import type { OAuthProviderId } from '@/lib/oauthProviders'
 import { AuthBrandPanel } from './AuthBrandPanel'
-import { OAuthButtons } from './OAuthButtons'
 import { useHoldAuthGuards } from './authHold'
 import { isExistingAccountError } from '@/lib/existingAccount'
 import { OtpStep } from './OtpStep'
@@ -50,15 +48,6 @@ export interface SignUpFlowProps {
   onSignUp: (email: string, password: string) => Promise<void>
   onVerify: (email: string, code: string) => Promise<void>
   onResend: (email: string) => Promise<void>
-  /**
-   * Starts an OAuth round trip. Optional, and the provider buttons are
-   * omitted without it -- the same seam `AuthScreen` has always had. The
-   * pages stopped passing it on 2026-09-15: no provider is enabled on the
-   * Supabase project, so both buttons returned
-   * "Unsupported provider: provider is not enabled" after a full round
-   * trip. A control that cannot work is worse than no control.
-   */
-  onProvider?: (provider: OAuthProviderId) => Promise<void>
   /** Called after the thank-you has been shown. */
   onDone: () => void
   /** How long the thank-you holds before leaving. Injectable for tests. */
@@ -92,7 +81,6 @@ export function SignUpFlow({
   onSignUp,
   onVerify,
   onResend,
-  onProvider,
   onDone,
   doneDelayMs = 2500,
 }: SignUpFlowProps) {
@@ -338,8 +326,6 @@ export function SignUpFlow({
                 Create account
               </Button>
 
-              {onProvider && <OAuthButtons onSelect={onProvider} disabled={busy} />}
-
               <div data-switch-mobile className="text-body-s lg:hidden">
                 <span className="text-text-muted">have an account? </span>
                 <Link href="/login" className="text-accent-default underline underline-offset-4">
@@ -391,7 +377,7 @@ export function SignUpFlow({
                 titleAs="h1"
                 compact
                 title="you are all set"
-                message="Your account is verified. Taking you to your dashboard now."
+                message="Your account is verified. Taking you to your overview now."
                 action={
                   /*
                     A link beside the automatic redirect, not instead of it: an
@@ -399,10 +385,10 @@ export function SignUpFlow({
                     a thank-you page forever, and this is the way out.
                   */
                   <Link
-                    href="/dashboard"
+                    href="/overview"
                     className="text-body-s text-accent-default underline underline-offset-4"
                   >
-                    go to the dashboard now
+                    go to the overview now
                   </Link>
                 }
               />

@@ -26,7 +26,7 @@ const st: Record<string, unknown> = {}
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => st }))
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
-  usePathname: () => '/dashboard',
+  usePathname: () => '/overview',
 }))
 vi.mock('@/components/shell/AppShell', () => ({
   AppShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,

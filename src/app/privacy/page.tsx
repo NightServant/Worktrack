@@ -86,7 +86,6 @@ const STORED: { table: string; what: string }[] = [
   { table: 'application_documents', what: 'Links between an application and the CV version sent with it.' },
   { table: 'user_preferences', what: 'Your settings, such as default currency.' },
   { table: 'user_profiles', what: 'Your professional profile, if you build one in Settings from your LinkedIn profile address: name, headline, summary, work history, education and whatever else that public page carries. Only the public page is read, only when you ask for it, and it is removable from the same screen.' },
-  { table: 'analytics_cache', what: 'Computed results of your own analytics. Nothing writes to it today — your charts are calculated fresh each visit — so it is empty.' },
   { table: 'demo_accounts', what: 'The identifiers of the public read-only demo accounts. It holds no data belonging to you.' },
 ]
 

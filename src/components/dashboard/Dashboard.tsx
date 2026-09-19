@@ -112,7 +112,7 @@ const STALE_AFTER_DAYS = 14
 const TREND_MONTHS = 6
 
 /**
- * The Overview's body, separated from `src/app/(app)/dashboard/page.tsx` so it
+ * The Overview's body, separated from `src/app/(app)/overview/page.tsx` so it
  * can be rendered and tested with plain props instead of through Next routing.
  *
  * Rebuilt against Figma node 20:64 (M5.5 Item 5). What M5 shipped was six
@@ -153,7 +153,7 @@ const TREND_MONTHS = 6
  * preserves the data the retired `DashboardBlocks` surfaced as text.
  *
  * `events` arrives as a prop from the route, which reads `useEvents`. That
- * hook already existed and `/calendar` already used it; the Overview never
+ * hook already existed and `/planner` already used it; the Overview never
  * called it, which is why "upcoming events" printed a sentence derived from
  * job statuses and had no empty state to show.
  *
@@ -268,9 +268,9 @@ export function Dashboard({
             </CardTitle>
             <CardDescription>interviews and calls already booked in.</CardDescription>
             <CardAction>
-              {/* The path is still /calendar; the destination is called the
+              {/* The path is still /planner; the destination is called the
                   planner now, and a link should name where it goes. */}
-              <PanelLink href={appHref('/calendar')}>open the planner</PanelLink>
+              <PanelLink href={appHref('/planner')}>open the planner</PanelLink>
             </CardAction>
           </CardHeader>
           <CardContent className="flex flex-1 flex-col">

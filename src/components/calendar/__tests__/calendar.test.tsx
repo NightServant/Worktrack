@@ -77,7 +77,7 @@ describe('Calendar', () => {
   // a props-taking component, matching Dashboard/DetailPage). It takes
   // companyByJobId as a plain prop built by the route, so no hook mock is
   // needed here at all; that mock now lives in
-  // src/app/(app)/calendar/__tests__/page.test.tsx.
+  // src/app/(app)/planner/__tests__/page.test.tsx.
   it('is a month grid on desktop and a week strip plus agenda on mobile', () => {
     // 47px cells can show a dot but never an event, so mobile is a different
     // layout rather than a squeezed one.
@@ -99,7 +99,7 @@ describe('Calendar', () => {
   })
 
   it('renders a page header titled planner', () => {
-    // `calendar` until 2026-09-11. The route is still /calendar; the word
+    // `calendar` until 2026-09-11. The route is still /planner; the word
     // changed because the screen stopped being a month grid -- see NAV.
     render(<Calendar events={EVENTS} />)
     expect(screen.getByRole('heading', { name: 'planner' })).toBeTruthy()

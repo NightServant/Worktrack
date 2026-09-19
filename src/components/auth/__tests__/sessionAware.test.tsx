@@ -127,10 +127,10 @@ describe('the way out of a public document', () => {
   it('offers both destinations, each tagged with who it is for', () => {
     render(<HomeOrDashboardLink />)
     const home = screen.getByRole('link', { name: /Back to the home page/i })
-    const dashboard = screen.getByRole('link', { name: /Back to the dashboard/i })
+    const dashboard = screen.getByRole('link', { name: /Back to the overview/i })
     expect(home).toHaveAttribute('href', '/')
     expect(home).toHaveAttribute('data-when-signed-out')
-    expect(dashboard).toHaveAttribute('href', '/dashboard')
+    expect(dashboard).toHaveAttribute('href', '/overview')
     expect(dashboard).toHaveAttribute('data-when-signed-in')
   })
 

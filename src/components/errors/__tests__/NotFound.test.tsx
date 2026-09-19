@@ -66,7 +66,7 @@ describe('the 404 recovery button, which depends on the session', () => {
     expect(cta).toHaveAttribute('href', '/')
     expect(cta).toHaveAttribute('data-variant', 'primary')
 
-    expect(screen.queryByRole('link', { name: /dashboard/i })).toBeNull()
+    expect(screen.queryByRole('link', { name: /overview/i })).toBeNull()
     expect(document.querySelectorAll('[data-cta]')).toHaveLength(1)
   })
 
@@ -77,7 +77,7 @@ describe('the 404 recovery button, which depends on the session', () => {
     render(<NotFound />)
 
     const cta = screen.getByRole('link', { name: /Return to dashboard/i })
-    expect(cta).toHaveAttribute('href', '/dashboard')
+    expect(cta).toHaveAttribute('href', '/overview')
     expect(cta).toHaveAttribute('data-variant', 'primary')
 
     expect(screen.queryByRole('link', { name: /Back to the home page/i })).toBeNull()

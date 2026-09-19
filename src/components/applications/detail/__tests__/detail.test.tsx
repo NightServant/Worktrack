@@ -3,9 +3,7 @@ import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { Job } from '@/types'
 import { AtsPanel } from '../AtsPanel'
-import { NextEvent } from '../NextEvent'
 import { JobDescription } from '../JobDescription'
-import { ActivityTimeline } from '../ActivityTimeline'
 import { LinkedCv } from '../LinkedCv'
 import { ApplicationRecordView } from '../../record/ApplicationRecordView'
 import { EMPTY_RECORD_DATA } from '../../record/recordData'
@@ -93,38 +91,6 @@ describe('AtsPanel', () => {
   })
 })
 
-describe('NextEvent', () => {
-  it('says so plainly when there is no next event', () => {
-    render(<NextEvent event={null} />)
-    expect(screen.getByText(/nothing scheduled/i)).toBeTruthy()
-  })
-
-  it('says the read failed rather than claiming nothing is scheduled', () => {
-    render(<NextEvent event={null} error />)
-    expect(screen.queryByText(/nothing scheduled/i)).toBeNull()
-    expect(screen.getByText(/could not load the next event/i)).toBeTruthy()
-  })
-
-  it('renders the event kind and time when one is scheduled', () => {
-    render(
-      <NextEvent
-        event={{
-          id: 'evt-1',
-          job_id: 'job-1',
-          user_id: 'user-1',
-          kind: 'interview',
-          title: 'Onsite round',
-          starts_at: '2026-09-01T14:00:00.000Z',
-          duration_minutes: 60,
-          notes: null,
-        }}
-      />
-    )
-    expect(screen.getByText('Onsite round')).toBeTruthy()
-    expect(screen.getByText(/Interview/)).toBeTruthy()
-  })
-})
-
 describe('JobDescription', () => {
   it('says so plainly when there is no description', () => {
     render(<JobDescription description={null} />)
@@ -135,36 +101,6 @@ describe('JobDescription', () => {
     render(<JobDescription description="Build things." url="https://example.com" />)
     expect(screen.getByText('Build things.')).toBeTruthy()
     expect(screen.getByRole('link', { name: /view posting/i })).toBeTruthy()
-  })
-})
-
-describe('ActivityTimeline', () => {
-  it('says so plainly when nothing has been logged, without promising a composer nothing builds', () => {
-    render(<ActivityTimeline activity={[]} />)
-    expect(screen.getByText(/no activity logged for this application yet/i)).toBeTruthy()
-    // The old copy ("Notes you add here...") pointed at a note composer that
-    // no task through M5 builds.
-    expect(screen.queryByText(/notes you add here/i)).toBeNull()
-  })
-
-  it('says the read failed rather than claiming nothing was logged', () => {
-    render(<ActivityTimeline activity={[]} error />)
-    expect(screen.queryByText(/no activity logged/i)).toBeNull()
-    expect(screen.getByText(/could not load activity/i)).toBeTruthy()
-  })
-
-  it('lists entries newest first regardless of input order', () => {
-    render(
-      <ActivityTimeline
-        activity={[
-          { id: 'a', job_id: 'job-1', user_id: 'user-1', note: 'Older note', occurred_at: '2026-07-01' },
-          { id: 'b', job_id: 'job-1', user_id: 'user-1', note: 'Newer note', occurred_at: '2026-07-15' },
-        ]}
-      />
-    )
-    const notes = screen.getAllByText(/note/).map((el) => el.textContent)
-    expect(notes[0]).toBe('Newer note')
-    expect(notes[1]).toBe('Older note')
   })
 })
 
@@ -211,8 +147,10 @@ describe('LinkedCv', () => {
  * THE PANELS THIS USED TO ASSERT ON -- activity, next event, linked CV, notes,
  * contact -- are not on the record any more either. Gabe's revision specified
  * the record as three columns (basic information, the posting, the ATS match)
- * and removed notes and contact by name. `ActivityTimeline`, `NextEvent` and
- * `LinkedCv` still exist and are still covered directly, above.
+ * and removed notes and contact by name. `ActivityTimeline` and `NextEvent`
+ * were then deleted outright (Gabe, 2026-09-19: "Remove them completely") --
+ * they had been carried for ten days as tested components nothing rendered.
+ * `LinkedCv` survives because the record still uses it.
  */
 describe('ApplicationRecordView', () => {
   it('shows the form beside a tab for each of the other two surfaces', async () => {

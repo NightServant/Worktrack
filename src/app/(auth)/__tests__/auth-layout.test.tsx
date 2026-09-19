@@ -45,7 +45,7 @@ describe('the sign-in and sign-up shell', () => {
     // is not an edge case, it is what the pages are for.
     authState.current = { user: { id: 'u1' }, loading: false }
     render(<AuthLayout>{<p>form</p>}</AuthLayout>)
-    await waitFor(() => expect(replace).toHaveBeenCalledWith('/dashboard'))
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/overview'))
   })
 
   it('leaves a signed-out visitor on the form', async () => {

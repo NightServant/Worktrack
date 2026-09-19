@@ -298,7 +298,7 @@ describe('the closing call to action', () => {
 
     expect(
       within(section).getByRole('link', { name: CLOSING_CTA.primary.label })
-    ).toHaveAttribute('href', '/demo/dashboard')
+    ).toHaveAttribute('href', '/demo/overview')
     expect(
       within(section).getByRole('link', { name: CLOSING_CTA.secondary.label })
     ).toHaveAttribute('href', '/signup')

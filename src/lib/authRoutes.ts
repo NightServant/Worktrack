@@ -13,7 +13,7 @@
  *                was asked for rides along as `?next=` so the sign-in can put
  *                the visitor where they were going rather than on a dashboard
  *                they did not ask for.
- *   SIGNED-IN  -- `/`, `/login` and `/signup`. A session means /dashboard: a
+ *   SIGNED-IN  -- `/`, `/login` and `/signup`. A session means /overview: a
  *   ELSEWHERE     sign-in form whose only honest outcome is to put you back
  *                 where you already are is not worth showing, and neither is a
  *                 marketing page pitching a product you already have.
@@ -37,9 +37,9 @@
 
 /** Everything under these prefixes requires a session. */
 const PRIVATE_PREFIXES = [
-  '/dashboard',
+  '/overview',
   '/applications',
-  '/calendar',
+  '/planner',
   '/documents',
   '/cv',
   '/analytics',
@@ -115,7 +115,7 @@ export function decideRoute(
   }
 
   if (redirectsWhenSignedIn(pathname) && signedIn) {
-    return { redirectTo: '/dashboard' }
+    return { redirectTo: '/overview' }
   }
 
   return { redirectTo: null }

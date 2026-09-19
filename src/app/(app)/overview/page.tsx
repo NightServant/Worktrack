@@ -24,7 +24,7 @@ export default function Page() {
   const { data: jobs = [], isLoading, error } = useJobs()
   // The Overview never read the calendar before M5.5: its "upcoming events"
   // block printed a sentence derived from job statuses, so there was nothing
-  // to be empty about. `useEvents` already existed and /calendar already used
+  // to be empty about. `useEvents` already existed and /planner already used
   // it. Deliberately NOT part of the route's loading/error gate -- a calendar
   // that is slow or failing must not blank the whole Overview, so its three
   // states are handled inside the panel that owns them.

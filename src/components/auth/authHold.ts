@@ -7,7 +7,7 @@ import * as React from 'react'
  *
  * WHY IT HAS TO EXIST. `/signup`'s whole job is to bring a session into
  * existence, and both guards on that route treat a new session as "you are in
- * the wrong place": `SignedInRedirect` navigates to /dashboard and
+ * the wrong place": `SignedInRedirect` navigates to /overview and
  * `SignedOutOnly` returns null. On /login that is exactly right -- the form
  * has done its work and the page should get out of the way. On /signup it
  * deleted a screen. SignUpFlow's third step is a thank-you that holds for

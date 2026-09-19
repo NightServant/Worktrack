@@ -8,7 +8,7 @@ import { siteUrl } from '@/lib/siteUrl'
  * WHAT IS DISALLOWED AND WHY. The authenticated routes are already unreachable
  * without a session, so this is not what protects them -- (app)/layout.tsx and
  * row-level security are. What it does is keep them out of the index as
- * SOFT-404s: a crawler that requests /dashboard gets the sign-in redirect, and
+ * SOFT-404s: a crawler that requests /overview gets the sign-in redirect, and
  * a search result reading "Worktrack — Sign in" for the query "worktrack
  * dashboard" is worse than no result at all.
  *
@@ -27,9 +27,9 @@ export default function robots(): MetadataRoute.Robots {
       userAgent: '*',
       allow: '/',
       disallow: [
-        '/dashboard',
+        '/overview',
         '/applications',
-        '/calendar',
+        '/planner',
         '/documents',
         '/cv',
         '/analytics',

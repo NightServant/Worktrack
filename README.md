@@ -19,11 +19,11 @@ A job search tracker with analytics and a CV builder, built with Next.js 15 (App
 
 Worktrack is a full-stack application with an account behind it, which is the main thing separating it from a spreadsheet: the pipeline, the analytics and the CV history are all views over the same rows, and a status change recorded once shows up in the board, the timeline and the funnel without being entered three times.
 
-Behind authentication sit `/dashboard`, `/applications`, `/applications/[id]`, `/calendar`, `/documents`, `/documents/templates`, `/cv`, `/analytics` and `/settings`. In front of it are the landing page at `/`, `/login` and `/signup`, the read-only demo at `/demo/*`, and `/privacy`.
+Behind authentication sit `/overview`, `/applications`, `/applications/[id]`, `/planner`, `/documents`, `/documents/templates`, `/cv`, `/analytics` and `/settings`. In front of it are the landing page at `/`, `/login` and `/signup`, the read-only demo at `/demo/*`, and `/privacy`.
 
 **Data belongs to one person and the database enforces it.** Row-level security is enabled on every table and every policy scopes rows to `auth.uid()`, so a request for someone else's row returns nothing rather than being filtered out afterwards by the interface. That holds even when the application asks for the wrong thing, which is the point of putting it there rather than in a service layer.
 
-**You do not need an account to see the product.** [`/demo/dashboard`](/demo/dashboard) serves the real screens over invented data from `src/lib/demoFixture.ts` — a file in this repository, so there is no session, no database connection and no write path behind those pages. That is a stronger guarantee than a read-only account and a much smaller one to make: no credentials to publish, nothing to vandalise, and `git checkout` is the entire reseeding procedure.
+**You do not need an account to see the product.** [`/demo/overview`](/demo/overview) serves the real screens over invented data from `src/lib/demoFixture.ts` — a file in this repository, so there is no session, no database connection and no write path behind those pages. That is a stronger guarantee than a read-only account and a much smaller one to make: no credentials to publish, nothing to vandalise, and `git checkout` is the entire reseeding procedure.
 
 ## 2. Brand
 
@@ -63,17 +63,17 @@ Captured from the running application, not mocked up.
 | | |
 |---|---|
 | ![The overview](public/screens/light/desktop/overview.jpg) | ![The applications list](public/screens/light/desktop/applications.jpg) |
-| **`/dashboard`** — what is moving, what has stalled, what is next | **`/applications`** — the pipeline as a board or a table |
+| **`/overview`** — what is moving, what has stalled, what is next | **`/applications`** — the pipeline as a board or a table |
 | ![Analytics](public/screens/light/desktop/analytics.jpg) | ![Documents](public/screens/light/desktop/documents.jpg) |
 | **`/analytics`** — conversion, time-in-stage and source trends | **`/documents`** — CV versions and what was sent where |
 
 ![The planner](public/screens/light/desktop/planner.jpg)
 
-**`/calendar`** — interviews, deadlines and take-homes.
+**`/planner`** — interviews, deadlines and take-homes.
 
 ## 4. Demo
 
-[`/demo/dashboard`](/demo/dashboard) — the app's real screens over invented data. No account, no sign-in, nothing to enter.
+[`/demo/overview`](/demo/overview) — the app's real screens over invented data. No account, no sign-in, nothing to enter.
 
 It is a public URL space rather than a shared account. Every figure comes from `src/lib/demoFixture.ts`, so the routes are statically rendered and opening the demo serves HTML rather than a spinner.
 
@@ -198,9 +198,9 @@ The figures above are quoted with the date they were read, because somebody else
 This is the same rule the landing page follows and `src/lib/__tests__/attribution.test.ts` enforces: a claim nothing recomputes is a claim that rots, and this README shipped a stale test count once already.
 
 ### Accounts
-[Sign in](/login) or [create an account](/signup). Registration is three steps — credentials, a six-digit code sent to the address, then the dashboard — with the password rules shown on the form and checked as you type.
+[Sign in](/login) or [create an account](/signup). Registration is three steps — credentials, a six-digit code sent to the address, then the overview — with the password rules shown on the form and checked as you type.
 
-The same rules are enforced by the database and not only by the browser: `minimum_password_length` and `password_requirements` in [`supabase/config.toml`](supabase/config.toml) mirror `src/lib/credentials.ts`, because a rule the browser enforces and the server does not is a rule anyone can skip with `curl`. Google and Microsoft are offered as providers.
+The same rules are enforced by the database and not only by the browser: `minimum_password_length` and `password_requirements` in [`supabase/config.toml`](supabase/config.toml) mirror `src/lib/credentials.ts`, because a rule the browser enforces and the server does not is a rule anyone can skip with `curl`.
 
 Email addresses are normalised — trimmed and lowercased — before anything leaves the browser. Without that, `Gabe@example.com` and `gabe@example.com` are two accounts, and walking the case permutations of one address is a way to create a great many rows that all belong to one person.
 
@@ -360,7 +360,6 @@ Twelve tables, RLS enabled on all of them:
 | `application_documents` | Which CV snapshot was sent to which application |
 | `contacts` / `application_contacts` | Recruiters and referrals, linked many-to-many |
 | `user_preferences` | Per-user settings; default currency for new applications |
-| `analytics_cache` | Precomputed per-user metrics, service-role only |
 | `demo_accounts` | Read-only demo users, enforced by RLS |
 
 ### Edge functions — there are none
@@ -387,7 +386,8 @@ The work they were meant to do runs where it can be tested from a laptop:
 
 ## 12. Limitations
 
-- **The signup OTP needs a dashboard change to work.** `supabase/config.toml` carries it, but nothing takes effect until `supabase config push` is run against the project. Until then the code is never sent.
+- **Leaked-password protection is a Pro feature, and is therefore off.** Supabase checks new passwords against HaveIBeenPwned only on paid plans; the toggle renders and refuses to save. The length and character rules are enforced server-side, so what is missing is specifically the "this password is already on a list" check — which no client-side rule can honestly provide, so none is pretended. The same gate keeps server-side session expiry off; see [`docs/SECURITY.md`](docs/SECURITY.md).
+- **There is no third-party sign-in.** Email and password only. Google and Microsoft buttons existed and were deleted once it was established that neither provider had ever been enabled on the project — a control that cannot work reads as a broken app rather than a feature that is not set up.
 - **Client-side rate limiting is an affordance, not a boundary.** `src/lib/authRateLimit.ts` throttles repeated attempts from one browser and anyone with a console walks past it. The real boundary is server-side, and `docs/SECURITY.md` tables the dashboard controls that have to be switched on.
 - **`/` redirects a signed-in visitor after hydration, not before.** The session lives in `localStorage`, so there is no auth cookie for middleware to read, and the landing page paints for a frame before the redirect. Removing that frame needs cookie-backed sessions via `@supabase/ssr`, which is a migration rather than a fix.
 - **`resumes.sections` is never written**, so the ATS column reads "not checked" for CVs created through the editors.

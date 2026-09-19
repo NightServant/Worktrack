@@ -123,11 +123,28 @@ const nextConfig: NextConfig = {
     // Lint remains a separate gate; revisit when M5 rewrites those files anyway.
     ignoreDuringBuilds: true,
   },
-  // The Applications screen moved from /jobs to /applications in M5; the old
-  // URL is live in production (bookmarks, shared links), so it redirects
-  // rather than 404ing.
+  /**
+   * The routes whose URL used to disagree with their own name.
+   *
+   * `/jobs` moved to `/applications` in M5. `/dashboard` and `/calendar`
+   * followed on 2026-09-19 (Gabe: "URL names must be changed to match the page
+   * name") -- the sidebar had said "overview" and "planner" for weeks while the
+   * address bar said something else, which is visible in every screenshot on
+   * the landing page and in every link anyone shares.
+   *
+   * ALL OF THEM ARE LIVE IN PRODUCTION, so none of them may 404. `permanent`
+   * is a 308: it keeps the method, and it tells a browser and a search engine
+   * to stop asking. The demo pair is listed separately rather than by pattern
+   * because `/demo/:page` would also swallow paths that were never renamed.
+   */
   async redirects() {
-    return [{ source: '/jobs', destination: '/applications', permanent: true }]
+    return [
+      { source: '/jobs', destination: '/applications', permanent: true },
+      { source: '/dashboard', destination: '/overview', permanent: true },
+      { source: '/calendar', destination: '/planner', permanent: true },
+      { source: '/demo/dashboard', destination: '/demo/overview', permanent: true },
+      { source: '/demo/calendar', destination: '/demo/planner', permanent: true },
+    ]
   },
   /**
    * THE RESPONSE HEADERS, AND UNTIL 2026-09-15 THERE WERE NONE.

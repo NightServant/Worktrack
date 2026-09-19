@@ -30,11 +30,11 @@ export default function sitemap(): MetadataRoute.Sitemap {
 
   return [
     page('/', 1, 'monthly'),
-    page('/demo/dashboard', 0.8, 'monthly'),
+    page('/demo/overview', 0.8, 'monthly'),
     page('/demo/applications', 0.7, 'monthly'),
     page('/demo/analytics', 0.7, 'monthly'),
     page('/demo/documents', 0.7, 'monthly'),
-    page('/demo/calendar', 0.7, 'monthly'),
+    page('/demo/planner', 0.7, 'monthly'),
     page('/signup', 0.6, 'yearly'),
     page('/login', 0.4, 'yearly'),
     page('/privacy', 0.3, 'yearly'),

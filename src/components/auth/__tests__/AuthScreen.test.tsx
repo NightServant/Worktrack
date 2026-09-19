@@ -100,44 +100,6 @@ describe('AuthScreen password field', () => {
   })
 })
 
-describe('AuthScreen provider buttons', () => {
-  it('offers Google and Microsoft below the form, not above it', () => {
-    // Gabe asked for these on the login screen on 2026-09-03, in the order
-    // already settled for sign-up: manual fields first, then the divider,
-    // then the shortcut. Two auth screens that disagree about where the
-    // providers live would be the inconsistency the input merge just removed.
-    const { container } = render(
-      <AuthScreen mode="signin" onSubmit={vi.fn()} onProvider={vi.fn()} />
-    )
-    const providers = container.querySelector('[data-oauth-buttons]')
-    expect(providers).not.toBeNull()
-    expect(
-      [...providers!.querySelectorAll('[data-provider]')].map((b) =>
-        b.getAttribute('data-provider')
-      )
-    ).toEqual(['google', 'azure'])
-
-    const submit = screen.getByRole('button', { name: 'Sign in' })
-    expect(submit.compareDocumentPosition(providers!) & Node.DOCUMENT_POSITION_FOLLOWING)
-      .toBeTruthy()
-  })
-
-  it('omits them entirely when no handler is given, rather than rendering dead buttons', () => {
-    // A "Continue with Google" that does nothing is worse than no button: it
-    // reads as broken auth, which is the least reassuring thing a sign-in
-    // page can say.
-    const { container } = render(<AuthScreen mode="signin" onSubmit={vi.fn()} />)
-    expect(container.querySelector('[data-oauth-buttons]')).toBeNull()
-  })
-
-  it('starts the round trip with the provider that was clicked', async () => {
-    const onProvider = vi.fn().mockResolvedValue(undefined)
-    render(<AuthScreen mode="signin" onSubmit={vi.fn()} onProvider={onProvider} />)
-    await userEvent.click(screen.getByRole('button', { name: /Continue with Microsoft/i }))
-    expect(onProvider).toHaveBeenCalledWith('azure')
-  })
-})
-
 describe('AuthScreen layout', () => {
   it('drops the brand panel below lg, where there is no room for it', () => {
     const { container } = render(<AuthScreen mode="signin" onSubmit={vi.fn()} />)

@@ -22,7 +22,6 @@ function setup(overrides: Partial<React.ComponentProps<typeof SignUpFlow>> = {})
     onSignUp: vi.fn().mockResolvedValue(undefined),
     onVerify: vi.fn().mockResolvedValue(undefined),
     onResend: vi.fn().mockResolvedValue(undefined),
-    onProvider: vi.fn().mockResolvedValue(undefined),
     onDone: vi.fn(),
     doneDelayMs: 10,
     ...overrides,
@@ -300,60 +299,10 @@ describe('the thank-you step', () => {
     expect(await screen.findByText('you are all set')).toBeInTheDocument()
     // The manual way out: an automatic navigation that fails silently would
     // otherwise strand someone on a thank-you page.
-    expect(screen.getByRole('link', { name: /go to the dashboard now/i })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /go to the overview now/i })).toHaveAttribute(
       'href',
-      '/dashboard'
+      '/overview'
     )
     await waitFor(() => expect(props.onDone).toHaveBeenCalled())
-  })
-})
-
-describe('the faster options', () => {
-  it('sits below the manual form, not above it', () => {
-    // Gabe's 2026-09-02 ruling, from a reference layout: the email and
-    // password fields come first, then the divider, then the providers.
-    // Asserted on DOM ORDER rather than on a class or a wrapper, because the
-    // order is the whole request -- a flex-col-reverse that looked right would
-    // still read wrong to a screen reader and to the keyboard.
-    setup()
-    const email = screen.getByLabelText(/^Email/)
-    const submit = screen.getByRole('button', { name: 'Create account' })
-    const providers = document.querySelector('[data-oauth-buttons]')!
-
-    expect(email.compareDocumentPosition(providers) & Node.DOCUMENT_POSITION_FOLLOWING)
-      .toBeTruthy()
-    expect(submit.compareDocumentPosition(providers) & Node.DOCUMENT_POSITION_FOLLOWING)
-      .toBeTruthy()
-  })
-
-  it('carries each provider its own mark, in the provider colours', () => {
-    // OAuthButtons argued against logos entirely until 2026-09-03. The marks
-    // are fixed brand artwork, so they are asserted on the ONE property that
-    // separates them from this design system's stroke icons: a real fill,
-    // theme-independent, rather than currentColor.
-    setup()
-    for (const [id, fill] of [
-      ['google', '#4285F4'],
-      ['azure', '#F25022'],
-    ] as const) {
-      const button = document.querySelector(`[data-provider="${id}"]`)!
-      const svg = button.querySelector('svg')
-      expect(svg, `${id} has no mark`).not.toBeNull()
-      expect(svg!.innerHTML).toContain(fill)
-      expect(svg!.getAttribute('stroke')).toBeNull()
-    }
-  })
-
-  it('offers the providers Supabase can actually serve', async () => {
-    const props = setup()
-    const buttons = document.querySelectorAll('[data-oauth-buttons] [data-provider]')
-    // 'azure' IS Microsoft. Supabase names the provider after the identity
-    // platform behind it, so 'microsoft' typechecks against nothing.
-    expect([...buttons].map((b) => b.getAttribute('data-provider'))).toEqual([
-      'google',
-      'azure',
-    ])
-    await userEvent.click(screen.getByRole('button', { name: /Continue with Google/i }))
-    expect(props.onProvider).toHaveBeenCalledWith('google')
   })
 })

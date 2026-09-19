@@ -49,27 +49,6 @@ export type Database = {
           },
         ]
       }
-      analytics_cache: {
-        Row: {
-          metric_name: string
-          payload: Json
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          metric_name: string
-          payload: Json
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          metric_name?: string
-          payload?: Json
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
       application_contacts: {
         Row: {
           contact_id: string
@@ -455,10 +434,6 @@ export type Database = {
     }
     Functions: {
       is_demo: { Args: never; Returns: boolean }
-      upsert_analytics_cache: {
-        Args: { p_metric: string; p_payload: Json; p_user: string }
-        Returns: undefined
-      }
     }
     Enums: {
       [_ in never]: never

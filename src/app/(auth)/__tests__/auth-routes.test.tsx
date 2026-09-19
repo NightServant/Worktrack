@@ -7,7 +7,6 @@ const signIn = vi.fn()
 const signUp = vi.fn()
 const verifySignUpOtp = vi.fn()
 const resendSignUpOtp = vi.fn()
-const signInWithProvider = vi.fn()
 // `?next=` support arrived with the middleware (2026-09-11): a signed-out
 // visitor is sent here with the path they asked for attached, and the page
 // reads it back on submit.
@@ -34,7 +33,6 @@ vi.mock('@/contexts/AuthContext', () => ({
     signUp,
     verifySignUpOtp,
     resendSignUpOtp,
-    signInWithProvider,
     signOut: vi.fn(),
   }),
 }))
@@ -48,7 +46,6 @@ beforeEach(() => {
   signUp.mockReset()
   verifySignUpOtp.mockReset()
   resendSignUpOtp.mockReset()
-  signInWithProvider.mockReset()
   window.localStorage.clear()
   // jsdom keeps the URL between tests, so a leftover `?next=` would leak into
   // the next one and pass it for the wrong reason.
@@ -72,14 +69,16 @@ async function fill(password = 'hunter22') {
  * not enabled"}`. A control that cannot work is worse than no control: it
  * reads as a broken app rather than a feature that is not set up.
  *
- * THE COMPONENTS ARE STILL HERE AND STILL TESTED. `AuthScreen` and
- * `SignUpFlow` both take `onProvider` as an optional prop and omit the buttons
- * without it, and their own suites still pass one in. So this is not a
- * deletion -- it is the two PAGES declining to pass it, which is one line each
- * to put back the day a provider is actually enabled.
+ * THE COMPONENTS ARE GONE NOW, not merely unwired (Gabe, 2026-09-19: "Remove
+ * the OAuth buttons entirely"). `OAuthButtons`, `lib/oauthProviders`, the
+ * vendor marks and `signInWithProvider` on the context were kept for four days
+ * as a one-line-each restoration; kept code that nothing renders is a claim
+ * the product makes and does not honour, and the git history is a better place
+ * to restore from than a live module nobody imports.
  *
- * These assert on the route components, where the decision lives. Asserting on
- * `AuthScreen` would prove nothing: it never rendered them unprompted.
+ * This stays because a provider button is exactly the kind of thing a UI
+ * library or a copied auth screen reintroduces by accident, and the assertion
+ * costs nothing.
  */
 describe('neither route offers a provider button', () => {
   it('renders no provider button on /login', () => {
@@ -100,7 +99,7 @@ describe('the /login route', () => {
     await fill()
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
     expect(signIn).toHaveBeenCalledWith('a@b.test', 'hunter22')
-    expect(push).toHaveBeenCalledWith('/dashboard')
+    expect(push).toHaveBeenCalledWith('/overview')
   })
 
   it('does not navigate when the sign-in is refused', async () => {
@@ -158,7 +157,7 @@ describe('the /signup route', () => {
 
     expect(verifySignUpOtp).toHaveBeenCalledWith('a@b.test', '123456')
     expect(await screen.findByText('you are all set')).toBeInTheDocument()
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/dashboard'), { timeout: 4000 })
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/overview'), { timeout: 4000 })
   })
 
   it('does not advance when the signup is refused', async () => {
@@ -193,6 +192,6 @@ describe('the /signup route', () => {
     render(<LoginRoute />)
     await fill()
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/dashboard'))
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/overview'))
   })
 })

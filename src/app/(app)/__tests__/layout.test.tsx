@@ -4,7 +4,7 @@ import AppLayout from '../layout'
 
 const useAuthMock = vi.hoisted(() => vi.fn())
 const replaceMock = vi.hoisted(() => vi.fn())
-const pathnameMock = vi.hoisted(() => vi.fn(() => '/dashboard'))
+const pathnameMock = vi.hoisted(() => vi.fn(() => '/overview'))
 
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: useAuthMock }))
 vi.mock('next/navigation', () => ({
@@ -21,7 +21,7 @@ vi.mock('@/components/shell/AppShell', () => ({
 beforeEach(() => {
   replaceMock.mockClear()
   useAuthMock.mockReset()
-  pathnameMock.mockReturnValue('/dashboard')
+  pathnameMock.mockReturnValue('/overview')
 })
 
 describe('the authenticated shell guard', () => {

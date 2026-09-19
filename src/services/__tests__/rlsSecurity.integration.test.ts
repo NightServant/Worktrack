@@ -13,7 +13,7 @@ describeIntegration('RLS holds against an unauthenticated client', () => {
   const USER_TABLES = [
     'jobs', 'resumes', 'resume_snapshots', 'application_documents',
     'events', 'activity_log', 'contacts', 'application_contacts',
-    'user_preferences', 'job_status_history', 'analytics_cache',
+    'user_preferences', 'job_status_history', 'user_profiles',
   ] as const
 
   let anon: SupabaseClient

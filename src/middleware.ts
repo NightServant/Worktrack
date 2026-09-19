@@ -9,7 +9,7 @@ import { createMiddlewareClient } from '@/lib/supabase/server'
  * WHAT THIS REPLACES. Every redirect in this app was a client-side correction
  * applied after something was already on screen: `(app)/layout.tsx` rendered
  * null and then pushed you to /login, the auth pages rendered a form and then
- * pushed you to /dashboard, and an inline `<script>` existed purely to beat
+ * pushed you to /overview, and an inline `<script>` existed purely to beat
  * React to the punch on a full page load. Each had a window it could not
  * cover, and the last of them -- a client-side navigation into /login while
  * signed in -- is the bug Gabe reported.

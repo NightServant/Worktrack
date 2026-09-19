@@ -36,7 +36,7 @@ import { useHoldAuthGuards } from './authHold'
  *
  * WHICH IS ALSO WHY `useHoldAuthGuards` IS NOT OPTIONAL. The (auth) layout
  * treats a new session as a reason to leave: `SignedInRedirect` navigates to
- * /dashboard and `SignedOutOnly` returns null for this whole subtree. Without
+ * /overview and `SignedOutOnly` returns null for this whole subtree. Without
  * the hold, verifying the code would throw the person onto the dashboard with
  * their OLD password still set and the form they came for unmounted
  * mid-flight. See ./authHold; the sign-up thank-you learned this first.

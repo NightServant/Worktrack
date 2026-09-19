@@ -16,7 +16,7 @@ import type { UpNextItem } from '@/lib/upNext'
 /**
  * The calendar screen's body, over plain props -- same split as `Dashboard`
  * (Task 3) and `DetailPage` (Task 5), so it renders without Next routing or
- * react-query. `src/app/(app)/calendar/page.tsx` owns both reads this screen
+ * react-query. `src/app/(app)/planner/page.tsx` owns both reads this screen
  * needs: `useEvents()` (wrapping `eventService.listFrom`) for `events`,
  * and `useJobs()` -- the same shared `['jobs', user?.id]` cache every other
  * screen in this branch already reads -- to build `companyByJobId`, the

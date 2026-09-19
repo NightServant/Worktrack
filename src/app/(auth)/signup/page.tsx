@@ -19,7 +19,7 @@ export default function Page() {
       onSignUp={signUp}
       onVerify={verifySignUpOtp}
       onResend={resendSignUpOtp}
-      onDone={() => router.push('/dashboard')}
+      onDone={() => router.push('/overview')}
     />
   )
 }

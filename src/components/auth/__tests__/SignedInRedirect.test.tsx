@@ -24,7 +24,7 @@ describe('the homepage redirect', () => {
   it('sends a signed-in visitor to the dashboard', () => {
     useAuthMock.mockReturnValue({ user: { id: 'u1' }, loading: false })
     render(<SignedInRedirect />)
-    expect(replaceMock).toHaveBeenCalledWith('/dashboard')
+    expect(replaceMock).toHaveBeenCalledWith('/overview')
   })
 
   it('leaves a signed-out visitor on the landing page', () => {
@@ -47,7 +47,7 @@ describe('the homepage redirect', () => {
 
     useAuthMock.mockReturnValue({ user: { id: 'u1' }, loading: false })
     rerender(<SignedInRedirect />)
-    expect(replaceMock).toHaveBeenCalledWith('/dashboard')
+    expect(replaceMock).toHaveBeenCalledWith('/overview')
   })
 
   it('renders nothing at all', () => {
