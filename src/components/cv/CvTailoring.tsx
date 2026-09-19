@@ -128,6 +128,25 @@ export interface CvTailoringOptions {
   /** Every application the account has; the wishlist is taken out of it here. */
   jobs: Job[]
   /**
+   * Applications that already have a document attached to them.
+   *
+   * THEY ARE NOT OFFERED AGAIN (Gabe, 2026-09-19: "wishlisted jobs with
+   * tailored CVs must not appear in the component itself"). Tailoring pins the
+   * CV it writes to the application it wrote it for, so a job in this list has
+   * been through here already, and a picker that keeps offering it is a list
+   * of work somebody has finished.
+   *
+   * A PROP, NOT A READ IN HERE, like `jobs` above and for the same reason: the
+   * route owns every read in this app, which is what lets these screens render
+   * in a test with plain props and no QueryClient.
+   *
+   * THE DOCUMENT'S OWN TARGET IS NOT AFFECTED. `tailoredFor` resolves out of
+   * every application rather than out of this filtered list -- see below --
+   * so re-opening a tailored CV still shows and scores the posting it was
+   * written for, which is exactly the one this filter would otherwise hide.
+   */
+  linkedJobIds?: string[]
+  /**
    * WHICH APPLICATION IS SELECTED, OWNED BY THE EDITOR (2026-09-14).
    *
    * This was `React.useState('')` in here until cover letters arrived, and it
@@ -289,9 +308,23 @@ export function useCvTailoring(options: CvTailoringOptions): CvTailoringState {
   /** True while `result` is the cached run rather than this session's. */
   const [restored, setRestored] = React.useState(false)
 
+  const linked = React.useMemo(
+    () => new Set(options.linkedJobIds ?? []),
+    [options.linkedJobIds]
+  )
+
   const jobs = React.useMemo(
-    () => options.jobs.filter((job) => job.status === 'wishlist'),
-    [options.jobs]
+    () =>
+      options.jobs.filter(
+        (job) =>
+          job.status === 'wishlist' &&
+          // ALREADY TAILORED FOR, EXCEPT THE ONE THIS DOCUMENT IS FOR. Keeping
+          // the open document's own target in the list is what lets a
+          // re-tailor of the same CV against the same posting still resolve a
+          // selection here rather than falling back to nothing.
+          (!linked.has(job.id) || job.id === tailoredForJobId)
+      ),
+    [options.jobs, linked, tailoredForJobId]
   )
 
   /**

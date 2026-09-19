@@ -285,6 +285,14 @@ function RouteSkeletonBody({ variant }: { variant: RouteSkeletonVariant }) {
  * `aria-hidden` AND A LABEL ON THE WRAPPER: a screen reader is told the
  * document is being written, once, instead of reading out fourteen empty
  * boxes.
+ *
+ * IT IS THE ONE SKELETON THAT IGNORES THE THEME (Gabe, 2026-09-19: "loading
+ * state for the document should be an exception for dark theme"). Every other
+ * skeleton sits on a themed surface and takes `bg-bg-inset` with it; this one
+ * sits on a sheet of PAPER, which is `bg-white` in both themes because it is
+ * what will be printed. In dark mode the themed token resolves to near-black
+ * and drew solid dark bars across a white page. The fixed `ink-*` scale is the
+ * same in both themes, so the bars stay a light grey on the paper they are on.
  */
 const DOCUMENT_ROWS: number[][] = [
   [92, 64],
@@ -309,7 +317,10 @@ export function DocumentSkeleton({ label = 'Writing your document' }: { label?: 
               aria-hidden
               // The first line of each block is its heading: taller, and it
               // carries the weight the real one will.
-              className={line === 0 && section > 0 ? 'h-4' : 'h-3'}
+              className={cn(
+                'bg-ink-200',
+                line === 0 && section > 0 ? 'h-4' : 'h-3'
+              )}
               style={{ width: `${width}%` }}
             />
           ))}

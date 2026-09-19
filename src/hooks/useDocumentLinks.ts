@@ -45,6 +45,27 @@ export function useResumeLinks(resumeId?: string | null) {
 }
 
 /**
+ * Which applications already have a document attached.
+ *
+ * FOR THE TAILORING PICKER, which must not offer a role that has already been
+ * tailored for. Keyed without an id because it is the whole account's answer,
+ * and invalidated by the same helper as the other two -- pinning a CV changes
+ * this list as surely as it changes the other directions.
+ */
+export function useLinkedJobIds() {
+  const { user } = useAuth()
+  return useQuery({
+    queryKey: ['linked-job-ids', user?.id],
+    queryFn: () => documentLinkService.listLinkedJobIds(supabase),
+    enabled: !!user,
+    staleTime: 30_000,
+    gcTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
+    retry: 1,
+  })
+}
+
+/**
  * Both directions of the same table go stale on any write, and forgetting one
  * is how the application screen and the editor come to disagree about a link
  * that was just made. One helper, called by both mutations.
@@ -55,6 +76,7 @@ function useInvalidateLinks() {
   return () => {
     void queryClient.invalidateQueries({ queryKey: ['document-links', user?.id] })
     void queryClient.invalidateQueries({ queryKey: ['resume-links', user?.id] })
+    void queryClient.invalidateQueries({ queryKey: ['linked-job-ids', user?.id] })
   }
 }
 

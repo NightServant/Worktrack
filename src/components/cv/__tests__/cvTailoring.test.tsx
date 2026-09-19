@@ -56,12 +56,16 @@ function Harness({
   fetchImpl,
   content,
   title,
+  linkedJobIds,
+  tailoredForJobId,
   onTailored,
 }: {
   cvText: string
   fetchImpl?: typeof fetch
   content?: ResumeContent
   title?: string
+  linkedJobIds?: string[]
+  tailoredForJobId?: string
   onTailored?: (input: {
     title: string
     content: ResumeContent
@@ -78,6 +82,8 @@ function Harness({
   const state = useCvTailoring({
     cvText,
     jobs: JOBS,
+    linkedJobIds,
+    tailoredForJobId,
     jobId,
     onJobId: setJobId,
     fetchImpl,
@@ -122,6 +128,38 @@ describe('the tailoring section', () => {
     expect(options).toContain('Backend Engineer')
     expect(options).not.toContain('Platform Engineer')
     expect(options).not.toContain('Latex Engineer')
+  })
+
+  it('does not offer a role whose CV has already been written', async () => {
+    // Gabe, 2026-09-19: "wishlisted jobs with tailored CVs must not appear in
+    // the component itself." Tailoring pins the CV it writes to the
+    // application it wrote it for, so a job with a document attached has been
+    // through here already and the picker was listing finished work.
+    const user = userEvent.setup({ delay: null })
+    render(<Harness cvText="React and TypeScript developer." linkedJobIds={['w1']} />)
+
+    await user.click(screen.getByRole('combobox', { name: /application/i }))
+    const options = (await screen.findByRole('listbox')).textContent ?? ''
+
+    expect(options).not.toContain('Frontend Engineer')
+    expect(options).toContain('Backend Engineer')
+  })
+
+  it('still shows the role THIS document was tailored for, though it is linked', () => {
+    // The filter hides jobs that have a CV -- and the open document's own
+    // target is linked PRECISELY BECAUSE this document exists. It resolves out
+    // of every application rather than the filtered list, so a tailored CV
+    // reopened still names and scores the posting it was written for. Without
+    // that, the filter would blank the target on exactly the documents that
+    // have one.
+    render(
+      <Harness
+        cvText="React and TypeScript developer."
+        linkedJobIds={['w1', 'w2']}
+        tailoredForJobId="w1"
+      />
+    )
+    expect(screen.getByText(/Frontend Engineer/)).toBeTruthy()
   })
 
   it('says so when the wishlist is empty, rather than claiming there are no applications', () => {

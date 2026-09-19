@@ -76,6 +76,9 @@ vi.mock('@/hooks/useUserProfile', () => ({
 
 vi.mock('@/hooks/useDocumentLinks', () => ({
   useResumeLinks: () => resumeLinksMock(),
+  // Which applications already have a CV, for the tailoring picker's filter.
+  // Empty here: these tests are about the route's own states.
+  useLinkedJobIds: () => ({ data: [] }),
   usePinDocumentLink: () => ({ mutateAsync: pinMutate, isPending: false }),
 }))
 vi.mock('@/hooks/useResumes', () => ({

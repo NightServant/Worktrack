@@ -44,6 +44,26 @@ export const documentLinkService = {
     return data as ApplicationDocument
   },
 
+  /**
+   * Every application that already has a document attached to it.
+   *
+   * WHY IDS AND NOT ROWS (Gabe, 2026-09-19: "wishlisted jobs with tailored CVs
+   * must not appear in the component itself"). The tailoring picker needs to
+   * answer one yes/no question per job -- has this one been tailored for
+   * already -- and the titles, versions and snapshots the other two readers
+   * embed are three joins it would throw away. This is one column.
+   *
+   * NO `user_id` FILTER, matching every other read in this app: the table is
+   * behind owner-only RLS, and a redundant filter hides a broken policy rather
+   * than surfacing it.
+   */
+  async listLinkedJobIds(client: SupabaseClient): Promise<string[]> {
+    const { data, error } = await client.from('application_documents').select('job_id')
+    if (error) throw toError(error)
+    const ids = new Set((data ?? []).map((row) => (row as { job_id: string }).job_id))
+    return [...ids]
+  },
+
   async unpin(client: SupabaseClient, jobId: string, resumeId: string): Promise<void> {
     const { error } = await client
       .from('application_documents')

@@ -107,6 +107,15 @@ export interface WordResumeEditorProps {
   jobs?: Job[]
 
   /**
+   * Applications that already have a document pinned to them.
+   *
+   * Passed straight through to the tailoring rail, which uses it to stop
+   * offering roles that have been tailored for already. A prop for the same
+   * reason `jobs` is one -- the route owns every read.
+   */
+  linkedJobIds?: string[]
+
+  /**
    * A model is writing this document's prose; show the paper, not the text.
    *
    * THE EDITOR STILL RENDERS AROUND IT (Gabe, 2026-09-19: "document editor
@@ -311,9 +320,13 @@ function PageSheet({
               one question -- plus this one is already reduced-motion aware and
               already announces itself. Only the phrases differ: that one is
               reading a posting, this one is writing a CV. */}
+          {/* PAPER COLOURS, NOT THEME COLOURS. The sheet is `bg-white` in both
+              themes because it is what gets printed, so `text-text-primary`
+              here is white-on-white in dark mode -- which is what the rotating
+              line was (Gabe, 2026-09-19). The `ink-*` scale is fixed. */}
           <div className="flex flex-col items-center gap-3 pb-10">
-            <AnalyzingDocument className="size-12 text-text-muted" />
-            <p className="text-body-m text-text-primary">
+            <AnalyzingDocument className="size-12 text-ink-400" />
+            <p className="text-body-m text-ink-600">
               <RotatingText phrases={WRITE_STEPS} />
             </p>
           </div>
@@ -490,6 +503,7 @@ export function WordResumeEditor({
   onTailored,
   kind = 'word',
   tailoredForJobId,
+  linkedJobIds,
   polishing = false,
 }: WordResumeEditorProps) {
   const isLetter = kind === 'cover_letter'
@@ -799,6 +813,7 @@ export function WordResumeEditor({
   const tailoringOptions: CvTailoringOptions = {
     cvText,
     jobs,
+    linkedJobIds,
     title,
     // Lifted out of the hook so the tab strip -- a different workspace slot --
     // can mark the tailor tab "needs an application". See CvTailoringOptions.

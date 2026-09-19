@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useCreateResume, useDeleteResume, useResume, useUpdateResume } from '@/hooks/useResumes'
 import { usePolishDraft } from '@/components/cv/usePolishDraft'
+import { useLinkedJobIds } from '@/hooks/useDocumentLinks'
 import { useJobs } from '@/hooks/useJobs'
 import { usePinDocumentLink, useResumeLinks } from '@/hooks/useDocumentLinks'
 import { useToast } from '@/contexts/ToastContext'
@@ -139,6 +140,8 @@ function CvRoute() {
   // rather than inside the handler because it decides between two different
   // writes, and a hook cannot be called from inside a callback.
   const resumeLinks = useResumeLinks(isNew ? null : draftParam)
+  /** Every application that already has a document pinned, for the picker. */
+  const linkedJobIds = useLinkedJobIds()
   const pinLink = usePinDocumentLink()
   const deleteResume = useDeleteResume()
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
@@ -349,6 +352,12 @@ function CvRoute() {
         // The tailoring rail's application picker. Read here rather than in
         // the editor, so the editors stay renderable without a QueryClient.
         jobs={jobs}
+        /*
+          WHICH APPLICATIONS HAVE ALREADY BEEN TAILORED FOR. Read here rather
+          than in the rail, like every other read on this route, and used there
+          to stop offering roles whose CV is already written.
+        */
+        linkedJobIds={linkedJobIds.data ?? []}
         /*
           WHICH APPLICATION THIS CV WAS TAILORED FOR, from the LINK rather than
           from the title. The first version of this lived inline here and read
