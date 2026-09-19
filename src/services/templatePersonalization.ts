@@ -1,5 +1,7 @@
 import type { JSONContent } from '@tiptap/core'
 import {
+  ending,
+  listed,
   professionalSummary,
   type ProfileCertification,
   type ProfileEducation,
@@ -7,7 +9,7 @@ import {
   type ProfileProject,
   type UserProfile,
 } from './profile'
-import { groupSkills } from './skillGroups'
+import { groupSkills, type SkillGroup } from './skillGroups'
 
 /**
  * Filling a template in with the user's own details before they ever see it.
@@ -230,29 +232,70 @@ function educationNodes(entries: ProfileEducation[]): JSONContent[] {
 }
 
 /**
- * A project as a CV entry: a title line, then what it actually did.
+ * The opening line of a project entry: what it is, and what it was built with.
  *
- * THE BULLETS ARE THE README'S (Gabe, 2026-09-19: "Fetch the readme of every
- * project ... that information will be used to build the bullet-formatted
- * sentences in the CV itself"). A repository description is one line written
- * for a directory listing, and a CV project that is one line is a link with
- * extra steps.
+ * THIS IS WHERE THE VERB LIVES (Gabe, 2026-09-19: "does not generate proper
+ * sentences ... does not apply skills to notable projects"). A README's
+ * bullets are noun phrases -- "Applications with company, role, salary range",
+ * "Status pipeline — wishlist → applied → interviewing" -- because a README is
+ * a feature list. Under a lead sentence that says who built what with which
+ * tools, a feature list reads correctly; on its own it reads as fragments,
+ * which is what the generated CV was doing.
  *
- * THE STACK RIDES ON THE TITLE LINE rather than as a bullet of its own: it is
- * a label, not an achievement, and a bullet that reads "TypeScript, Next.js,
- * Supabase" among three sentences about what was built is the one a reader
- * skips over the others to find.
+ * AND IT IS WHERE THE SKILLS MEET THE PROJECT. The stack was printed as a bare
+ * `TypeScript | https://github.com/...` line beside the title, which names the
+ * tools without claiming anything with them. `built with TypeScript, Next.js
+ * and PostGIS` is the same facts as a sentence.
+ */
+function projectLead(entry: ProfileProject): string | null {
+  const description = clean(entry.description)
+  const stack = entry.tech.length > 0 ? listed(entry.tech) : clean(entry.language)
+  if (description && stack) {
+    return ending(`${description.replace(/[.\s]+$/, '')}, built with ${stack}`)
+  }
+  if (description) return ending(description)
+  if (stack) return ending(`Built with ${stack}`)
+  return null
+}
+
+/**
+ * A project as a CV entry: a title, a sentence about it, then its own bullets.
+ *
+ * THE BULLETS ARE NOT REWRITTEN, and that is a decision rather than an
+ * omission. The obvious way to turn "Applications with company, role, salary
+ * range" into a sentence is to prefix a verb -- and doing so produces "Built
+ * applications with company, role, salary range", which says something the
+ * author did not. Tested against Gabe's own repositories before it was ruled
+ * out (2026-09-19). A rule cannot tell a feature description from an action
+ * description, so the verb goes in the lead where it is always true, and the
+ * author's own words are left as the author's own words.
+ *
+ * What they DO get is punctuation and a capital: a bullet list where some
+ * entries end in a full stop and others do not is the other half of looking
+ * unfinished.
  */
 function projectNodes(entries: ProfileProject[]): JSONContent[] {
   return entries.flatMap((entry) => {
-    const stack = entry.tech.length > 0 ? entry.tech.join(', ') : null
-    const heading = lines(entry.title, joined(stack, entry.url ?? entry.homepage))
-    const bullets =
-      entry.highlights.length > 0
-        ? bulletsFrom(entry.highlights.join('\n'))
-        : bulletsFrom(entry.description)
+    const lead = projectLead(entry)
+    const where = clean(entry.url) ?? clean(entry.homepage)
+    const heading = lines(entry.title, lead, where)
+    const bullets = bulletsFrom(
+      (entry.highlights.length > 0
+        ? entry.highlights
+        : []
+      )
+        .map((line) => sentence(line))
+        .join('\n') || null
+    )
     return bullets ? [heading, bullets] : [heading]
   })
+}
+
+/** One line, capitalised and ended. See `projectNodes` for what it does NOT do. */
+function sentence(text: string): string {
+  const trimmed = text.trim()
+  if (!trimmed) return ''
+  return ending(trimmed.charAt(0).toUpperCase() + trimmed.slice(1))
 }
 
 /**
@@ -279,12 +322,74 @@ function certificationNodes(entries: ProfileCertification[]): JSONContent[] {
 }
 
 /**
- * The skills, under the headings a reader scans for.
+ * What each group of skills is FOR, as the verb that starts its sentence.
  *
- * WHAT THIS REPLACES (Gabe, 2026-09-19: "CV just display the skills in one
- * large paragraph"). It was `skills.join(', ')` -- forty-eight entries from
- * four sources in one run-on line, which is a paragraph nobody reads to the
- * end of and which an ATS parses as a single blob.
+ * A LABEL AND A COMMA LIST IS NOT A SENTENCE, which is the whole complaint
+ * (Gabe, 2026-09-19: "just list skills as categories"). `Frontend & UI:
+ * Livewire, React.js, Next.js` names things; `Builds interfaces with Livewire,
+ * React.js and Next.js` says what the person does with them, which is what a
+ * reader is there to find out.
+ *
+ * THE VERBS CLAIM USE, NEVER PROFICIENCY. `Builds with` is what a skills list
+ * actually asserts; `Solid command of` or `Expert in` would be this app
+ * putting a claim in somebody's mouth that no source ever made. Anything not
+ * named here gets `Works with`, which is true of every category by
+ * construction.
+ */
+const SKILL_VERBS: Record<string, string> = {
+  'Programming Languages': 'Writes',
+  'Markup & Styling': 'Styles with',
+  'Frontend & UI': 'Builds interfaces with',
+  'Backend & APIs': 'Builds services and APIs with',
+  'Databases & Storage': 'Stores and queries data with',
+  'Cloud & Infrastructure': 'Deploys and runs systems with',
+  'Data & Analytics': 'Analyses data with',
+  'Mobile & Devices': 'Builds for mobile with',
+  'Design & Creative': 'Designs with',
+  'Software & Tools': 'Works day to day in',
+  'Communication & Leadership': 'Brings',
+}
+
+/**
+ * Which of the profile's projects a group of skills was actually used in.
+ *
+ * THE EVIDENCE CLAUSE IS THE POINT (Gabe, 2026-09-19: "does not apply skills
+ * to notable projects"). A CV that lists React and separately lists a React
+ * project leaves the reader to join them up; `used in Worktrack and
+ * aero_weather` is the same two facts with the join already made, and it is
+ * the shape Gabe's own CV uses -- "used across nearly every project below".
+ *
+ * MATCHED ON THE PROJECT'S DECLARED STACK, so it is a fact rather than an
+ * inference: `tech` is the repository's own topics and language, not a guess
+ * from the description.
+ */
+function projectsUsing(group: SkillGroup, projects: ProfileProject[]): string[] {
+  const wanted = new Set(group.skills.map(techKey))
+  return projects
+    .filter((project) =>
+      [...project.tech, project.language ?? ''].some((item) => wanted.has(techKey(item)))
+    )
+    .map((project) => project.title)
+    .filter((title) => title.length > 0)
+}
+
+/**
+ * What makes a repository topic and a skill name the same technology.
+ *
+ * GITHUB TOPICS ARE SLUGS. A repository declares `nextjs` and `tailwindcss`
+ * where a skills list says `Next.js` and `Tailwind CSS`, so a literal
+ * comparison found neither and the evidence clause under-reported -- it said
+ * `used in Worktrack` for a group that two projects use.
+ *
+ * `+` AND `#` SURVIVE, because `C++` and `C#` are different languages from `C`
+ * and from each other, and stripping every non-letter collapses all three.
+ */
+function techKey(value: string): string {
+  return value.trim().toLowerCase().replace(/[.\s_-]/g, '')
+}
+
+/**
+ * The skills, as sentences, under the headings a reader scans for.
  *
  * ONE PARAGRAPH PER GROUP, the heading bold and inline. Bold-inline rather
  * than a real heading node: these sit UNDER the template's own `Skills`
@@ -296,17 +401,26 @@ function certificationNodes(entries: ProfileCertification[]): JSONContent[] {
  * headings and one written by an engineer gets technical ones, from the same
  * table.
  */
-function skillNodes(skills: string[]): JSONContent[] {
-  const groups = groupSkills(skills)
+function skillNodes(profile: UserProfile): JSONContent[] {
+  const groups = groupSkills(profile.skills)
   if (groups.length === 0) return []
-  // ONE GROUP IS NOT A CLASSIFICATION. A single heading over the whole list
-  // adds a label and no structure, so the paragraph stands on its own.
-  if (groups.length === 1) {
-    return [{ type: 'paragraph', content: [text(groups[0].skills.join(', '))] }]
+
+  const claim = (group: SkillGroup): string => {
+    const verb = SKILL_VERBS[group.label] ?? 'Works with'
+    const used = projectsUsing(group, profile.projects)
+    const evidence = used.length > 0 ? `, used in ${listed(used)}` : ''
+    return ending(`${verb} ${listed(group.skills)}${evidence}`)
   }
+
+  // ONE GROUP IS NOT A CLASSIFICATION. A single heading over the whole list
+  // adds a label and no structure, so the sentence stands on its own.
+  if (groups.length === 1) {
+    return [{ type: 'paragraph', content: [text(claim(groups[0]))] }]
+  }
+
   return groups.map((group) => ({
     type: 'paragraph',
-    content: [bold(`${group.label}: `), text(group.skills.join(', '))],
+    content: [bold(`${group.label}: `), text(claim(group))],
   }))
 }
 
@@ -329,7 +443,7 @@ const SECTIONS: { pattern: RegExp; build: (profile: UserProfile) => JSONContent[
   { pattern: /education|academic/i, build: (p) => educationNodes(p.education) },
   {
     pattern: /skills?|competenc|^\s*stack\s*$/i,
-    build: (p) => skillNodes(p.skills),
+    build: (p) => skillNodes(p),
   },
   { pattern: /projects?/i, build: (p) => projectNodes(p.projects) },
   // AFTER PROJECTS, because `certifications?` would otherwise never be reached

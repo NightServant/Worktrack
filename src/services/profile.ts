@@ -265,8 +265,23 @@ export function professionalSummary(profile: UserProfile): string | null {
     .filter((value) => value.length > 0)
   if (candidates.length === 0) return null
 
-  const lead = candidates.reduce((best, value) => (value.length > best.length ? value : best))
-  const sentences = [lead.replace(/\s+/g, ' ')]
+  const lead = candidates
+    .reduce((best, value) => (value.length > best.length ? value : best))
+    .replace(/\s+/g, ' ')
+
+  /*
+   * THE PERSON HAS TO MATCH THE LEAD (Gabe, 2026-09-19: "make sure that
+   * professional summary generates sentences with complete thoughts").
+   *
+   * A LinkedIn headline is routinely written in the first person -- "seeking
+   * to start my career as a Front-End Developer" -- and the sentences added
+   * under it were in the third: "Works with TypeScript". One paragraph, two
+   * voices, which is the first thing a reader notices and the last thing they
+   * can explain. So the lead is read for `my`/`I` and everything after it
+   * follows.
+   */
+  const firstPerson = /\b(i|my|me|i'm|i am)\b/i.test(lead)
+  const sentences = [ending(lead)]
 
   const role = profile.experiences[0]
   if (role && role.title && !mentions(lead, role.title)) {
@@ -274,9 +289,17 @@ export function professionalSummary(profile: UserProfile): string | null {
     // source's date formatting -- the same one the timeline's node uses.
     const current = /present|now/i.test(role.period ?? '')
     const where = role.company && !mentions(lead, role.company) ? ` at ${role.company}` : ''
-    sentences.push(
-      `${current ? 'Currently working as' : 'Most recently'} ${role.title}${where}.`
-    )
+    // A COMPLETE CLAUSE, WITH A VERB. This was "Most recently Frontend
+    // Developer and UI/UX Designer at Dominican College of Tarlac." -- a
+    // label, not a sentence, and the exact thing the complaint was about.
+    const verb = current
+      ? firstPerson
+        ? 'I am currently working as'
+        : 'Currently works as'
+      : firstPerson
+        ? 'I most recently worked as'
+        : 'Most recently worked as'
+    sentences.push(ending(`${verb} ${article(role.title)}${role.title}${where}`))
   }
 
   // ONE SKILL PER GROUP, so the line reads as a RANGE rather than as the first
@@ -293,11 +316,36 @@ export function professionalSummary(profile: UserProfile): string | null {
     if (first) spread.push(first)
   }
   if (spread.length >= 3) {
-    const last = spread[spread.length - 1]
-    sentences.push(`Works with ${spread.slice(0, -1).join(', ')} and ${last}.`)
+    sentences.push(
+      ending(`${firstPerson ? 'I work with' : 'Works with'} ${listed(spread)}`)
+    )
   }
 
   return sentences.join(' ')
+}
+
+/** `a` or `an`, with a trailing space. Crude on purpose: it reads the letter. */
+function article(noun: string): string {
+  return /^[aeiou]/i.test(noun.trim()) ? 'an ' : 'a '
+}
+
+/**
+ * `a, b and c` -- the serial list a sentence needs.
+ *
+ * A JOIN ON `", "` IS NOT A SENTENCE, and that is most of what was wrong with
+ * the generated CV: every list in it was punctuation where a conjunction
+ * belonged.
+ */
+export function listed(parts: string[]): string {
+  if (parts.length === 0) return ''
+  if (parts.length === 1) return parts[0]
+  return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`
+}
+
+/** A string that ends like a sentence. Adds the full stop, never a second one. */
+export function ending(text: string): string {
+  const trimmed = text.trim()
+  return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`
 }
 
 /**

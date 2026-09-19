@@ -180,6 +180,26 @@ describe('section expansion', () => {
     expect(allText(out)).toContain('TypeScript')
   })
 
+  it('writes each skill group as a sentence, not a comma list', () => {
+    // Gabe, 2026-09-19: "just list skills as categories". `Frontend & UI:
+    // React, Next.js` names things; a sentence says what is done with them.
+    const out = allText(personalizeTemplate(template, FULL))
+    // `allText` puts a newline between nodes, so the bold label and the
+    // sentence after it are asserted apart.
+    expect(out).toContain('Programming Languages: ')
+    expect(out).toContain('Writes TypeScript, used in Worktrack.')
+    expect(out).toContain('Builds interfaces with React.')
+    // THE VERBS CLAIM USE, NEVER PROFICIENCY.
+    expect(out).not.toMatch(/Expert|Solid command|Proficient/)
+  })
+
+  it('names the projects a group of skills was actually used in', () => {
+    // "does not apply skills to notable projects" -- the join the reader was
+    // being left to make. Matched on the repository's own declared stack.
+    const out = allText(personalizeTemplate(template, FULL))
+    expect(out).toContain('used in Worktrack')
+  })
+
   it('files each skill under a heading, across careers rather than one stack', () => {
     // The classification is not a developer's: the same table has to put
     // `Patient Care` and `Leadership` somewhere sensible for somebody who
@@ -204,7 +224,35 @@ describe('section expansion', () => {
   it('builds project bullets from the README rather than one line', () => {
     const out = allText(personalizeTemplate(doc(heading(2, 'Projects'), para('specimen')), FULL))
     expect(out).toContain('Tracks every application from first contact through to an offer.')
-    expect(out).toContain('TypeScript, Next.js')
+  })
+
+  it('opens a project with a sentence that names what it was built with', () => {
+    // Gabe, 2026-09-19: "does not generate proper sentences ... does not apply
+    // skills to notable projects". A README's bullets are noun phrases, so the
+    // verb has to live in a lead the app composes -- and that lead is where
+    // the stack stops being a bare `TypeScript |` line beside the title.
+    const out = allText(personalizeTemplate(doc(heading(2, 'Projects'), para('specimen')), FULL))
+    expect(out).toContain('A job search tracker, built with TypeScript and Next.js.')
+  })
+
+  it('leaves the author’s own bullet wording alone, and only punctuates it', () => {
+    // Prefixing a verb is the obvious way to make a fragment a sentence, and
+    // it changes the meaning: "Applications with company, role" becomes "Built
+    // applications with company, role", which the author never said. Tested
+    // against real repositories before it was ruled out.
+    const out = allText(
+      personalizeTemplate(doc(heading(2, 'Projects'), para('specimen')), {
+        ...FULL,
+        projects: [
+          {
+            ...FULL.projects[0],
+            highlights: ['Applications with company, role and salary range'],
+          },
+        ],
+      })
+    )
+    expect(out).toContain('Applications with company, role and salary range.')
+    expect(out).not.toContain('Built applications with')
   })
 
   it('leaves the specimen block alone when the profile has no entries', () => {

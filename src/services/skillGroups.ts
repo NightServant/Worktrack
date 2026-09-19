@@ -140,7 +140,7 @@ const RULES: { label: string; pattern: RegExp }[] = [
   {
     label: 'Teaching & Training',
     pattern:
-      /\b(teaching|lesson planning|curriculum|instructional design|pedagog|classroom management|tutoring|e-?learning|\blms\b|moodle|blackboard|canvas lms|assessment|student engagement|training delivery|coaching|mentoring|facilitation|special education|early childhood|\btesol\b|\btefl\b|academic advising|library science|cataloguing|archival|museum|curation)\b/i,
+      /\b(teaching|lesson planning|curriculum(?! ?vitae)|instructional design|pedagog|classroom management|tutoring|e-?learning|\blms\b|moodle|blackboard|canvas lms|assessment|student engagement|training delivery|coaching|mentoring|facilitation|special education|early childhood|\btesol\b|\btefl\b|academic advising|library science|cataloguing|archival|museum|curation)\b/i,
   },
   {
     label: 'Construction & Trades',
@@ -180,7 +180,7 @@ const RULES: { label: string; pattern: RegExp }[] = [
   {
     label: 'Communication & Leadership',
     pattern:
-      /\b(communication|leadership|teamwork|collaboration|problem[- ]solving|critical thinking|time management|adaptability|creativity|attention to detail|organi[sz]ation(al)?|interpersonal|presentation|public speaking|writing|editing|proofreading|active listening|conflict resolution|decision[- ]making|emotional intelligence|multitasking|work ethic|initiative|analytical|delegation|team (building|management)|people management|performance review|recruit(ing|ment)|onboarding|human resources|\bhr\b)\b/i,
+      /\b(communication|leadership|teamwork|collaboration|problem[- ]solving|critical thinking|time management|adaptability|creativity|attention to detail|organi[sz]ation(al)?|interpersonal|presentation|public speaking|writing|curriculum ?vitae|\\bcv\\b|editing|proofreading|active listening|conflict resolution|decision[- ]making|emotional intelligence|multitasking|work ethic|initiative|analytical|delegation|team (building|management)|people management|performance review|recruit(ing|ment)|onboarding|human resources|\bhr\b)\b/i,
   },
 ]
 
@@ -204,6 +204,24 @@ function normalise(skill: string): string {
 }
 
 /**
+ * What makes two spellings of a skill the same skill.
+ *
+ * THE PARENTHETICAL IS A DISAMBIGUATION, NOT PART OF THE NAME. LinkedIn
+ * publishes `Python (Programming Language)` and `Figma (Software)`; GitHub's
+ * badges publish `Python` and `Figma`. Compared literally those are four
+ * skills, and Gabe's CV printed `TypeScript, Python (Programming Language),
+ * PHP, JavaScript, Java, Python, C++` -- the same language twice in one line
+ * (2026-09-19).
+ */
+function fingerprint(skill: string): string {
+  return skill
+    .replace(/\s*\([^)]*\)\s*/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+}
+
+/**
  * Every skill under a heading, in the table's order, empties dropped.
  *
  * THE ORDER OF THE GROUPS IS THE TABLE'S, not the profile's, so the same
@@ -218,18 +236,34 @@ function normalise(skill: string): string {
  */
 export function groupSkills(skills: string[]): SkillGroup[] {
   const buckets = new Map<string, string[]>()
-  const seen = new Set<string>()
+  /** fingerprint -> the spelling currently kept for it. */
+  const seen = new Map<string, string>()
+  /** fingerprint -> the group it landed in, so a better spelling can replace it. */
+  const placed = new Map<string, string>()
 
   for (const raw of skills) {
     const skill = raw.trim()
     if (!skill) continue
-    const fingerprint = skill.toLowerCase()
-    if (seen.has(fingerprint)) continue
-    seen.add(fingerprint)
+    const key = fingerprint(skill)
+    if (!key) continue
+    const already = seen.get(key)
+    if (already !== undefined) {
+      // THE PLAINER SPELLING WINS. `Python` reads better on a CV than
+      // `Python (Programming Language)`, and whichever arrived first is an
+      // accident of which source was asked first.
+      if (skill.length < already.length) {
+        const bucket = buckets.get(placed.get(key)!)!
+        bucket[bucket.indexOf(already)] = skill
+        seen.set(key, skill)
+      }
+      continue
+    }
 
     const text = normalise(skill)
     const rule = RULES.find((candidate) => candidate.pattern.test(text))
     const label = rule?.label ?? FALLBACK
+    seen.set(key, skill)
+    placed.set(key, label)
     const bucket = buckets.get(label)
     if (bucket) bucket.push(skill)
     else buckets.set(label, [skill])

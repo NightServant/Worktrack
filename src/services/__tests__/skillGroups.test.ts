@@ -95,9 +95,43 @@ describe('professionalSummary', () => {
         ],
         skills: ['TypeScript', 'React', 'PostgreSQL', 'Figma'],
       }) ?? ''
-    expect(summary).toContain('Currently working as Senior Engineer at Northwind.')
-    // `React` is already in the lead, so it is not listed again.
+    // A COMPLETE CLAUSE, WITH A VERB. This was "Most recently Senior Engineer
+    // at Northwind." -- a label rather than a sentence (Gabe, 2026-09-19).
+    expect(summary).toContain('Currently works as a Senior Engineer at Northwind.')
+    // `React` is already in the lead, so it is not listed again -- and the
+    // list is joined with a conjunction, not a trailing comma.
     expect(summary).toContain('Works with TypeScript, PostgreSQL and Figma.')
+  })
+
+  it('keeps one voice, matching whichever the lead was written in', () => {
+    // A LinkedIn headline is routinely first person, and the sentences added
+    // under it were third: one paragraph, two voices (Gabe, 2026-09-19).
+    const mine = professionalSummary({
+      ...EMPTY_PROFILE,
+      headline: 'I am a Computer Science graduate seeking to start my career in front-end work.',
+      experiences: [
+        {
+          title: 'Intern',
+          company: 'Acme',
+          period: 'Jan 2025 - Present',
+          location: null,
+          description: null,
+        },
+      ],
+      skills: ['TypeScript', 'React', 'Figma'],
+    })!
+    expect(mine).toContain('I am currently working as an Intern at Acme.')
+    expect(mine).toContain('I work with')
+    expect(mine).not.toContain('Works with')
+
+    // And a third-person lead keeps the third person.
+    const theirs = professionalSummary({
+      ...EMPTY_PROFILE,
+      headline: 'Computer Science graduate looking for front-end work in Manila.',
+      skills: ['TypeScript', 'React', 'Figma'],
+    })!
+    expect(theirs).toContain('Works with')
+    expect(theirs).not.toContain('I work with')
   })
 
   it('is null when the profile says nothing about the person', () => {
