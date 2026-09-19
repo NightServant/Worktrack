@@ -70,8 +70,13 @@ const pinMutate = vi.hoisted(() => vi.fn().mockResolvedValue({}))
  * the route's states, and a profile-less account is the one where no polish is
  * attempted at all.
  */
+const userProfileMock = vi.hoisted(() =>
+  vi.fn<() => { data: { profile: unknown; fetchedAt: string | null } }>(() => ({
+    data: { profile: null, fetchedAt: null },
+  }))
+)
 vi.mock('@/hooks/useUserProfile', () => ({
-  useUserProfile: () => ({ data: { profile: null, fetchedAt: null } }),
+  useUserProfile: () => userProfileMock(),
 }))
 
 vi.mock('@/hooks/useDocumentLinks', () => ({
@@ -137,6 +142,11 @@ function params(value: string | null) {
   useSearchParamsMock.mockReturnValue({ get: () => value })
 }
 
+/** For the routes that read more than one search param -- `draft` and `polish`. */
+function paramMap(map: Record<string, string | null>) {
+  useSearchParamsMock.mockReturnValue({ get: (key: string) => map[key] ?? null })
+}
+
 function wordDraft(overrides: Partial<ResumeDraft> = {}): ResumeDraft {
   return {
     id: 'cv-1',
@@ -187,6 +197,27 @@ describe('/cv route states', () => {
     // page for one frame. Nothing is in the DOM at t=0 BY DESIGN, and an
     // immediate assertion was testing the absence of that gate.
     expect(await screen.findByRole('status')).toBeTruthy()
+  })
+
+  it('closes the way out while a model is writing the document', async () => {
+    // Gabe, 2026-09-19: "back to documents must be disabled when the model is
+    // polishing the document". The request is in flight and its result is
+    // saved when it returns -- a navigation unmounts the hook, the save never
+    // happens, and the reader lands back on the list with a CV that quietly
+    // stayed unpolished.
+    paramMap({ draft: 'cv-1', polish: 'word-classic' })
+    userProfileMock.mockReturnValue({
+      data: { profile: { name: 'Gabe Cervantes' }, fetchedAt: null },
+    })
+    resolved(wordDraft())
+    render(<Page />)
+
+    // A DISABLED BUTTON, NOT A LINK. `pointer-events-none` on an anchor stops
+    // the mouse and nothing else: it stays tabbable, still follows on Enter,
+    // and still announces as a link.
+    const back = await screen.findByRole('button', { name: 'back to documents' })
+    expect(back).toHaveProperty('disabled', true)
+    expect(screen.queryByRole('link', { name: 'back to documents' })).toBeNull()
   })
 
   it('says the CV could not be found rather than opening an empty editor', () => {

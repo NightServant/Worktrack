@@ -43,3 +43,4 @@ describe('resolving the template a draft came from', () => {
     expect(templateContentFor('', 'word')).toBeNull()
   })
 })
+

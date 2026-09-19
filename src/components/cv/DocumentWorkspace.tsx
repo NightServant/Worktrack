@@ -51,6 +51,18 @@ export interface DocumentWorkspaceProps {
   /** Word, LaTeX -- the crumb between `documents` and this file's own name. */
   kindLabel: string
   documentsHref: string
+  /**
+   * A model is writing this document; the way out is closed until it lands.
+   *
+   * LEAVING MID-WRITE LOSES THE POLISH SILENTLY (Gabe, 2026-09-19: "back to
+   * documents must be disabled when the model is polishing the document").
+   * The request is in flight and its result is saved when it returns; a
+   * navigation unmounts the hook, the save never happens, and the reader is
+   * back on the documents list with a CV that quietly stayed unpolished. It
+   * is a handful of seconds, and the alternative to blocking it is explaining
+   * afterwards why nothing changed.
+   */
+  polishing?: boolean
   title: string
   onTitleChange: (title: string) => void
   /** e.g. "saved 7:43 am". Rendered under the name, muted. */

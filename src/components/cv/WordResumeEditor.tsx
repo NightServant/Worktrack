@@ -325,7 +325,12 @@ function PageSheet({
               here is white-on-white in dark mode -- which is what the rotating
               line was (Gabe, 2026-09-19). The `ink-*` scale is fixed. */}
           <div className="flex flex-col items-center gap-3 pb-10">
-            <AnalyzingDocument className="size-12 text-ink-400" />
+            <AnalyzingDocument
+              className="size-12 text-ink-400"
+              // The sheet is white in both themes; the mask has to match it.
+              surfaceClassName="bg-white"
+              label="Writing your document"
+            />
             <p className="text-body-m text-ink-600">
               <RotatingText phrases={WRITE_STEPS} />
             </p>
@@ -962,6 +967,8 @@ export function WordResumeEditor({
          you are not. */
       kindLabel={isLetter ? 'cover letter' : 'word'}
       documentsHref={backHref}
+      // Leaving mid-write loses the polish silently -- see DocumentWorkspace.
+      polishing={polishing}
       title={title}
       onTitleChange={(next) => {
         setTitle(next)

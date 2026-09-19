@@ -211,6 +211,7 @@ function Rail({
 export function DesktopDocumentChrome({
   kindLabel,
   documentsHref,
+  polishing = false,
   title,
   onTitleChange,
   savedLabel,
@@ -426,6 +427,27 @@ export function DesktopDocumentChrome({
             and the icon carries it below that, where the bar has no room;
             `aria-label` names it either way, so it is never just an arrow to
             a screen reader. */}
+        {/* A BUTTON, NOT A STYLED LINK, WHILE THE MODEL WRITES. `disabled` is
+            what a screen reader announces and what the keyboard skips;
+            `pointer-events-none` on an anchor only stops the mouse, and the
+            link is still tabbable and still followable by Enter. See
+            `DocumentWorkspace`'s `polishing` for why leaving is blocked at
+            all. */}
+        {polishing ? (
+          <button
+            type="button"
+            disabled
+            aria-label="back to documents"
+            title="Writing your document — this takes a moment"
+            className={cn(
+              buttonVariants({ variant: 'ghost', size: 's' }),
+              'shrink-0 gap-1 px-2'
+            )}
+          >
+            <ChevronLeftIcon size={16} aria-hidden />
+            <span className="hidden sm:inline">back to documents</span>
+          </button>
+        ) : (
         <Link
           href={documentsHref}
           aria-label="back to documents"
@@ -439,6 +461,7 @@ export function DesktopDocumentChrome({
           <ChevronLeftIcon size={16} aria-hidden className={iconMotion('back')} />
           <span className="hidden sm:inline">back to documents</span>
         </Link>
+        )}
 
         {/* CENTRED, as Word centres "Document1". `min-w-0` on both this and
             the input is what lets a long name ellipsis instead of pushing the

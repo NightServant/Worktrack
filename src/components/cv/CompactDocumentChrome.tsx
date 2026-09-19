@@ -127,6 +127,7 @@ export function CompactDocumentChrome({
   // shows no breadcrumb and no footnote. They stay on the shared props type
   // because the desktop chrome does use them.
   documentsHref,
+  polishing = false,
   title,
   onTitleChange,
   savedLabel,
@@ -238,6 +239,19 @@ export function CompactDocumentChrome({
           under a `...` -- is now served better by a permanent tab in the
           dock, which names the surface rather than hiding it behind a glyph. */}
       <div className="flex h-11 shrink-0 items-center gap-1 border-b border-border-subtle px-1">
+        {/* See `DesktopDocumentChrome`: a disabled button rather than an
+            anchor with the pointer turned off, because only one of those is
+            actually unreachable. */}
+        {polishing ? (
+          <button
+            type="button"
+            disabled
+            aria-label="Done"
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-md text-text-muted"
+          >
+            <CheckIcon size={20} aria-hidden />
+          </button>
+        ) : (
         <Link
           href={documentsHref}
           aria-label="Done"
@@ -245,6 +259,7 @@ export function CompactDocumentChrome({
         >
           <CheckIcon size={20} aria-hidden />
         </Link>
+        )}
 
         <p className="min-w-0 flex-1 truncate px-1 text-caption text-text-muted">
           {savedLabel}

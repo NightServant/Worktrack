@@ -129,7 +129,12 @@ const SVG_PROPS = {
  * Colour comes from `currentColor`, so a `text-*` token on the caller paints
  * the glyph and the scan bar together.
  */
-export function AnalyzingDocument({ className, ...props }: ComponentProps<'div'>) {
+export function AnalyzingDocument({
+  className,
+  surfaceClassName = 'bg-bg-canvas',
+  label = 'Reading the posting',
+  ...props
+}: ComponentProps<'div'> & { surfaceClassName?: string; label?: string }) {
   const reduced = usePrefersReducedMotion()
 
   return (
@@ -160,7 +165,20 @@ export function AnalyzingDocument({ className, ...props }: ComponentProps<'div'>
               ],
             }}
             transition={SCAN}
-            className="absolute inset-0 z-10 bg-bg-canvas"
+            /*
+              THE SURFACE THIS SITS ON, NOT THE THEME'S (Gabe, 2026-09-19:
+              "black animation is not fixed").
+
+              This layer is a MASK: a copy of the blank page painted in the
+              background colour, wiped away to uncover the lines under it. It
+              only disappears if it is the same colour as whatever is behind
+              the component -- and `bg-bg-canvas` is only that in the wizard,
+              where this was written. On the CV's page sheet the background is
+              `bg-white` in BOTH themes, so in dark mode the mask painted a
+              near-black rectangle over the glyph, which is the black block in
+              the screenshot. The caller names its own surface.
+            */
+            className={cn('absolute inset-0 z-10', surfaceClassName)}
           >
             <svg {...SVG_PROPS} className="size-full" aria-hidden="true">
               <Page />
@@ -183,7 +201,10 @@ export function AnalyzingDocument({ className, ...props }: ComponentProps<'div'>
         </>
       )}
 
-      <span className="sr-only">Reading the posting</span>
+      {/* The wizard reads a posting; the CV editor writes a document. Same
+          animation, different sentence -- and a screen reader should be told
+          which. */}
+      <span className="sr-only">{label}</span>
     </div>
   )
 }
