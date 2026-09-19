@@ -34,6 +34,16 @@ function trimmed(name: string): string | undefined {
   return value ? value : undefined
 }
 
+/**
+ * The three jobs a model does here, which are three different jobs.
+ *
+ * `extract` fills a posting's fields: mechanical, schema-shaped, wants speed
+ * and a big context window and no judgement at all. `cv` writes prose. `tailor`
+ * rewrites a CV against a posting, which is judgement -- what to emphasise,
+ * and what would be a lie -- and wants the largest model available.
+ */
+export type LlmTask = 'extract' | 'cv' | 'tailor'
+
 export interface IntegrationConfig {
   /** LaTeX compilation. `undefined` key means the capability is off. */
   /**
@@ -47,7 +57,31 @@ export interface IntegrationConfig {
   tailoring: {
     baseUrl?: string
     apiKey?: string
+    /**
+     * The tailoring model, and the default for the other two.
+     *
+     * KEPT AS `model` BECAUSE IT IS WHAT PRODUCTION SETS. `TAILORING_MODEL`
+     * has been live since 2026-09-15; renaming the field would mean renaming
+     * the variable, and a rename of a production secret is an outage with a
+     * deploy in the middle of it.
+     */
     model: string
+    /**
+     * One model per job (Gabe, 2026-09-19, with an OpenRouter key: "we will
+     * use three open-sourced models ... one for job description filling, one
+     * for CV generation, one for CV tailoring").
+     *
+     * THEY ARE DIFFERENT JOBS AND THEY WANT DIFFERENT MACHINES. Filling a
+     * posting's fields is mechanical extraction against a strict schema, where
+     * speed and a big context window matter and judgement does not. Writing a
+     * CV is prose. Tailoring one is judgement -- what to emphasise, and what
+     * would be a lie -- and wants the largest model available.
+     *
+     * EACH FALLS BACK TO `model`, so a deployment that sets only
+     * `TAILORING_MODEL` keeps working exactly as it did and gains the other
+     * two features on the same model rather than not at all.
+     */
+    models?: Partial<Record<LlmTask, string>>
     /**
      * A kill switch that does not require deleting the key.
      *
@@ -68,6 +102,11 @@ export function readIntegrationConfig(): IntegrationConfig {
       // No default that names a vendor. A model id is meaningless without the
       // base URL it belongs to, so the two are set together or not at all.
       model: trimmed('TAILORING_MODEL') ?? '',
+      models: {
+        extract: trimmed('MODEL_EXTRACT'),
+        cv: trimmed('MODEL_CV'),
+        tailor: trimmed('MODEL_TAILOR'),
+      },
       // OFF WITHOUT UNSETTING THE KEY (2026-09-17).
       //
       // Production and Preview hold the same provider key, and every free
@@ -100,6 +139,10 @@ export function readIntegrationConfig(): IntegrationConfig {
  */
 export interface IntegrationCapabilities {
   tailorCv: boolean
+  /** Whether a model writes the CV's prose, or the deterministic composer does. */
+  writeCv: boolean
+  /** Whether a model fills the fields the posting parser could not. */
+  fillPosting: boolean
   expandSkills: boolean
 }
 
@@ -145,6 +188,30 @@ export function configProblems(config: IntegrationConfig): string[] {
   return problems
 }
 
+/**
+ * Whether one model id is runnable on this deployment.
+ *
+ * THE SWITCH IS READ FIRST: a deployment told not to spend the key cannot
+ * claim any of these, however complete its config is. Then both halves of the
+ * connection -- a base URL with no key cannot authenticate and a key with no
+ * base URL has nowhere to go -- and finally the SHAPE, because three non-empty
+ * strings in the wrong order passed the old presence check and failed at the
+ * request.
+ */
+export function modelFor(config: IntegrationConfig, task: LlmTask): string {
+  return config.tailoring.models?.[task]?.trim() || config.tailoring.model
+}
+
+function canRun(config: IntegrationConfig, model: string): boolean {
+  return (
+    config.tailoring.enabled !== false &&
+    !!config.tailoring.apiKey &&
+    /^https?:\/\//i.test(config.tailoring.baseUrl ?? '') &&
+    !!model &&
+    !/^https?:\/\//i.test(model)
+  )
+}
+
 export function capabilitiesOf(config: IntegrationConfig): IntegrationCapabilities {
   return {
     // Both, and neither alone: a base URL with no key cannot authenticate and
@@ -153,12 +220,9 @@ export function capabilitiesOf(config: IntegrationConfig): IntegrationCapabiliti
     // wrong order passed the old test and failed at the request.
     // The switch is read FIRST: a deployment told not to spend the key cannot
     // claim the capability, however complete its config is.
-    tailorCv:
-      config.tailoring.enabled !== false &&
-      !!config.tailoring.apiKey &&
-      /^https?:\/\//i.test(config.tailoring.baseUrl ?? '') &&
-      !!config.tailoring.model &&
-      !/^https?:\/\//i.test(config.tailoring.model),
+    tailorCv: canRun(config, modelFor(config, 'tailor')),
+    writeCv: canRun(config, modelFor(config, 'cv')),
+    fillPosting: canRun(config, modelFor(config, 'extract')),
     expandSkills: config.esco.enabled,
   }
 }

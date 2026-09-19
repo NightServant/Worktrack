@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ResumeSummary } from '@/services/resumeService'
 import { EMPTY_PROFILE } from '@/services/profile'
@@ -158,6 +158,7 @@ describe('Documents route wrapper', () => {
     await user.click(screen.getByRole('button', { name: /cover letter/i }))
 
     expect(createMutate).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(createMutate).toHaveBeenCalled())
     expect(createMutate.mock.calls[0][0]).toMatchObject({
       mode: 'cover_letter',
       title: 'Untitled cover letter',
@@ -182,6 +183,7 @@ describe('Documents route wrapper', () => {
 
     await user.click(container.querySelector('[data-template-card="cover-standard"]')!)
 
+    await waitFor(() => expect(createMutate).toHaveBeenCalled())
     const written = JSON.stringify(createMutate.mock.calls[0][0].content)
     expect(written).toContain('Gabe Cervantes')
     // No token survives: an unknown one is deleted rather than left visible.
@@ -210,6 +212,7 @@ describe('Documents route wrapper', () => {
     await user.click(screen.getByRole('button', { name: /new document/i }))
     await user.click(screen.getByRole('button', { name: /curriculum vitae/i }))
 
+    await waitFor(() => expect(createMutate).toHaveBeenCalled())
     const written = JSON.stringify(createMutate.mock.calls[0][0].content)
     expect(written).toContain('Gabe Cervantes')
     expect(written).toContain('gabe@example.com')
@@ -233,7 +236,9 @@ describe('Documents route wrapper', () => {
     await user.click(screen.getByRole('button', { name: /new document/i }))
     await user.click(screen.getByRole('button', { name: /cover letter/i }))
 
+    await waitFor(() => expect(createMutate).toHaveBeenCalled())
     expect(createMutate.mock.calls[0][0]).toMatchObject({ mode: 'cover_letter' })
+    await waitFor(() => expect(createMutate).toHaveBeenCalled())
     const written = JSON.stringify(createMutate.mock.calls[0][0].content)
     expect(written).toContain('Gabe Cervantes')
     expect(written).not.toContain('{{')
@@ -249,6 +254,7 @@ describe('Documents route wrapper', () => {
 
     await user.click(container.querySelector('[data-template-card="word-classic"]')!)
 
+    await waitFor(() => expect(createMutate).toHaveBeenCalled())
     const written = JSON.stringify(createMutate.mock.calls[0][0].content)
     expect(written).not.toContain('{{')
   })

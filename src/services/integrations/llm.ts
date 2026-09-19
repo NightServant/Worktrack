@@ -1,0 +1,157 @@
+import { modelFor, type IntegrationConfig, type LlmTask } from './config'
+
+/**
+ * One call to an OpenAI-compatible chat endpoint, answering with JSON.
+ *
+ * WHY IT EXISTS (Gabe, 2026-09-19: "wire all three"). Tailoring had this code
+ * to itself and learned three things the hard way that the other two jobs were
+ * about to learn again: a 429 is the ORDINARY state of a free tier and not an
+ * error worth a stack trace; a 401 is a key problem and needs its own
+ * sentence; and `response_format` has to be ASKED for, because a model told
+ * "JSON only" still emits fences and still lets a literal newline land inside
+ * a quoted string. That last one shipped as a production bug.
+ *
+ * IT RETURNS A RESULT, NEVER THROWS. Every caller here has a working fallback
+ * -- the deterministic CV composer, the posting parser -- so a model being
+ * unavailable has to be a branch rather than an exception. That is the same
+ * rule every client in this directory follows.
+ *
+ * THE PROVIDER IS CONFIGURATION. Groq, OpenRouter, Together, Cloudflare and a
+ * local Ollama all speak this shape, and every one of their free tiers has
+ * changed its limits at least once.
+ */
+
+export type LlmFailure =
+  | 'disabled'
+  | 'auth'
+  | 'rate-limit'
+  | 'network'
+  | 'timeout'
+  | 'bad-response'
+
+export type LlmResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; reason: LlmFailure; message: string }
+
+export interface LlmRequest {
+  task: LlmTask
+  system: string
+  user: string
+  /**
+   * How long to wait. Defaults differ by job and the caller sets them: filling
+   * a posting happens while somebody watches a form, and tailoring happens
+   * behind a progress state.
+   */
+  timeoutMs?: number
+  /**
+   * Low but rarely zero. Extraction wants determinism; prose wants a little
+   * variation. The no-invention rule is carried by the prompt, not by this.
+   */
+  temperature?: number
+}
+
+export interface LlmOptions {
+  config: IntegrationConfig
+  fetchImpl?: typeof fetch
+}
+
+/** Pull a JSON object out of a reply, tolerating fences and stray prose. */
+export function parseJsonReply<T>(raw: string): LlmResult<T> {
+  const trimmed = raw.trim()
+  // Models add ```json fences even when told not to. Strip rather than fail:
+  // the alternative is discarding a good answer over its packaging.
+  const unfenced = trimmed.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
+  const start = unfenced.indexOf('{')
+  const end = unfenced.lastIndexOf('}')
+  if (start === -1 || end <= start) {
+    return { ok: false, reason: 'bad-response', message: 'The model did not return JSON.' }
+  }
+  try {
+    return { ok: true, data: JSON.parse(unfenced.slice(start, end + 1)) as T }
+  } catch {
+    return { ok: false, reason: 'bad-response', message: 'The model returned malformed JSON.' }
+  }
+}
+
+export async function askForJson<T>(
+  request: LlmRequest,
+  options: LlmOptions
+): Promise<LlmResult<T>> {
+  const { baseUrl, apiKey, enabled } = options.config.tailoring
+  const model = modelFor(options.config, request.task)
+  if (enabled === false || !apiKey || !baseUrl || !model) {
+    return {
+      ok: false,
+      reason: 'disabled',
+      message:
+        'No model is configured for this deployment. Set TAILORING_BASE_URL, ' +
+        'TAILORING_API_KEY and a model id.',
+    }
+  }
+
+  const doFetch = options.fetchImpl ?? fetch
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), request.timeoutMs ?? 30_000)
+
+  try {
+    const response = await doFetch(`${baseUrl.replace(/\/$/, '')}/chat/completions`, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+        // OPENROUTER READS THESE AND NOBODY ELSE MINDS THEM. They are how a
+        // free-tier account is attributed, and an unattributed one is rate
+        // limited harder. Harmless headers on every other provider.
+        'HTTP-Referer': 'https://worktrack-jobs.vercel.app',
+        'X-Title': 'Worktrack',
+      },
+      body: JSON.stringify({
+        model,
+        temperature: request.temperature ?? 0.2,
+        // ASKED FOR, NOT HOPED FOR (2026-09-15, and it is why this is shared).
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: request.system },
+          { role: 'user', content: request.user },
+        ],
+      }),
+    })
+
+    if (response.status === 401 || response.status === 403) {
+      return { ok: false, reason: 'auth', message: 'The model provider rejected the API key.' }
+    }
+    // 429 is the ordinary state of a free tier, not a fault.
+    if (response.status === 429) {
+      return {
+        ok: false,
+        reason: 'rate-limit',
+        message: 'The free tier is rate-limited right now. Try again in a minute.',
+      }
+    }
+    if (!response.ok) {
+      return {
+        ok: false,
+        reason: 'network',
+        message: `The model provider answered ${response.status}.`,
+      }
+    }
+
+    const body = (await response.json()) as {
+      choices?: { message?: { content?: unknown } }[]
+    }
+    const content = body.choices?.[0]?.message?.content
+    if (typeof content !== 'string' || !content.trim()) {
+      return { ok: false, reason: 'bad-response', message: 'The model returned nothing.' }
+    }
+    return parseJsonReply<T>(content)
+  } catch (error) {
+    // An abort is a timeout here, and nothing else aborts this controller.
+    if (error instanceof Error && error.name === 'AbortError') {
+      return { ok: false, reason: 'timeout', message: 'The model took too long to answer.' }
+    }
+    return { ok: false, reason: 'network', message: 'Could not reach the model provider.' }
+  } finally {
+    clearTimeout(timer)
+  }
+}

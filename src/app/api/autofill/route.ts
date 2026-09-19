@@ -2,6 +2,28 @@ import { NextResponse } from 'next/server'
 import { authenticate } from '@/lib/apiAuth'
 import { rejectReason, normalizeTargetUrl } from '@/lib/jobUrl'
 import { logSecurityEvent } from '@/lib/securityLog'
+import { capabilitiesOf, readIntegrationConfig } from '@/services/integrations/config'
+import { fillPostingGaps, type AutofillEnvelope } from '@/services/integrations/postingFill'
+
+/**
+ * Whether the extractor's reply is the envelope this app expects.
+ *
+ * CHECKED RATHER THAN CAST, because the thing after this reads `.values` and
+ * `.warnings`: a deployment running an older extractor, or one answering with
+ * an error body, must fall through to the passthrough rather than throw on the
+ * way to an enrichment nobody asked for.
+ */
+function isEnvelope(value: unknown): value is AutofillEnvelope {
+  if (!value || typeof value !== 'object') return false
+  const body = value as Partial<AutofillEnvelope>
+  return (
+    !!body.values &&
+    typeof body.values === 'object' &&
+    !!body.confidence &&
+    typeof body.confidence === 'object' &&
+    Array.isArray(body.warnings)
+  )
+}
 
 /**
  * The public door to job-posting extraction.
@@ -149,6 +171,8 @@ export async function POST(request: Request) {
     )
   }
 
+  // Read before the fetch so the capability check below costs nothing.
+  const config = readIntegrationConfig()
   const extractor = process.env.EXTRACTOR_URL
   if (!extractor) {
     logSecurityEvent({
@@ -178,6 +202,23 @@ export async function POST(request: Request) {
       }),
     })
     const payload = await response.json()
+
+    /*
+     * THE GAPS THE PARSER LEFT, READ OUT OF THE POSTING'S OWN TEXT (Gabe,
+     * 2026-09-19: "one for job description filling").
+     *
+     * ONLY ON A SUCCESSFUL EXTRACT, and only when a model is configured. The
+     * parser stays authoritative: `fillPostingGaps` is offered the empty
+     * fields and merges back only what it filled, so this can add a salary
+     * and can never change one. Every failure returns the parser's envelope
+     * untouched -- auto-fill worked before this existed and works identically
+     * when the free tier is rate-limited.
+     */
+    if (response.ok && capabilitiesOf(config).fillPosting && isEnvelope(payload)) {
+      return NextResponse.json(await fillPostingGaps(payload, { config }), {
+        status: response.status,
+      })
+    }
     return NextResponse.json(payload, { status: response.status })
   } catch {
     logSecurityEvent({

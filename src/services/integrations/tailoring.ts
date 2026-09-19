@@ -1,4 +1,4 @@
-import type { IntegrationConfig } from './config'
+import { modelFor, type IntegrationConfig } from './config'
 
 /**
  * CV tailoring over any OpenAI-compatible chat endpoint.
@@ -131,7 +131,12 @@ export async function tailorCv(
   input: TailoringInput,
   options: TailoringClientOptions
 ): Promise<TailoringResult> {
-  const { apiKey, baseUrl, model } = options.config.tailoring
+  const { apiKey, baseUrl } = options.config.tailoring
+  // ITS OWN MODEL SINCE 2026-09-19. Tailoring is the judgement task of the
+  // three -- what to emphasise, and what would be a lie -- so it gets the
+  // largest model the deployment configures. Falls back to `TAILORING_MODEL`,
+  // which is what every deployment before today set.
+  const model = modelFor(options.config, 'tailor')
   if (!apiKey || !baseUrl || !model) {
     return {
       ok: false,

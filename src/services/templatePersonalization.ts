@@ -10,6 +10,22 @@ import {
   type UserProfile,
 } from './profile'
 import { groupSkills, type SkillGroup } from './skillGroups'
+import type { CvProse } from './integrations/cvWriter'
+
+/**
+ * Prose a model wrote for this profile, if one did.
+ *
+ * MERGED FIELD BY FIELD OVER THE DETERMINISTIC VERSION, never swapped for it
+ * (Gabe, 2026-09-19: "wire all three"). A model that writes good project
+ * sentences and forgets the summary should contribute the projects; a
+ * deployment with no key, a rate-limited free tier and a model that answers
+ * nonsense all produce exactly the CV they produced before this existed.
+ *
+ * MATCHED BY LABEL AND TITLE, which is why the prompt insists on echoing them
+ * verbatim: a sentence that cannot be matched to a group is one this file
+ * cannot place, and it is dropped rather than guessed at.
+ */
+export type CvWriting = CvProse | null
 
 /**
  * Filling a template in with the user's own details before they ever see it.
@@ -85,7 +101,7 @@ function clean(value: string | null | undefined): string | null {
  * pins it -- the alternative is the same template rendering a different date
  * format per machine, including in tests.
  */
-function tokenValues(profile: UserProfile): Record<string, string | null> {
+function tokenValues(profile: UserProfile, prose: CvWriting): Record<string, string | null> {
   return {
     name: clean(profile.name),
     headline: clean(profile.headline),
@@ -103,7 +119,7 @@ function tokenValues(profile: UserProfile): Record<string, string | null> {
      * `professionalSummary`, which leads with the longest thing the person
      * actually wrote and adds the role and the tools under it.
      */
-    summary: clean(professionalSummary(profile)),
+    summary: clean(prose?.summary ?? null) ?? clean(professionalSummary(profile)),
     today: new Date().toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'long',
@@ -274,19 +290,19 @@ function projectLead(entry: ProfileProject): string | null {
  * entries end in a full stop and others do not is the other half of looking
  * unfinished.
  */
-function projectNodes(entries: ProfileProject[]): JSONContent[] {
+function projectNodes(entries: ProfileProject[], prose: CvWriting): JSONContent[] {
+  const written = new Map((prose?.projects ?? []).map((item) => [item.title, item]))
   return entries.flatMap((entry) => {
-    const lead = projectLead(entry)
+    const byModel = written.get(entry.title)
+    const lead = clean(byModel?.lead ?? null) ?? projectLead(entry)
     const where = clean(entry.url) ?? clean(entry.homepage)
     const heading = lines(entry.title, lead, where)
-    const bullets = bulletsFrom(
-      (entry.highlights.length > 0
-        ? entry.highlights
-        : []
-      )
-        .map((line) => sentence(line))
-        .join('\n') || null
-    )
+    // THE MODEL'S BULLETS WHERE IT WROTE ANY, the README's own lines where it
+    // did not. Never a mixture: half-rewritten and half-raw in one list reads
+    // worse than either.
+    const source =
+      byModel && byModel.bullets.length > 0 ? byModel.bullets : entry.highlights
+    const bullets = bulletsFrom(source.map((line) => sentence(line)).join('\n') || null)
     return bullets ? [heading, bullets] : [heading]
   })
 }
@@ -401,11 +417,15 @@ function techKey(value: string): string {
  * headings and one written by an engineer gets technical ones, from the same
  * table.
  */
-function skillNodes(profile: UserProfile): JSONContent[] {
+function skillNodes(profile: UserProfile, prose: CvWriting): JSONContent[] {
   const groups = groupSkills(profile.skills)
   if (groups.length === 0) return []
 
+  const written = new Map((prose?.skills ?? []).map((item) => [item.label, item.sentence]))
+
   const claim = (group: SkillGroup): string => {
+    const byModel = written.get(group.label)
+    if (byModel) return ending(byModel)
     const verb = SKILL_VERBS[group.label] ?? 'Works with'
     const used = projectsUsing(group, profile.projects)
     const evidence = used.length > 0 ? `, used in ${listed(used)}` : ''
@@ -438,14 +458,17 @@ function skillNodes(profile: UserProfile): JSONContent[] {
  * ORDER MATTERS: the first entry whose pattern hits wins, so anything that
  * could read as two sections has to be listed under the one it belongs to.
  */
-const SECTIONS: { pattern: RegExp; build: (profile: UserProfile) => JSONContent[] }[] = [
+const SECTIONS: {
+  pattern: RegExp
+  build: (profile: UserProfile, prose: CvWriting) => JSONContent[]
+}[] = [
   { pattern: /experience|employment/i, build: (p) => experienceNodes(p.experiences) },
   { pattern: /education|academic/i, build: (p) => educationNodes(p.education) },
   {
     pattern: /skills?|competenc|^\s*stack\s*$/i,
-    build: (p) => skillNodes(p),
+    build: (p, prose) => skillNodes(p, prose),
   },
-  { pattern: /projects?/i, build: (p) => projectNodes(p.projects) },
+  { pattern: /projects?/i, build: (p, prose) => projectNodes(p.projects, prose) },
   // AFTER PROJECTS, because `certifications?` would otherwise never be reached
   // through a heading that reads "Projects & Certifications" -- the first
   // pattern that hits wins, and that is a projects section.
@@ -474,7 +497,11 @@ function headingLevel(node: JSONContent): number | null {
  * table cell is not a CV section -- walking into containers to find one would
  * be answering a question nobody has asked.
  */
-function expandSections(blocks: JSONContent[], profile: UserProfile): JSONContent[] {
+function expandSections(
+  blocks: JSONContent[],
+  profile: UserProfile,
+  prose: CvWriting
+): JSONContent[] {
   const out: JSONContent[] = []
   let i = 0
   while (i < blocks.length) {
@@ -492,7 +519,7 @@ function expandSections(blocks: JSONContent[], profile: UserProfile): JSONConten
       end += 1
     }
 
-    const replacement = section.build(profile)
+    const replacement = section.build(profile, prose)
     // Nothing in the profile for this section: the template's own specimen
     // block is better than a heading over empty space, so it is carried
     // through untouched.
@@ -514,9 +541,13 @@ function expandSections(blocks: JSONContent[], profile: UserProfile): JSONConten
  * `resumeService.create`, never after -- a draft in the database is the user's
  * document, and running it over saved content would rewrite work they did.
  */
-export function personalizeTemplate(content: JSONContent, profile: UserProfile): JSONContent {
+export function personalizeTemplate(
+  content: JSONContent,
+  profile: UserProfile,
+  prose: CvWriting = null
+): JSONContent {
   const doc = structuredClone(content)
-  substituteTokens(doc, tokenValues(profile))
-  if (Array.isArray(doc.content)) doc.content = expandSections(doc.content, profile)
+  substituteTokens(doc, tokenValues(profile, prose))
+  if (Array.isArray(doc.content)) doc.content = expandSections(doc.content, profile, prose)
   return doc
 }
