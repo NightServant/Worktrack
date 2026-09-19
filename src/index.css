@@ -836,6 +836,25 @@ body,
     @apply outline-none ring-2 ring-ring ring-offset-2 dark:ring-offset-zinc-950;
   }
 
+  /* ...except on the document page, which is not themed.
+
+     THE OFFSET IS THE PART THAT DRAWS (Gabe, 2026-09-19: "there is a weird
+     surrounding box when the cursor is placed at the document page"). A
+     Tailwind ring is TWO shadows, and `ring-offset-2` above paints the outer
+     one as a solid 2px box in `--tw-ring-offset-color` -- the THEME's
+     background, which is near-black under the dark theme. The editor already
+     carried `ring-0`, and that only zeroes the inner shadow, so the black
+     rectangle survived on paper that is white in both themes.
+
+     REMOVING IT COSTS NO AFFORDANCE. Inside an editable region the caret is
+     the focus indicator, and it is the one the writer is already watching.
+     Scoped to `.ProseMirror` so every surface that renders document content --
+     the editor, the preview, the tailoring pane -- is fixed once. */
+  .ProseMirror:focus-visible,
+  .ProseMirror :focus-visible {
+    @apply outline-none ring-0 ring-offset-0;
+  }
+
   /* The horizontal-scroll guard, applied at the one place it cannot cause
      collateral damage.
 
