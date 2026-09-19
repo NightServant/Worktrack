@@ -107,10 +107,48 @@ export default function BookmarkletPage() {
           LinkedIn shows a signed-out visitor almost nothing: no About, no
           skills, no detail under a role, and on some profiles not even the job
           titles. Nothing Worktrack fetches can change that &mdash; the page is
-          not written for a stranger. Open your own profile while logged in and
-          press this instead; Worktrack reads the page you are looking at and
-          fills all of it in.
+          not written for a stranger. Opening your own profile while logged in
+          and pressing this reads the page you are looking at.
         </p>
+
+        {/* CHROME WILL NOT RUN IT ON LINKEDIN, and saying so is the whole
+            point of this block (Gabe, 2026-09-19, clicking it: "its
+            blocked... about:blank#blocked"). LinkedIn serves a CSP whose
+            `script-src` is a list of hashes and hosts with no
+            `'unsafe-inline'`, so Chrome refuses the `javascript:` URL and
+            navigates to `about:blank#blocked`. There is no version of a
+            bookmarklet that gets around that -- it is the browser enforcing
+            the site's policy, working exactly as intended.
+
+            Firefox exempts bookmarklets from CSP, so it does run there. That
+            is a fact worth stating and a poor thing to build on, which is why
+            the export is named first. */}
+        <div className="flex flex-col gap-2 rounded-md border border-status-rejected-mark/40 bg-bg-subtle p-4">
+          <p className="text-body-m font-medium text-text-primary">
+            Chrome blocks this on LinkedIn
+          </p>
+          <p className="max-w-prose text-body-s font-normal text-text-secondary">
+            If clicking it lands you on{' '}
+            <code className="text-text-primary">about:blank#blocked</code>, that is
+            LinkedIn&rsquo;s content security policy and your browser enforcing it.
+            Nothing about the bookmarklet can change it. Two things do work:
+          </p>
+          <ul className="flex list-disc flex-col gap-1 pl-5 text-body-s font-normal text-text-secondary">
+            <li>
+              <span className="text-text-primary">Your LinkedIn data export</span> &mdash;
+              in Worktrack, open <span className="text-text-primary">update sources</span>{' '}
+              and use the import at the bottom. It is slower to get and carries more than
+              any page does: bullet text, certificate dates, academic years.
+            </li>
+            <li>
+              <span className="text-text-primary">Firefox</span> &mdash; it exempts
+              bookmarklets from content security policy, so this runs there as intended.
+            </li>
+          </ul>
+          <p className="text-body-s font-normal text-text-muted">
+            The posting button above is unaffected: Indeed sets no such policy.
+          </p>
+        </div>
 
         {/* THE LONG SECTIONS ARE FETCHED, NOT ASKED FOR (Gabe, 2026-09-19:
             "why credentials is 2? I told you its eight"). Telling somebody to

@@ -706,7 +706,31 @@ describe('building a profile from several addresses', () => {
     expect(document.querySelector('[data-profile-capture-link]')).toBeNull()
   })
 
-  it('offers the bookmarklet on a LinkedIn row that was only read publicly', () => {
+  it('offers the LinkedIn export, which the addresses cannot replace', () => {
+    // Gabe, 2026-09-19: "its blocked... about:blank#blocked". The bookmarklet
+    // cannot run on LinkedIn -- its CSP `script-src` lists hashes and hosts
+    // and no `'unsafe-inline'` -- so the export is the only route left to the
+    // bullet text, the certificate dates and the academic years. It had been
+    // in the codebase and unreachable since 2026-09-18.
+    const onImport = vi.fn()
+    const { container } = render(
+      <ProfileSources
+        onFetch={vi.fn()}
+        exportImport={<ProfileImport onImport={onImport} />}
+      />
+    )
+    const block = container.querySelector('[data-profile-export]')!
+    expect(block).toBeTruthy()
+    // The row link above points here rather than off to a dead bookmarklet.
+    expect(block.getAttribute('id')).toBe('profile-linkedin-export')
+    expect(within(block as HTMLElement).getByRole('button', { name: /import linkedin export/i })).toBeTruthy()
+
+    // And it really reaches the parser, rather than being decoration.
+    const input = block.querySelector('input[type="file"]') as HTMLInputElement
+    expect(input).toBeTruthy()
+  })
+
+  it('offers the export on a LinkedIn row that was only read publicly', () => {
     // Every warning under that row is about what a signed-out page does not
     // show, and this is the only thing that changes it. The advice used to
     // name the data-export button, which was removed the same afternoon.
@@ -735,9 +759,12 @@ describe('building a profile from several addresses', () => {
       />
     )
     const links = [...document.querySelectorAll('[data-profile-capture-link]')]
-    // On LinkedIn and nowhere else -- the bookmarklet refuses to run elsewhere.
+    // On LinkedIn and nowhere else -- no other row has a richer source behind
+    // it. It points at the EXPORT since 2026-09-19: LinkedIn's CSP refuses a
+    // `javascript:` URL, so Chrome lands the bookmarklet on
+    // `about:blank#blocked` and a link offering it would be a dead end.
     expect(links).toHaveLength(1)
-    expect(links[0].getAttribute('href')).toBe('/bookmarklet')
+    expect(links[0].getAttribute('href')).toBe('#profile-linkedin-export')
   })
 
   it('has nothing to remove before the first fetch', () => {

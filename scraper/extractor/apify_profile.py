@@ -11,11 +11,19 @@ there is no HTML to parse here at all: the work is mapping their field names
 onto `UserProfile`. It also reaches sections the JSON-LD never carried --
 certifications, projects, volunteer work, personal websites.
 
-EVERY WARNING IT LEAVES NAMES THE BOOKMARKLET (2026-09-18). Three of them used
-to end "or import a LinkedIn data export", and that button was removed the same
-afternoon the bookmarklet shipped -- so the app was telling its owner to press
-something that no longer exists, four times, in the one place he was looking
-for a way out. A warning that names a fix has to name a fix that is there.
+EVERY WARNING IT LEAVES NAMES THE DATA EXPORT, and it named the bookmarklet
+until 2026-09-19. That afternoon Gabe clicked it on LinkedIn and got
+`about:blank#blocked`: LinkedIn serves a CSP whose `script-src` is a list of
+hashes and hosts with no `'unsafe-inline'`, so Chrome refuses a `javascript:`
+URL outright. No version of the bookmarklet can run there, which means every
+one of these warnings was an instruction to do something impossible -- the same
+failure as naming a button that had been removed, one turn of the wheel later.
+
+THE EXPORT IS WHAT IS LEFT, and it is the richest source this app has ever had:
+`Certifications.csv` carries the issue dates and licence numbers, `Education.csv`
+the academic years, `Positions.csv` the bullet text under each role. It is a
+worse ASK -- request an archive, wait for an email -- and it is the only one
+that works.
 
 WHAT IT COSTS, because that is not a detail. The actor is pay-per-event:
 $0.50 per gigabyte of memory at start (minimum one event) plus $0.01 per
@@ -570,15 +578,15 @@ def profile_from_apify(row: dict[str, Any], requested_url: str) -> dict[str, Any
     # otherwise would be the app arguing with what is on screen beside it.
     if not profile["skills"] and not profile["languages"]:
         warnings.append(
-            "Skills and languages did not come through from the public page. Open your own "
-            "profile while signed in and use the Worktrack bookmarklet — it reads the page "
-            "you are looking at."
+            "Skills and languages did not come through from the public page. LinkedIn's "
+            "own data export carries them in full — ask for it under Settings → Get a copy "
+            "of your data, then import the CSVs here."
         )
     if not profile["summary"]:
         warnings.append(
             "No About section came back — LinkedIn only shows one to signed-out visitors "
-            "when the profile owner has made it public. The Worktrack bookmarklet reads it "
-            "from your own logged-in profile."
+            "when the profile owner has made it public. Your LinkedIn data export carries "
+            "it."
         )
 
     # WHAT A SIGNED-OUT PAGE DOES TO A LONG SECTION (Gabe, 2026-09-19:
@@ -592,9 +600,8 @@ def profile_from_apify(row: dict[str, Any], requested_url: str) -> dict[str, Any
     if certs and all(cert["issued"] is None for cert in certs):
         warnings.append(
             f"{len(certs)} certificate(s) came back, without their dates — a public profile "
-            "shows only the first few of a long section and none of their detail. Open your "
-            "own Licenses & certifications page (Show all → the /details/certifications/ "
-            "address) and use the Worktrack bookmarklet there to get the rest."
+            "shows only the first few of a long section and none of their detail. Your "
+            "LinkedIn data export has all of them, with issue dates and licence numbers."
         )
 
     # SCHOOLS WITHOUT DATES, said for the same reason: a blank year reads as a
@@ -605,7 +612,7 @@ def profile_from_apify(row: dict[str, Any], requested_url: str) -> dict[str, Any
     ):
         warnings.append(
             "No academic years came back — a public profile does not publish education "
-            "dates. The Worktrack bookmarklet reads them from your own education page."
+            "dates. Your LinkedIn data export has them."
         )
 
     roles = profile["experiences"]
@@ -620,8 +627,8 @@ def profile_from_apify(row: dict[str, Any], requested_url: str) -> dict[str, Any
         if all(not item["title"] for item in roles):
             warnings.append(
                 "LinkedIn does not show job titles to signed-out visitors on this profile — "
-                "the employers and dates came through, the roles did not. The Worktrack "
-                "bookmarklet reads them from your own logged-in profile."
+                "the employers and dates came through, the roles did not. Your LinkedIn data "
+                "export has them."
             )
         # A LOCATION THAT WAS DROPPED IS NOT A LOCATION THAT WAS MISSING, and
         # the reader cannot tell the two apart from a blank line. The hosted
@@ -631,13 +638,13 @@ def profile_from_apify(row: dict[str, Any], requested_url: str) -> dict[str, Any
         if roles and all(item["location"] is None for item in roles):
             warnings.append(
                 "No work location came through in a readable form — the public page returns "
-                "it in whatever language the reader's session uses. The Worktrack bookmarklet "
-                "reads it from your own logged-in profile."
+                "it in whatever language the reader's session uses. Your LinkedIn data "
+                "export records it as you entered it."
             )
         if all(item["description"] is None for item in roles):
             warnings.append(
-                "The bullet text under each role is not on a public profile page. The "
-                "Worktrack bookmarklet reads it from your own logged-in profile."
+                "The bullet text under each role is not on a public profile page — it is the "
+                "part a CV is written from, and only your LinkedIn data export carries it."
             )
 
     return {"profile": profile, "warnings": warnings}
