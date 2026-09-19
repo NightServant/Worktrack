@@ -864,6 +864,40 @@ DEV_FUSION_ROW = {
 }
 
 
+def test_a_403_about_permissions_is_not_reported_as_a_bad_token():
+    # Gabe, 2026-09-19, switching actors: the reply was `403 This Actor
+    # requires full access to your account ... approve its permissions`, and
+    # this said "rejected our credentials" -- which sends somebody to check an
+    # API token that is fine. The console URL in the reply is the only
+    # actionable thing in it, so it is repeated rather than summarised away.
+    from app import _linkedin_message
+
+    said = _linkedin_message(
+        "apify: http-403: This Actor requires full access to your account. You must "
+        "approve its permissions before running it: https://console.apify.com/actors/x"
+        "?approvePermissions=true"
+    )
+    assert "permissions approved" in said
+    assert "console.apify.com" in said
+    assert "credentials" not in said
+    # A 401 still is a credentials problem.
+    assert "credentials" in _linkedin_message("apify: http-401")
+
+
+def test_firecrawl_is_not_tried_for_linkedin():
+    # It answers a LinkedIn URL with `403 we do not support this site` -- a
+    # policy, not a failure -- so trying it spent a credit and a wait on every
+    # failed read and reported two routes failing when one had never run.
+    import inspect
+
+    import app as service
+
+    source = inspect.getsource(service._linkedin_profile)
+    assert "_firecrawl_fetch" not in source
+    # And it is still the route for the sites Firecrawl does serve.
+    assert "_firecrawl_fetch" in inspect.getsource(service._page_profile)
+
+
 def test_the_second_actors_dialect_maps_onto_the_same_profile():
     # ONE MAPPER, TWO ACTORS, and the keys share almost nothing: `jobTitle`
     # against `title`, `jobStartedOn` against `startDate`, `educations` against

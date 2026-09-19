@@ -452,8 +452,22 @@ def health() -> dict[str, str]:
 
 def _apify_message(reason: str) -> str:
     """One sentence per thing the reader can actually do about it."""
-    if reason.startswith("http-401") or reason.startswith("http-403"):
+    if reason.startswith("http-401"):
         return "The profile reader rejected our credentials."
+    if reason.startswith("http-403"):
+        # A 403 IS NOT A BAD TOKEN, and saying so sent Gabe to check one that
+        # was fine (2026-09-19). Apify answers 403 when the ACTOR wants
+        # permissions the account has not granted it -- a one-time approval in
+        # the console, by the account's owner, that nothing this service can do
+        # on their behalf. The reply carries the console URL that grants it, so
+        # the detail is repeated verbatim rather than summarised away.
+        _, _, detail = reason.partition(": ")
+        if "permission" in detail.lower() or "approve" in detail.lower():
+            return (
+                "That scraper needs its permissions approved on your Apify account "
+                "before it can run. " + detail.strip()
+            )
+        return "The profile reader is not allowed to run that scraper."
     if reason.startswith("http-402"):
         return "The profile reader's credit is used up."
     if reason.startswith("http-429"):
@@ -704,10 +718,21 @@ async def _linkedin_profile(url: str) -> tuple[dict[str, Any] | None, str]:
     than the JSON-LD -- certifications, projects, websites, and the bullet text
     under each role that the whole import exists for.
 
-    Firecrawl stays behind it rather than being deleted. It costs a fraction as
-    much, it is already configured, and on a profile it CAN read it produces
-    the same fields -- so when the Apify credit runs out this is the difference
-    between a partial import and none.
+    FIRECRAWL IS NO LONGER TRIED HERE, and the reason is a flat refusal rather
+    than a failure (measured 2026-09-19, from Gabe's own import): it answers a
+    LinkedIn URL with `403 We apologize for the inconvenience but we do not
+    support this site`. That is a policy, not a rate limit and not a challenge
+    it lost -- no amount of retrying or paying changes it.
+
+    It shipped as the fallback on 2026-09-10 on the assumption that a fetcher
+    which could not solve a challenge would at least be tried, and nothing ever
+    checked whether it was allowed to try. What that cost was a credit and a
+    wait on EVERY failed LinkedIn read, and an error message that reported two
+    routes failing when only one had ever been able to run -- which is how a
+    reader ends up checking a Firecrawl balance that is fine.
+
+    Firecrawl is untouched everywhere else: `_page_profile` still uses it for
+    JobStreet, Indeed and Glassdoor, which it does serve.
     """
     reasons: dict[str, str] = {}
     if os.environ.get("APIFY_TOKEN", "").strip():
@@ -725,16 +750,9 @@ async def _linkedin_profile(url: str) -> tuple[dict[str, Any] | None, str]:
                 return {**payload, "via": "apify"}, "ok"
             reasons["apify"] = "unmapped-row"
 
-    if not os.environ.get("FIRECRAWL_API_KEY", "").strip():
-        return None, ", ".join(f"{k}: {v}" for k, v in reasons.items()) or "no-key"
-
-    html, reason = await _firecrawl_fetch(url, firecrawl_profile_payload(url))
-    reasons["firecrawl"] = reason
-    if not html:
-        return None, ", ".join(f"{k}: {v}" for k, v in reasons.items())
-    if len(html.encode("utf-8", "ignore")) > MAX_HTML_BYTES:
-        return None, "too-large"
-    return {**extract_profile(url, html, "LinkedIn"), "via": "firecrawl"}, "ok"
+    # See the docblock: Firecrawl refuses LinkedIn outright, so there is
+    # nothing left to try and the actor's own reason is the whole answer.
+    return None, ", ".join(f"{k}: {v}" for k, v in reasons.items()) or "no-key"
 
 
 async def _plain_fetch(url: str) -> tuple[str | None, str]:
@@ -908,10 +926,16 @@ def _parse_supplied(url: str, html: str, route: str, label: str) -> dict[str, An
 def _linkedin_message(reason: str) -> str:
     """The sentence for a LinkedIn read that did not work.
 
-    THE REASON IS COMPOUND when both routes ran -- `apify: no-rows, firecrawl:
-    http-402` -- and the LAST one decided the outcome, because Firecrawl only
-    runs once Apify has already failed. Naming the first would send somebody to
-    top up a credit balance that is fine.
+    ONE ROUTE SINCE 2026-09-19, so the compound form is history -- but it is
+    still parsed, because a deployment mid-rollout and every stored source row
+    written before today carry `apify: ..., firecrawl: ...` and a reader
+    looking at an old row deserves the same sentence they got then.
+
+    AN ACTOR'S OWN 403 IS PASSED THROUGH VERBATIM, which is the opposite of
+    what this function does to every other reason, and it earned it: when an
+    actor refuses because it wants permissions approved, its message carries
+    the console URL that grants them. A tidy sentence of ours would throw away
+    the only actionable thing in the reply.
     """
     last = reason.split(", ")[-1]
     route, _, detail = last.partition(": ")
