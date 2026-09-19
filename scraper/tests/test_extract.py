@@ -829,6 +829,35 @@ def test_a_degree_repeated_as_its_own_field_is_written_once():
     )
 
 
+def test_a_year_that_arrives_as_a_number_is_still_a_year():
+    # `_clean` refuses anything that is not a string, so an integer `endYear`
+    # read as no year at all and the panel printed a blank beside the school
+    # (Gabe, 2026-09-19: "education did not fetch academic year").
+    row = {
+        "education": [
+            {"school": "Tarlac State University", "degree": "BS", "startYear": 2022, "endYear": 2026}
+        ]
+    }
+    school = profile_from_apify(row, "x")["profile"]["education"][0]
+    assert school["period"] == "2022 – 2026"
+    assert school["graduationYear"] == "2026"
+
+
+def test_thin_certificates_and_undated_schools_say_why():
+    # A short list from a public page is usually a TRUNCATED one, and a blank
+    # year reads as a field that failed to import rather than one the page
+    # never carried.
+    out = profile_from_apify(
+        {
+            "certifications": [{"name": "A", "issuer": "X"}, {"name": "B", "issuer": "Y"}],
+            "education": [{"school": "TSU", "degree": "BS"}],
+        },
+        "x",
+    )
+    assert any("only the first few of a long section" in w for w in out["warnings"])
+    assert any("No academic years came back" in w for w in out["warnings"])
+
+
 def test_a_localised_place_name_is_dropped_rather_than_printed():
     # `Капас` is Cyrillic for Capas: the hosted actor's own LinkedIn session
     # locale, not the place. A plausible wrong location is worse than none.
@@ -1666,6 +1695,87 @@ def test_a_captured_certificate_carries_its_dates_number_and_link():
     assert cert["credentialId"] == "ABC-123"
     assert cert["url"] == "https://www.credly.com/badges/abc"
     assert cert["period"] == "Issued Jun 2024 · Expires Jun 2027"
+
+
+DETAILS_CERTIFICATIONS = """
+<html><body>
+  <nav><ul><li><span aria-hidden="true">My Network</span></li></ul></nav>
+  <main>
+    <ul>
+      <li>
+        <span aria-hidden="true">The Hacker's Journey: A Guide to Getting into Cybersecurity</span>
+        <span aria-hidden="true">Gordon College, Olongapo City</span>
+        <span aria-hidden="true">Issued Mar 2025</span>
+      </li>
+      <li>
+        <span aria-hidden="true">Introduction to Networks</span>
+        <span aria-hidden="true">Cisco Networking Academy</span>
+        <span aria-hidden="true">Issued Jun 2024</span>
+        <span aria-hidden="true">Expires Jun 2027</span>
+        <span aria-hidden="true">Credential ID ABC-123</span>
+        <a href="https://www.credly.com/badges/abc"><span aria-hidden="true">Show credential</span></a>
+      </li>
+    </ul>
+  </main>
+</body></html>
+"""
+
+
+def test_a_details_page_is_read_as_one_whole_section():
+    # Gabe, 2026-09-19: "credentials fetch two only, I have EIGHT from my
+    # LinkedIn account". The profile page renders the first few of a long
+    # section and a `Show all 8` link -- for the OWNER too, not just a guest --
+    # so the rest only exist on `/details/certifications/`, which carries none
+    # of the anchors `_sections` slices on.
+    out = profile_from_linkedin_page(
+        "https://www.linkedin.com/in/elijah/details/certifications/",
+        DETAILS_CERTIFICATIONS,
+    )
+    certs = out["profile"]["certifications"]
+    assert [c["name"] for c in certs] == [
+        "The Hacker's Journey: A Guide to Getting into Cybersecurity",
+        "Introduction to Networks",
+    ]
+    assert certs[1]["issued"] == "Jun 2024"
+    assert certs[1]["expires"] == "Jun 2027"
+    assert certs[1]["credentialId"] == "ABC-123"
+    assert certs[1]["url"] == "https://www.credly.com/badges/abc"
+    # THE GLOBAL NAV IS A LIST OF `li` TOO. Unscoped, `My Network` becomes a
+    # certificate.
+    assert all("My Network" not in c["name"] for c in certs)
+    # And the page that was captured is a subpage, not the person's address.
+    assert out["profile"]["url"] == "https://www.linkedin.com/in/elijah/"
+    # Nothing else is claimed, so the merge leaves the rest of the profile be.
+    assert out["profile"]["experiences"] == []
+    assert out["profile"]["name"] is None
+    assert any("2 certifications" in w for w in out["warnings"])
+
+
+def test_a_details_capture_is_filed_under_the_profile_not_the_subpage():
+    # Otherwise the panel stores `/details/certifications/` as the LinkedIn
+    # address, pre-fills the field with it, and the next `Fetch again` asks a
+    # profile scraper to read a list page.
+    from app import _parse_supplied
+
+    record = _parse_supplied(
+        "https://www.linkedin.com/in/elijah/details/certifications/",
+        DETAILS_CERTIFICATIONS,
+        "linkedin",
+        "LinkedIn",
+    )
+    assert record["url"] == "https://www.linkedin.com/in/elijah/"
+    assert record["via"] == "bookmarklet"
+    assert len(record["profile"]["certifications"]) == 2
+
+
+def test_an_unknown_details_page_falls_through_rather_than_guessing():
+    assert (
+        profile_from_linkedin_page(
+            "https://www.linkedin.com/in/elijah/details/recommendations/",
+            DETAILS_CERTIFICATIONS,
+        )
+        is None
+    )
 
 
 def test_a_page_with_no_recognised_section_falls_through():

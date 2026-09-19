@@ -86,6 +86,34 @@ def _pick(node: Any, *names: str) -> str | None:
     return None
 
 
+def _number_or_text(value: Any) -> str | None:
+    """A trimmed string, or a plain number written out.
+
+    `_clean` REFUSES ANYTHING THAT IS NOT A STRING, which is right for a name
+    and wrong for a year: the actor sends `{"endYear": 2026}` as an integer on
+    some rows, so a school's graduation year read as absent and the panel
+    printed a blank beside it (Gabe, 2026-09-19: "education did not fetch
+    academic year"). A bool is not a year, and `True` would otherwise become
+    "1".
+    """
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return str(int(value))
+    return _clean(value)
+
+
+def _pick_number(node: Any, *names: str) -> str | None:
+    """`_pick`, for the fields that may arrive as numbers."""
+    if not isinstance(node, dict):
+        return None
+    for name in names:
+        value = _number_or_text(node.get(name))
+        if value:
+            return value
+    return None
+
+
 def _period(node: Any, *, start: str = "startDate", end: str = "endDate") -> str | None:
     """`start – end` as free text, matching `ProfileExperience.period`.
 
@@ -256,15 +284,24 @@ def _education(row: dict[str, Any]) -> list[dict[str, Any]]:
         for part in (degree, field):
             if part and part.casefold() not in {kept.casefold() for kept in parts}:
                 parts.append(part)
+        # EVERY SPELLING A YEAR ARRIVES UNDER, and numbers as well as strings.
+        # The actor's education rows are the least consistent thing it returns:
+        # `dateRange` on some, `startDate`/`endDate` on others, bare integer
+        # `startYear`/`endYear` on the rest.
+        start = _pick_number(school, "startYear", "start_year", "startDate")
+        end = _pick_number(school, "endYear", "end_year", "endDate")
         period = _period(school)
+        if not period:
+            if start and end:
+                period = f"{start} – {end}"
+            else:
+                period = end or start
         out.append(
             {
                 "school": name,
                 "degree": ", ".join(parts) or None,
                 "period": period,
-                "graduationYear": graduation_year(period)
-                or _clean(school.get("endYear"))
-                or _clean(school.get("end_year")),
+                "graduationYear": graduation_year(period) or end,
             }
         )
     return out
@@ -291,10 +328,18 @@ def _certifications(row: dict[str, Any]) -> list[dict[str, Any]]:
         #
         # EVERY SPELLING, because the actor's README names the concepts and
         # not the keys -- the same defensive lookup the rest of this file uses.
-        issued = _pick(
-            cert, "issueDate", "issuedOn", "issued", "issuedDate", "date", "startDate"
+        issued = _pick_number(
+            cert,
+            "issueDate",
+            "issuedOn",
+            "issued",
+            "issuedDate",
+            "issuedDateText",
+            "date",
+            "startDate",
+            "issuedYear",
         )
-        expires = _pick(
+        expires = _pick_number(
             cert, "expirationDate", "expiresAt", "expires", "expiryDate", "endDate"
         )
         period = _pick(cert, "dateRange", "duration")
@@ -475,6 +520,33 @@ def profile_from_apify(row: dict[str, Any], requested_url: str) -> dict[str, Any
             "No About section came back — LinkedIn only shows one to signed-out visitors "
             "when the profile owner has made it public. The Worktrack bookmarklet reads it "
             "from your own logged-in profile."
+        )
+
+    # WHAT A SIGNED-OUT PAGE DOES TO A LONG SECTION (Gabe, 2026-09-19:
+    # "credentials fetch two only, I have EIGHT from my LinkedIn account").
+    # LinkedIn renders the first two or three certificates and a `Show all N`
+    # link, and the actor reads what is rendered -- so a short list here is
+    # usually a TRUNCATED one rather than a complete one, and nothing on the
+    # screen said so. The count cannot be known from the outside; that the
+    # ceiling exists can be.
+    certs = profile["certifications"]
+    if certs and all(cert["issued"] is None for cert in certs):
+        warnings.append(
+            f"{len(certs)} certificate(s) came back, without their dates — a public profile "
+            "shows only the first few of a long section and none of their detail. Open your "
+            "own Licenses & certifications page (Show all → the /details/certifications/ "
+            "address) and use the Worktrack bookmarklet there to get the rest."
+        )
+
+    # SCHOOLS WITHOUT DATES, said for the same reason: a blank year reads as a
+    # field that failed to import rather than as one the page never carried.
+    schools = profile["education"]
+    if schools and all(
+        school["period"] is None and school["graduationYear"] is None for school in schools
+    ):
+        warnings.append(
+            "No academic years came back — a public profile does not publish education "
+            "dates. The Worktrack bookmarklet reads them from your own education page."
         )
 
     roles = profile["experiences"]

@@ -85,6 +85,20 @@ def _looks_like_period(line: str) -> bool:
     return bool(_MONTHS.search(line) or "-" in line or "–" in line)
 
 
+#: `/in/<name>/details/<section>/` -- the page LinkedIn sends you to when a
+#: section is too long to render in full on the profile itself.
+#:
+#: WHY IT HAS TO BE READ SEPARATELY (Gabe, 2026-09-19: "credentials fetch two
+#: only, I have EIGHT from my LinkedIn account"). The profile page renders the
+#: first two or three of a long section and a `Show all 8` link; that is true
+#: for the OWNER looking at their own page, not just for a signed-out visitor,
+#: so no amount of capturing the profile itself recovers the rest. The eight
+#: are on `/details/certifications/`, which is its own document with no
+#: `id="licenses_and_certifications"` anchor in it -- so `_sections` finds
+#: nothing there and this reader is what makes that page worth capturing.
+_DETAILS_PATH = re.compile(r"/in/[^/]+/details/([a-z0-9-]+)", re.I)
+
+
 def _sections(html: str) -> dict[str, str]:
     """The raw HTML between each anchor and the next. See the docblock."""
     found: list[tuple[int, str]] = []
@@ -337,6 +351,69 @@ def _projects(section: str) -> list[dict[str, Any]]:
     return out
 
 
+#: Which reader a details page needs, the `UserProfile` field it fills, and
+#: what to call the things it found.
+_DETAIL_READERS: dict[str, tuple[str, str]] = {
+    "certifications": ("certifications", "certifications"),
+    "licenses-and-certifications": ("certifications", "certifications"),
+    "education": ("education", "schools"),
+    "experience": ("experiences", "roles"),
+    "projects": ("projects", "projects"),
+    "skills": ("skills", "skills"),
+    "courses": ("certifications", "courses"),
+}
+
+
+def _from_details_page(url: str, html: str, kind: str) -> dict[str, Any] | None:
+    """One LinkedIn `/details/<section>/` page, read whole.
+
+    THE WHOLE DOCUMENT IS THE SECTION here, which is the only structural
+    difference from the profile page: there are no anchors to slice between
+    because the page IS one section.
+
+    SCOPED TO `<main>` ALL THE SAME. LinkedIn's global navigation is a list of
+    `li` elements too, and the row readers below key on `li` -- so an unscoped
+    read invents a certificate called `My Network`. Falling back to the whole
+    document rather than failing keeps a markup change costing the scope rather
+    than the import, which is this module's standing rule.
+    """
+    field, noun = _DETAIL_READERS[kind]
+    body = Page(html).first("main") or html
+
+    if field == "certifications":
+        rows: Any = _certifications(body)
+    elif field == "education":
+        rows = _education(body)
+    elif field == "experiences":
+        rows, _ = _experiences(body)
+    elif field == "projects":
+        rows = _projects(body)
+    else:
+        rows = _skills(body)
+
+    # NOTHING RECOGNISED IS NOT AN EMPTY SECTION. Returning None sends the
+    # caller to the ordinary reader, the same as every other failure here.
+    if not rows:
+        return None
+
+    profile = dict(EMPTY_PROFILE)
+    # THE PERSON'S PROFILE, NOT THE PAGE THAT WAS CAPTURED. `/details/...` is
+    # a subpage; storing it would put it on a CV as somebody's LinkedIn address.
+    profile["url"] = url.split("/details/")[0].rstrip("/") + "/"
+    profile[field] = rows
+
+    # THE NAME IS DELIBERATELY NOT READ. A details page's `h1` is the section's
+    # title -- "Licenses & certifications" -- and reading it as a name would
+    # overwrite the person with the name of a page.
+    return {
+        "profile": profile,
+        "warnings": [
+            f"Read {len(rows)} {noun} from your {kind.replace('-', ' ')} page. "
+            "Everything else on this profile was left as it was."
+        ],
+    }
+
+
 def _skills(section: str) -> list[str]:
     """One skill per entry, ignoring the `N endorsements` line under it."""
     out: list[str] = []
@@ -354,6 +431,15 @@ def profile_from_linkedin_page(url: str, html: str) -> dict[str, Any] | None:
     is deliberately weak -- one usable section -- because a partial read of a
     page only the owner can see still beats everything a fetch can get.
     """
+    # A DETAILS PAGE FIRST, because it is not a thin profile page -- it is a
+    # different document that happens to be on the same host, and `_sections`
+    # correctly finds no anchors in it. See `_DETAILS_PATH`.
+    detail = _DETAILS_PATH.search(url or "")
+    if detail:
+        kind = detail.group(1).lower()
+        if kind in _DETAIL_READERS:
+            return _from_details_page(url, html, kind)
+
     sections = _sections(html)
     if not sections:
         return None

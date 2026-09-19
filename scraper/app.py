@@ -36,7 +36,7 @@ from extractor.github_profile import _login, profile_from_github, projectable
 from extractor.jobstreet_profile import profile_from_jobstreet
 from extractor.linkedin_page import profile_from_linkedin_page
 from extractor.merge_profile import merge_profiles
-from extractor.profile import extract_profile
+from extractor.profile import _clean, extract_profile
 
 REQUEST_TIMEOUT_S = 12.0
 
@@ -834,8 +834,18 @@ def _parse_supplied(url: str, html: str, route: str, label: str) -> dict[str, An
     if payload is None:
         payload = {**extract_profile(url, html, label), "via": "bookmarklet"}
 
+    # THE ROW NAMES THE PROFILE, NOT THE SUBPAGE THAT WAS CAPTURED.
+    #
+    # A `Show all` capture arrives from `/in/<name>/details/certifications/`,
+    # and that address is what the panel would then store, pre-fill the
+    # LinkedIn field with, and send to the actor on the next `Fetch again` --
+    # which would ask a profile scraper to read a list page. The parser already
+    # puts the person's own address on the profile it returns; the source row
+    # follows it.
     return {
-        "url": url,
+        "url": _clean(payload["profile"].get("url")) or url
+        if "/details/" in url
+        else url,
         "site": label,
         "ok": True,
         "reason": "ok",

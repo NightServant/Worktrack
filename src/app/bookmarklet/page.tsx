@@ -169,6 +169,42 @@ export default function BookmarkletPage() {
           fills all of it in.
         </p>
 
+        {/* THE LONG SECTIONS NEED THEIR OWN PAGE (Gabe, 2026-09-19:
+            "credentials fetch two only, I have EIGHT from my LinkedIn
+            account"). LinkedIn renders the first two or three of a long
+            section and a `Show all N` link -- on the OWNER's own profile as
+            well as to a stranger -- so capturing the profile page cannot
+            recover the rest however you are signed in. Each `Show all` goes to
+            a page that holds the whole list, and the reader understands those
+            pages too. */}
+        <div className="flex flex-col gap-2 rounded-md border border-border-subtle bg-bg-subtle p-4">
+          <p className="text-body-m font-medium text-text-primary">
+            Long lists live on their own page
+          </p>
+          <p className="text-body-s font-normal text-text-secondary">
+            Your profile shows only the first few certificates, roles or
+            schools and then a <span className="text-text-primary">Show all</span>{' '}
+            link. Press that first, then click the bookmarklet on the page it
+            opens &mdash; Worktrack reads the whole list from there and leaves
+            the rest of your profile alone. It works on any of these:
+          </p>
+          <ul className="flex list-disc flex-col gap-1 pl-5 text-body-s font-normal text-text-muted">
+            <li>
+              <code className="text-text-secondary">/details/certifications/</code> &mdash;
+              with each one&rsquo;s issue date, expiry and credential ID
+            </li>
+            <li>
+              <code className="text-text-secondary">/details/education/</code> &mdash; with
+              the academic years
+            </li>
+            <li>
+              <code className="text-text-secondary">/details/experience/</code>,{' '}
+              <code className="text-text-secondary">/details/projects/</code>,{' '}
+              <code className="text-text-secondary">/details/skills/</code>
+            </li>
+          </ul>
+        </div>
+
         <div className="flex flex-wrap items-center gap-4 rounded-md border border-border-subtle p-6">
           <a
             ref={profileRef}
