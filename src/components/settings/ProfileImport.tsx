@@ -286,23 +286,6 @@ const PROFILE_SOURCES: ProfileSourceField[] = [
 
 export interface ProfileSourcesProps {
   onFetch: (urls: string[]) => void
-  /**
-   * The LinkedIn data export control.
-   *
-   * IT CAME BACK ON 2026-09-19 (Gabe: "its blocked... about:blank#blocked").
-   * It was removed on 2026-09-18 -- "remove the import linkedin profile
-   * button" -- because the bookmarklet was the better answer to the same
-   * question: an export is an email that can take a day, a bookmarklet is a
-   * click on a page you already have open. That reasoning held right up until
-   * the bookmarklet turned out not to run on LinkedIn at all: its CSP
-   * `script-src` lists hashes and hosts and no `'unsafe-inline'`, so Chrome
-   * refuses the `javascript:` URL.
-   *
-   * So the worse ask is the only one that works, and it is also the richest
-   * source this app has: the export carries the certificate dates, the
-   * academic years and the bullet text under every role.
-   */
-  exportImport?: React.ReactNode
   onClear?: () => void
   fetching?: boolean
   clearing?: boolean
@@ -324,7 +307,6 @@ function hostOf(url: string): string {
 
 export function ProfileSources({
   onFetch,
-  exportImport,
   onClear,
   fetching = false,
   clearing = false,
@@ -387,17 +369,26 @@ export function ProfileSources({
 
   return (
     <div className="flex flex-col gap-4" data-profile-fetch>
-      {/* ONE PER ROW, AND NARROW. A profile address is about 50 characters and
-          these sit in a card that can run to 1400px; unconstrained, each field
-          looked like it wanted an essay (Gabe, 2026-09-10). Two columns once
-          the CARD has the width for them -- the query is `@container/profile`,
-          declared by ProfileGroup, because this panel's width has nothing to do
-          with the window's. */}
-      <div className="grid gap-4 @2xl/profile:grid-cols-2">
+      {/* THE MEASURE IS ON THE GRID, NOT ON EVERY FIELD (Gabe, 2026-09-19:
+          "there is an excessive right space in the dialog").
+
+          `max-w-md` ON EACH CELL was right when this form was a card on a page
+          that ran to 1400px: unconstrained, each field looked like it wanted an
+          essay (Gabe, 2026-09-10). It moved into a 720px dialog on 2026-09-19
+          and the same 448px cap became the bug -- one column of half-width
+          fields with 220px of nothing beside them, which is a cap sized for a
+          container that is no longer there.
+
+          A CEILING ON THE WHOLE GRID does the original job without that: it
+          only bites above 768px, so the dialog's fields fill their column and a
+          wide card still cannot sprawl. Two columns once the CONTAINER has the
+          width -- the query is `@container/profile`, declared by ProfileGroup,
+          because this panel's width has nothing to do with the window's. */}
+      <div className="grid max-w-3xl gap-4 @2xl/profile:grid-cols-2">
         {PROFILE_SOURCES.map((source) => {
           const read = outcome(source.id)
           return (
-            <div key={source.id} className="flex max-w-md flex-col gap-1.5">
+            <div key={source.id} className="flex min-w-0 flex-col gap-1.5">
               <Field id={`profile-url-${source.id}`} label={source.label} hint={source.hint}>
                 <Input
                   id={`profile-url-${source.id}`}
@@ -445,27 +436,13 @@ export function ProfileSources({
                     : read.note || 'could not be read'}
                 </div>
               )}
-              {/* THE WAY OUT, ON THE ROW THAT NEEDS IT (2026-09-18). Every
-                  warning under a LinkedIn row is about what a SIGNED-OUT page
-                  does not show, so the row that reports the limit is where the
-                  fix belongs.
-
-                  IT POINTS AT THE EXPORT SINCE 2026-09-19, and it pointed at
-                  the bookmarklet before. LinkedIn's CSP `script-src` is a list
-                  of hashes and hosts with no `'unsafe-inline'`, so Chrome
-                  refuses a `javascript:` URL there and lands on
-                  `about:blank#blocked` -- Gabe clicked it and that is what he
-                  got. A link offering a fix that cannot run is worse than no
-                  link. The export is below, in this same dialog. */}
-              {source.id === 'linkedin' && read?.ok && read.via !== 'bookmarklet' && (
-                <a
-                  href="#profile-linkedin-export"
-                  data-profile-capture-link
-                  className="text-body-s text-accent-default underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-default"
-                >
-                  import your LinkedIn export for the rest
-                </a>
-              )}
+              {/* NO `here is how to get the rest` LINK (Gabe, 2026-09-19:
+                  "remove the LinkedIn data import, I am fine with the
+                  information"). It pointed at the bookmarklet, which LinkedIn's
+                  CSP will not run, and then at the export importer, which is
+                  gone with it. A row that offers a fix has to offer one that is
+                  in the app -- and with neither, the honest thing is for the
+                  warnings below to state the limit and stop. */}
               {/* WHAT THIS SOURCE COULD NOT GIVE, ON THIS SOURCE'S ROW (Gabe,
                   2026-09-18). All of them used to be joined into one paragraph
                   under the button -- seven sentences from five sites, each an
@@ -529,39 +506,6 @@ export function ProfileSources({
         )}
       </div>
 
-      {/* THE EXPORT, UNDER THE ADDRESSES rather than beside them, because it
-          is a different KIND of answer: the rows above read a public page in
-          seconds and get what a stranger can see, and this one takes a day and
-          gets everything. Somebody reaches it having already read the per-row
-          warnings about what the public page withheld -- which is exactly the
-          order the two belong in. */}
-      {exportImport && (
-        <section
-          id="profile-linkedin-export"
-          data-profile-export
-          className="flex scroll-mt-6 flex-col gap-3 rounded-md border border-border-subtle bg-bg-subtle p-4"
-        >
-          <div className="flex flex-col gap-1">
-            <p className="text-body-m font-medium text-text-primary">
-              LinkedIn data export
-            </p>
-            <p className="max-w-prose text-body-s text-text-secondary">
-              Everything a public page will not show: the bullet text under each role,
-              every certificate with its issue date and licence number, and the academic
-              years. LinkedIn emails you the archive — usually within minutes.
-            </p>
-          </div>
-          <ol className="flex list-decimal flex-col gap-1 pl-5 text-body-s text-text-muted">
-            <li>
-              On LinkedIn: <span className="text-text-secondary">Settings &amp; Privacy</span>{' '}
-              → <span className="text-text-secondary">Get a copy of your data</span>.
-            </li>
-            <li>Ask for the larger archive, not just connections.</li>
-            <li>Unzip it and pick the CSVs here. They merge into what you already have.</li>
-          </ol>
-          {exportImport}
-        </section>
-      )}
     </div>
   )
 }

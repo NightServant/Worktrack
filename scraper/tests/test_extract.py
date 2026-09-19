@@ -870,7 +870,9 @@ def test_the_actor_chain_is_configurable_and_defaults_to_cheapest_first(monkeypa
     monkeypatch.delenv("APIFY_PROFILE_ACTOR", raising=False)
     monkeypatch.delenv("APIFY_PROFILE_ACTORS", raising=False)
     assert _profile_actors() == APIFY_PROFILE_ACTORS
-    assert _profile_actors()[0].startswith("dev_fusion")
+    # ONE BY DEFAULT: a first actor that always fails costs a run per import
+    # and rescues nothing. The chain is still here, one env var away.
+    assert _profile_actors() == ("supreme_coder~linkedin-profile-scraper",)
 
     # The singular name pins ONE actor, which is how you test one.
     monkeypatch.setenv("APIFY_PROFILE_ACTOR", "someone~their-scraper")

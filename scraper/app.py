@@ -123,10 +123,19 @@ RENDER_TIMEOUT_MS = 45_000
 #: $0.01. That is the trade for never being blocked by one, and it is why the
 #: failed actor's row SHAPE rides back on the successful read -- a fallback
 #: nobody notices is a fallback that silently doubles the bill forever.
-APIFY_PROFILE_ACTORS: tuple[str, ...] = (
-    "dev_fusion~Linkedin-Profile-Scraper",
-    "supreme_coder~linkedin-profile-scraper",
-)
+#: ONE ACTOR AGAIN SINCE 2026-09-19, AND THE CHAIN STAYS. `dev_fusion` went in
+#: first and came straight back out: with its permissions approved it returns a
+#: row whose only key is `error`, on every profile, so the fallback fired every
+#: time and each import cost $0.52 -- the penny for the failed run plus the
+#: $0.51 for the one that worked. A first actor that always fails is strictly
+#: worse than no first actor.
+#:
+#: Putting it back is `APIFY_PROFILE_ACTORS=dev_fusion~Linkedin-Profile-Scraper,
+#: supreme_coder~linkedin-profile-scraper` and no code change, which is the
+#: whole point of the chain being configuration. What is missing before that is
+#: worth doing is knowing what its `error` SAYS -- see `_row_shape`, which
+#: reports key names and deliberately not values.
+APIFY_PROFILE_ACTORS: tuple[str, ...] = ("supreme_coder~linkedin-profile-scraper",)
 
 #: The single-actor override, kept because it is what one deployment sets and
 #: because pinning one actor is how you test one. Either name may be set;

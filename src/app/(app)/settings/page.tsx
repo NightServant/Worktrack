@@ -9,15 +9,10 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/contexts/ToastContext'
 import { useUserPreferences, useSetDefaultCurrency } from '@/hooks/useUserPreferences'
 import { SettingsPage } from '@/components/settings/SettingsPage'
-import {
-  ProfileImport,
-  ProfileSources,
-  ProfileSourceSteps,
-} from '@/components/settings/ProfileImport'
+import { ProfileSources, ProfileSourceSteps } from '@/components/settings/ProfileImport'
 import type { ProfileState } from '@/components/settings/ProfileGroup'
 import {
   useUserProfile,
-  useImportProfile,
   useImportProfileFromUrl,
   useClearUserProfile,
 } from '@/hooks/useUserProfile'
@@ -53,15 +48,6 @@ function SettingsRoute() {
   const { data: prefs = null } = useUserPreferences()
   const { data: stored, isPending: profileLoading } = useUserProfile()
   const fetchProfile = useImportProfileFromUrl()
-  /**
-   * THE DATA-EXPORT IMPORT, WIRED AGAIN (Gabe, 2026-09-19: "its blocked...
-   * about:blank#blocked"). It has been in the codebase and unreachable since
-   * 2026-09-18, when the bookmarklet replaced it -- and the bookmarklet turns
-   * out not to run on LinkedIn at all, because its CSP refuses `javascript:`
-   * URLs. This is the only route left to the bullet text under a role, the
-   * certificate dates and the academic years.
-   */
-  const importExport = useImportProfile()
   const clearProfile = useClearUserProfile()
   // What the last fetch did, kept here rather than read off the mutation: a
   // page that returned only a name and a headline resolves SUCCESSFULLY with
@@ -217,26 +203,6 @@ function SettingsRoute() {
     })()
   }, [captured, captureUrl, fetchProfile, success])
 
-  const handleImportExport = async (files: { name: string; text: string }[]) => {
-    setProfileNote(null)
-    try {
-      const result = await importExport.mutateAsync(files)
-      if (result.recognised.length === 0) {
-        // NOT AN ERROR AND NOT A SUCCESS. A file set that matched no table is
-        // the wrong CSVs rather than a broken import, and nothing was stored.
-        setProfileNote(
-          'None of those files matched a LinkedIn export table. Profile.csv, ' +
-            'Positions.csv, Education.csv, Skills.csv and Certifications.csv are the ' +
-            'ones this reads.'
-        )
-        return
-      }
-      success(`Imported ${result.recognised.join(', ')} from your export`)
-    } catch (err) {
-      setProfileNote(err instanceof Error ? err.message : 'Could not read those files.')
-    }
-  }
-
   const handleClearProfile = async () => {
     try {
       await clearProfile.mutateAsync()
@@ -272,13 +238,6 @@ function SettingsRoute() {
           hasProfile={!!stored?.profile}
           note={profileNote}
           sources={stored?.profile?.sources ?? []}
-          exportImport={
-            <ProfileImport
-              onImport={(files) => void handleImportExport(files)}
-              importing={importExport.isPending}
-              hasProfile={!!stored?.profile}
-            />
-          }
         />
       }
       profileSteps={<ProfileSourceSteps />}

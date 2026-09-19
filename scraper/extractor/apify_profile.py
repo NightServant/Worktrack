@@ -11,19 +11,19 @@ there is no HTML to parse here at all: the work is mapping their field names
 onto `UserProfile`. It also reaches sections the JSON-LD never carried --
 certifications, projects, volunteer work, personal websites.
 
-EVERY WARNING IT LEAVES NAMES THE DATA EXPORT, and it named the bookmarklet
-until 2026-09-19. That afternoon Gabe clicked it on LinkedIn and got
-`about:blank#blocked`: LinkedIn serves a CSP whose `script-src` is a list of
-hashes and hosts with no `'unsafe-inline'`, so Chrome refuses a `javascript:`
-URL outright. No version of the bookmarklet can run there, which means every
-one of these warnings was an instruction to do something impossible -- the same
-failure as naming a button that had been removed, one turn of the wheel later.
+EVERY WARNING STATES A LIMIT AND PRESCRIBES NOTHING, which took three goes to
+get right. They named a data-export button, which was removed the same
+afternoon. They named the bookmarklet, which turned out not to run on LinkedIn
+at all -- its CSP lists script hashes and hosts with no `'unsafe-inline'`, so
+Chrome refuses a `javascript:` URL and lands on `about:blank#blocked`. They
+named the export importer, which came back for an hour and went again (Gabe,
+2026-09-19: "remove the LinkedIn data import, I am fine with the information").
 
-THE EXPORT IS WHAT IS LEFT, and it is the richest source this app has ever had:
-`Certifications.csv` carries the issue dates and licence numbers, `Education.csv`
-the academic years, `Positions.csv` the bullet text under each role. It is a
-worse ASK -- request an archive, wait for an email -- and it is the only one
-that works.
+THE LESSON IS THE RULE NOW: a warning may say what a source did not give and
+must not tell anybody what to do about it, because every remedy this file has
+ever named outlived its own sentence. What a public page withholds is a fact
+about the page; whether to go and get it another way is not this parser's call
+and not its business to keep up with.
 
 WHAT IT COSTS, because that is not a detail. The actor is pay-per-event:
 $0.50 per gigabyte of memory at start (minimum one event) plus $0.01 per
@@ -578,15 +578,13 @@ def profile_from_apify(row: dict[str, Any], requested_url: str) -> dict[str, Any
     # otherwise would be the app arguing with what is on screen beside it.
     if not profile["skills"] and not profile["languages"]:
         warnings.append(
-            "Skills and languages did not come through from the public page. LinkedIn's "
-            "own data export carries them in full — ask for it under Settings → Get a copy "
-            "of your data, then import the CSVs here."
+            "Skills and languages did not come through — LinkedIn does not publish "
+            "either to a signed-out visitor."
         )
     if not profile["summary"]:
         warnings.append(
             "No About section came back — LinkedIn only shows one to signed-out visitors "
-            "when the profile owner has made it public. Your LinkedIn data export carries "
-            "it."
+            "when the profile owner has made it public."
         )
 
     # WHAT A SIGNED-OUT PAGE DOES TO A LONG SECTION (Gabe, 2026-09-19:
@@ -599,9 +597,8 @@ def profile_from_apify(row: dict[str, Any], requested_url: str) -> dict[str, Any
     certs = profile["certifications"]
     if certs and all(cert["issued"] is None for cert in certs):
         warnings.append(
-            f"{len(certs)} certificate(s) came back, without their dates — a public profile "
-            "shows only the first few of a long section and none of their detail. Your "
-            "LinkedIn data export has all of them, with issue dates and licence numbers."
+            f"{len(certs)} certificate(s) came back, without their dates — a public "
+            "profile shows only the first few of a long section and none of their detail."
         )
 
     # SCHOOLS WITHOUT DATES, said for the same reason: a blank year reads as a
@@ -612,7 +609,7 @@ def profile_from_apify(row: dict[str, Any], requested_url: str) -> dict[str, Any
     ):
         warnings.append(
             "No academic years came back — a public profile does not publish education "
-            "dates. Your LinkedIn data export has them."
+            "dates."
         )
 
     roles = profile["experiences"]
@@ -626,9 +623,8 @@ def profile_from_apify(row: dict[str, Any], requested_url: str) -> dict[str, Any
         # the reader was looking at.
         if all(not item["title"] for item in roles):
             warnings.append(
-                "LinkedIn does not show job titles to signed-out visitors on this profile — "
-                "the employers and dates came through, the roles did not. Your LinkedIn data "
-                "export has them."
+                "LinkedIn does not show job titles to signed-out visitors on this "
+                "profile — the employers and dates came through, the roles did not."
             )
         # A LOCATION THAT WAS DROPPED IS NOT A LOCATION THAT WAS MISSING, and
         # the reader cannot tell the two apart from a blank line. The hosted
@@ -637,14 +633,13 @@ def profile_from_apify(row: dict[str, Any], requested_url: str) -> dict[str, Any
         # refused rather than printed, and this is the sentence that says so.
         if roles and all(item["location"] is None for item in roles):
             warnings.append(
-                "No work location came through in a readable form — the public page returns "
-                "it in whatever language the reader's session uses. Your LinkedIn data "
-                "export records it as you entered it."
+                "No work location came through in a readable form — the public page "
+                "returns it in whatever language the reader's session uses."
             )
         if all(item["description"] is None for item in roles):
             warnings.append(
-                "The bullet text under each role is not on a public profile page — it is the "
-                "part a CV is written from, and only your LinkedIn data export carries it."
+                "The bullet text under each role is not on a public profile page — it is "
+                "the part a CV is written from, and no fetch of one will ever carry it."
             )
 
     return {"profile": profile, "warnings": warnings}
