@@ -1,6 +1,20 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+/*
+  THE SESSION, STUBBED. `fetchScrapedJobs` asks supabase-js for the access
+  token to put in the Authorization header; the module itself is a browser
+  singleton and this suite has no browser.
+*/
+vi.mock('@/lib/supabase', () => ({
+  supabase: {
+    auth: {
+      getSession: async () => ({ data: { session: { access_token: 'token-123' } } }),
+    },
+  },
+}))
+
 import {
   SCRAPED_SOURCES,
+  fetchScrapedJobs,
   geoSlugForCountry,
   toFeedJob,
   toScrapedJob,
@@ -232,5 +246,48 @@ describe('rows from the paid boards', () => {
       feed
     )
     expect(tracked).toEqual({ 'linkedin:1': 'a1' })
+  })
+})
+
+describe('asking the paid boards', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('proves who is asking, or every board answers "Sign in to use this."', async () => {
+    /*
+      THE BUG THIS EXISTS FOR, shipped and found the same day (2026-09-21).
+      `/api/jobfeed` authenticates with `lib/apiAuth`, which reads an
+      Authorization header and NOT the session cookie -- so a same-origin fetch
+      that carried only cookies was anonymous as far as the route was
+      concerned, and every board came back 401 to somebody who was signed in.
+
+      The header is the assertion. Reverting the fix makes this red.
+    */
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ jobs: [], notes: [] }),
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await fetchScrapedJobs(['linkedin'], { query: 'frontend' })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe('/api/jobfeed')
+    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer token-123')
+  })
+
+  it('spends nothing when no board was asked for', async () => {
+    // `enabled` on the hook is the first guard; this is the second. An empty
+    // selection must never become a request, because a request is up to four
+    // crawls that bill per posting.
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await fetchScrapedJobs([])
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(result).toEqual({ jobs: [], notes: [] })
   })
 })

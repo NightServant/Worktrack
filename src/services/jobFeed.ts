@@ -1,3 +1,5 @@
+import { supabase } from '@/lib/supabase'
+
 /**
  * Remote job postings, from Jobicy (https://jobicy.com/jobs-rss-feed).
  *
@@ -414,9 +416,31 @@ export async function fetchScrapedJobs(
   const wanted = sources.filter((source) => SCRAPED_SOURCES.includes(source))
   if (wanted.length === 0) return { jobs: [], notes: [] }
 
+  /*
+    THE BEARER TOKEN, which this call was missing until 2026-09-21 and which
+    made every board answer "Sign in to use this." even to somebody signed in.
+
+    `authenticate` reads an Authorization header, NOT the session cookie --
+    deliberately, because it runs on a shared server and builds a per-request
+    client with no session persistence. The cookie exists (middleware reads it
+    to decide which page to render) but nothing under `/api` looks at it, so a
+    same-origin fetch carrying only cookies was anonymous as far as the route
+    was concerned.
+
+    It is the same scheme `/api/autofill`, `/api/tailor` and `/api/latex`
+    already use: this app has one answer to "how does a request prove who it
+    is", not two.
+  */
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+
   const response = await fetch('/api/jobfeed', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+    },
     body: JSON.stringify({ sources: wanted, ...options }),
     signal,
   })
