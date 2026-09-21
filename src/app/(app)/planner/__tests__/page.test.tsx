@@ -31,6 +31,9 @@ vi.mock('@/hooks/useJobFeed', () => ({
   useJobFeed: () => ({ data: [], isLoading: false, error: null }),
   useJobFeedIndustries: () => ({ data: [] }),
   useJobFeedLocations: () => ({ data: [] }),
+  // The paid boards are off unless one is switched on, so the route's default
+  // is a query that never runs.
+  useScrapedJobs: () => ({ data: undefined, isFetching: false, error: null }),
 }))
 
 import Page from '../page'

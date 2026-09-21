@@ -38,7 +38,37 @@
  * or a scheme-checked URL.
  */
 
+/**
+ * Which board a row came from.
+ *
+ * `jobicy` IS NOT LIKE THE OTHER FOUR and the union is the only place that
+ * does not say so. It is keyless, CORS-open, free and fetched by the browser;
+ * the rest are paid Apify actors behind `/api/jobfeed`. They share this type
+ * because the rail renders them identically -- which is the point -- but
+ * `SCRAPED_SOURCES` is what any code deciding whether to spend money reads.
+ */
+export type FeedSource = 'jobicy' | 'linkedin' | 'jobstreet' | 'indeed' | 'glassdoor'
+
+/** The four that cost money and go through the extractor. Order is the panel's. */
+export const SCRAPED_SOURCES: readonly FeedSource[] = [
+  'linkedin',
+  'jobstreet',
+  'indeed',
+  'glassdoor',
+]
+
+/** What to call each source in the interface. */
+export const SOURCE_LABELS: Record<FeedSource, string> = {
+  jobicy: 'Jobicy',
+  linkedin: 'LinkedIn',
+  jobstreet: 'JobStreet',
+  indeed: 'Indeed',
+  glassdoor: 'Glassdoor',
+}
+
 export interface FeedJob {
+  /** Which board published it. See `FeedSource`. */
+  source: FeedSource
   id: string
   title: string
   company: string
@@ -148,6 +178,7 @@ export function toFeedJob(raw: unknown): FeedJob | null {
   if (!title || !url || !published || Number.isNaN(published.getTime())) return null
 
   return {
+    source: 'jobicy',
     id: String(row.id ?? url),
     title,
     company: decode(row.companyName) ?? 'unnamed company',
@@ -345,4 +376,108 @@ export function trackedFeedRoles(
     if (match) tracked[job.id] = match
   }
   return tracked
+}
+
+
+/** One board that had nothing to give, and why. */
+export interface FeedNote {
+  source: FeedSource
+  message: string
+}
+
+export interface ScrapedFeed {
+  jobs: FeedJob[]
+  /** Per-source failures. A board being down never empties the others. */
+  notes: FeedNote[]
+}
+
+/**
+ * Postings from the four paid boards, through `/api/jobfeed`.
+ *
+ * THE OPPOSITE TRADE FROM `fetchRemoteJobs` IN EVERY RESPECT, which is why it
+ * is a separate function rather than a parameter. Jobicy is keyless, instant
+ * and free, so it is fetched from the browser and always on. These four need a
+ * token the browser must never hold, bill per result, and take tens of
+ * seconds -- so they are asked for by name, one request at a time, and the
+ * caller is expected to show that it is working.
+ *
+ * A NOTE IS NOT AN ERROR. Four boards run concurrently and each can fail on
+ * its own; the response carries what came back AND what did not, so a rail
+ * with three sources' worth of roles still renders while saying the fourth
+ * refused. Only a request that fails outright throws.
+ */
+export async function fetchScrapedJobs(
+  sources: readonly FeedSource[],
+  options: { query?: string; location?: string; limit?: number } = {},
+  signal?: AbortSignal
+): Promise<ScrapedFeed> {
+  const wanted = sources.filter((source) => SCRAPED_SOURCES.includes(source))
+  if (wanted.length === 0) return { jobs: [], notes: [] }
+
+  const response = await fetch('/api/jobfeed', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sources: wanted, ...options }),
+    signal,
+  })
+
+  const payload = (await response.json().catch(() => null)) as
+    | { jobs?: unknown; notes?: unknown; error?: unknown }
+    | null
+
+  if (!response.ok) {
+    throw new Error(
+      typeof payload?.error === 'string' ? payload.error : `Board search answered ${response.status}`
+    )
+  }
+
+  // RE-VALIDATED ON THE WAY IN even though the extractor built these. It is a
+  // separate service over HTTP, which makes it a boundary; `safeUrl` is the
+  // check that keeps a `javascript:` string out of an `href`, and it costs
+  // nothing to run it on a row that has already been cleaned once.
+  const rows = Array.isArray(payload?.jobs) ? payload.jobs : []
+  const jobs = rows
+    .map((raw) => toScrapedJob(raw))
+    .filter((job): job is FeedJob => job !== null)
+    .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt))
+
+  const rawNotes = Array.isArray(payload?.notes) ? payload.notes : []
+  const notes = rawNotes
+    .map((raw) => {
+      const note = (raw ?? {}) as Record<string, unknown>
+      const source = note.source as FeedSource
+      const message = decode(note.message)
+      return SCRAPED_SOURCES.includes(source) && message ? { source, message } : null
+    })
+    .filter((note): note is FeedNote => note !== null)
+
+  return { jobs, notes }
+}
+
+/** One row from the extractor, re-checked at this boundary. */
+export function toScrapedJob(raw: unknown): FeedJob | null {
+  if (!raw || typeof raw !== 'object') return null
+  const row = raw as Record<string, unknown>
+  const source = row.source as FeedSource
+  const title = decode(row.title)
+  const url = safeUrl(row.url)
+  const publishedAt = typeof row.publishedAt === 'string' ? new Date(row.publishedAt) : null
+  if (!SCRAPED_SOURCES.includes(source)) return null
+  if (!title || !url || !publishedAt || Number.isNaN(publishedAt.getTime())) return null
+
+  return {
+    source,
+    id: typeof row.id === 'string' && row.id ? row.id : `${source}:${url}`,
+    title,
+    company: decode(row.company) ?? 'unnamed company',
+    url,
+    geo: decode(row.geo),
+    level: decode(row.level),
+    industry: decode(row.industry),
+    publishedAt: publishedAt.toISOString(),
+    excerpt: decode(row.excerpt),
+    salaryMin: toNumber(row.salaryMin),
+    salaryMax: toNumber(row.salaryMax),
+    salaryCurrency: decode(row.salaryCurrency),
+  }
 }

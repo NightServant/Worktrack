@@ -1,6 +1,7 @@
 import type { Job, JobStatus } from '@/types'
 import type { CalendarEvent } from '@/services/events'
 import type { ResumeSummary } from '@/services/resumeService'
+import type { FeedJob } from '@/services/jobFeed'
 import type {
   CohortAnalysis,
   ConversionFunnelMetric,
@@ -54,6 +55,23 @@ export interface DemoFixture {
     cohortAnalysis: CohortAnalysis[]
     conversionMetrics: ConversionMetrics
   }
+  /**
+   * Postings from the four paid boards, invented.
+   *
+   * WHY THE DEMO NEEDS ITS OWN (Gabe, 2026-09-21: "why can I not see
+   * information from other job posting websites in the demo pages"). On the
+   * real planner these come from Apify actors behind `/api/jobfeed`, which
+   * needs a session to authenticate and an account to bill. `/demo` has
+   * neither by design, so calling it there would answer 401 -- and a public
+   * URL anyone can open must not carry a button that spends money.
+   *
+   * A FIXTURE IS THE ANSWER RATHER THAN A LESSER SCREEN, which is the whole
+   * premise of this file: the demo shows the real rail with every board on it,
+   * the toggles work, and nothing is fetched or charged. Jobicy stays LIVE
+   * beside them -- it is keyless and public, so a demo visitor gets the real
+   * thing where the real thing is free.
+   */
+  boardJobs: FeedJob[]
 }
 
 const DEMO_USER_ID = 'demo-user'
@@ -410,6 +428,163 @@ export function buildAnalytics(jobs: Job[]): DemoFixture['analytics'] {
   return { timeInStage, conversionFunnel, statusTransitions, cohortAnalysis, conversionMetrics }
 }
 
+
+/**
+ * Invented postings from the four paid boards, dated against the clock.
+ *
+ * RELATIVE DATES, LIKE EVERYTHING ELSE HERE. A posting pinned to a literal day
+ * reads "posted 8 months ago" by spring, and this rail's entire subject is how
+ * recent something is -- see the note on `buildDemoFixture`.
+ *
+ * THE COMPANIES ARE INVENTED and the addresses point at each board's real
+ * domain, which is the same trade the rest of this fixture makes: nothing here
+ * is a real person's or a real employer's data, and a link that goes nowhere
+ * plausible would make the demo look broken rather than honest. They are
+ * `example` paths on purpose -- they resolve to the board's own 404 rather
+ * than to somebody's actual listing.
+ */
+function buildBoardJobs(now: Date): FeedJob[] {
+  const daysAgo = (days: number, hour: number) => {
+    const when = new Date(now)
+    when.setDate(when.getDate() - days)
+    when.setHours(hour, 0, 0, 0)
+    return when.toISOString()
+  }
+
+  const rows: (Omit<FeedJob, 'id' | 'publishedAt'> & { days: number; hour: number })[] = [
+    {
+      source: 'linkedin',
+      title: 'Senior Frontend Engineer',
+      company: 'Meridian Labs',
+      url: 'https://www.linkedin.com/jobs/view/example-senior-frontend-engineer',
+      geo: 'Singapore · Hybrid',
+      level: 'Mid-Senior level',
+      industry: 'Software Development',
+      excerpt: 'Own the design system and the component library behind three products.',
+      salaryMin: 8000,
+      salaryMax: 11000,
+      salaryCurrency: 'SGD',
+      days: 0,
+      hour: 9,
+    },
+    {
+      source: 'linkedin',
+      title: 'Product Engineer, Growth',
+      company: 'Cindershore',
+      url: 'https://www.linkedin.com/jobs/view/example-product-engineer-growth',
+      geo: 'Remote · APAC',
+      level: 'Associate',
+      industry: 'Software Development',
+      excerpt: 'Ship experiments end to end, from the hypothesis to the rollout.',
+      salaryMin: null,
+      salaryMax: null,
+      salaryCurrency: null,
+      days: 1,
+      hour: 14,
+    },
+    {
+      source: 'jobstreet',
+      title: 'Full Stack Developer (React / Node)',
+      company: 'Baywalk Digital',
+      url: 'https://ph.jobstreet.com/job/example-full-stack-developer',
+      geo: 'Taguig City, Metro Manila',
+      level: 'Full time',
+      industry: 'Information & Communication Technology',
+      excerpt: 'A small team, a large codebase, and a rewrite that is already underway.',
+      salaryMin: 90000,
+      salaryMax: 130000,
+      salaryCurrency: 'PHP',
+      days: 0,
+      hour: 11,
+    },
+    {
+      source: 'jobstreet',
+      title: 'Backend Engineer (Go)',
+      company: 'Harborline',
+      url: 'https://ph.jobstreet.com/job/example-backend-engineer-go',
+      geo: 'Cebu City, Central Visayas',
+      level: 'Full time',
+      industry: 'Information & Communication Technology',
+      excerpt: 'Payments infrastructure, and the reconciliation that sits behind it.',
+      salaryMin: 120000,
+      salaryMax: 165000,
+      salaryCurrency: 'PHP',
+      days: 2,
+      hour: 10,
+    },
+    {
+      source: 'indeed',
+      title: 'Software Engineer II',
+      company: 'Tanglewood Transit',
+      url: 'https://ph.indeed.com/viewjob?jk=example-software-engineer-ii',
+      geo: 'Makati City',
+      level: 'Full-time',
+      industry: null,
+      excerpt: 'Routing, dispatch and the maps layer that ties them together.',
+      salaryMin: 110000,
+      salaryMax: 150000,
+      salaryCurrency: 'PHP',
+      days: 1,
+      hour: 8,
+    },
+    {
+      source: 'indeed',
+      title: 'Platform Engineer',
+      company: 'Solstice Bank',
+      url: 'https://ph.indeed.com/viewjob?jk=example-platform-engineer',
+      geo: 'Remote',
+      level: 'Full-time',
+      industry: null,
+      excerpt: 'Kubernetes, Terraform, and an on-call rota that people volunteer for.',
+      salaryMin: null,
+      salaryMax: null,
+      salaryCurrency: null,
+      days: 3,
+      hour: 16,
+    },
+    {
+      source: 'glassdoor',
+      title: 'Frontend Engineer, Design Systems',
+      company: 'Lumen Studio',
+      url: 'https://www.glassdoor.com/job-listing/example-frontend-engineer-design-systems',
+      geo: 'Remote · Worldwide',
+      level: 'Mid level',
+      industry: 'Computer Hardware & Software',
+      excerpt: 'Tokens, primitives, and the documentation nobody else wants to write.',
+      salaryMin: 95000,
+      salaryMax: 125000,
+      salaryCurrency: 'USD',
+      days: 2,
+      hour: 13,
+    },
+    {
+      source: 'glassdoor',
+      title: 'Staff Engineer, Data Platform',
+      company: 'Northwind Pay',
+      url: 'https://www.glassdoor.com/job-listing/example-staff-engineer-data-platform',
+      geo: 'Hybrid · Manila',
+      level: 'Senior level',
+      industry: 'Financial Services',
+      excerpt: 'The warehouse, the pipelines, and the numbers the board reads.',
+      salaryMin: 150000,
+      salaryMax: 200000,
+      salaryCurrency: 'USD',
+      days: 4,
+      hour: 12,
+    },
+  ]
+
+  return rows
+    .map(({ days, hour, ...row }) => ({
+      ...row,
+      // THE SAME ID SHAPE THE EXTRACTOR MINTS, so `trackedFeedRoles` and the
+      // rail's React keys behave here exactly as they do on the real screen.
+      id: `${row.source}:${row.url}`,
+      publishedAt: daysAgo(days, hour),
+    }))
+    .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt))
+}
+
 export function buildDemoFixture(now: Date): DemoFixture {
   const jobs = buildJobs(now)
   return {
@@ -417,6 +592,7 @@ export function buildDemoFixture(now: Date): DemoFixture {
     events: buildEvents(now),
     resumes: buildResumes(now),
     analytics: buildAnalytics(jobs),
+    boardJobs: buildBoardJobs(now),
   }
 }
 

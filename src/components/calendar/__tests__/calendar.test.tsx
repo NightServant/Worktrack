@@ -1,7 +1,8 @@
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, screen, cleanup, within, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { CalendarEvent } from '@/services/events'
+import type { FeedJob } from '@/services/jobFeed'
 
 import { Calendar } from '../Calendar'
 import { Agenda } from '../Agenda'
@@ -240,6 +241,7 @@ describe('the fresh-roles feed', () => {
     level: 'Any',
     industry: 'Software Engineering',
     publishedAt,
+    source: 'jobicy' as const,
     excerpt: null,
     salaryMin: null,
     salaryMax: null,
@@ -470,5 +472,96 @@ describe('where the calendar puts its own controls', () => {
     const feed = container.querySelector('[data-test-feed]')!
     const block = container.querySelector('[data-calendar-block]')!
     expect(feed.compareDocumentPosition(block) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+})
+
+describe('JobFeed — the paid boards', () => {
+  const paid = (over: Partial<FeedJob> = {}): FeedJob => ({
+    source: 'linkedin',
+    id: 'linkedin:1',
+    title: 'Staff Engineer',
+    company: 'Chainguard',
+    url: 'https://www.linkedin.com/jobs/view/1',
+    geo: 'APAC',
+    level: 'Senior',
+    industry: null,
+    publishedAt: new Date().toISOString(),
+    excerpt: null,
+    salaryMin: null,
+    salaryMax: null,
+    salaryCurrency: null,
+    ...over,
+  })
+
+  it('names the board every card came from', () => {
+    render(<JobFeed jobs={[paid(), paid({ id: 'x', source: 'indeed', title: 'Analyst' })]} />)
+    const labels = [...document.querySelectorAll('[data-feed-source]')].map(
+      (node) => node.textContent
+    )
+    expect(labels).toEqual(['LinkedIn', 'Indeed'])
+  })
+
+  it('draws no board row at all without a handler', () => {
+    // This is what keeps the paid controls off `/demo/planner`, which has no
+    // session to authenticate with and no account to bill.
+    render(<JobFeed jobs={[paid()]} />)
+    expect(document.querySelector('[data-feed-boards]')).toBeNull()
+  })
+
+  it('offers the four boards and reports which are on', () => {
+    render(<JobFeed jobs={[]} boards={['indeed']} onBoardsChange={() => {}} />)
+    const buttons = [...document.querySelectorAll('[data-feed-board]')]
+    expect(buttons.map((node) => node.getAttribute('data-feed-board'))).toEqual([
+      'linkedin',
+      'jobstreet',
+      'indeed',
+      'glassdoor',
+    ])
+    expect(
+      buttons.find((node) => node.getAttribute('data-feed-board') === 'indeed')
+    ).toHaveAttribute('aria-pressed', 'true')
+    expect(
+      buttons.find((node) => node.getAttribute('data-feed-board') === 'linkedin')
+    ).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('adds and removes a board rather than replacing the selection', async () => {
+    // Multi-select is the point: the runs are concurrent and the rail is one
+    // list. A picker that replaced would make four boards four visits.
+    const user = userEvent.setup()
+    const onBoardsChange = vi.fn()
+    const { rerender } = render(
+      <JobFeed jobs={[]} boards={['linkedin']} onBoardsChange={onBoardsChange} />
+    )
+    await user.click(document.querySelector('[data-feed-board="indeed"]') as HTMLElement)
+    expect(onBoardsChange).toHaveBeenLastCalledWith(['linkedin', 'indeed'])
+
+    rerender(<JobFeed jobs={[]} boards={['linkedin', 'indeed']} onBoardsChange={onBoardsChange} />)
+    await user.click(document.querySelector('[data-feed-board="linkedin"]') as HTMLElement)
+    expect(onBoardsChange).toHaveBeenLastCalledWith(['indeed'])
+  })
+
+  it('says a board gave nothing rather than going quiet', () => {
+    // Four boards run concurrently and fail on their own. Silence would be
+    // indistinguishable from a board with no new roles.
+    render(
+      <JobFeed
+        jobs={[paid()]}
+        boards={['glassdoor']}
+        onBoardsChange={() => {}}
+        boardNotes={[{ source: 'glassdoor', message: 'Glassdoor returned nothing for that search.' }]}
+      />
+    )
+    expect(
+      document.querySelector('[data-feed-board-note="glassdoor"]')?.textContent
+    ).toContain('Glassdoor returned nothing')
+  })
+
+  it('still marks a board posting as tracked', () => {
+    // The reader tracked the job, not the board -- so the indicator has to work
+    // for a LinkedIn row exactly as it does for a Jobicy one.
+    render(<JobFeed jobs={[paid()]} trackedIds={{ 'linkedin:1': 'a1' }} />)
+    expect(screen.getByRole('link', { name: /tracked/i })).toBeTruthy()
+    expect(screen.queryByRole('link', { name: /track it/i })).toBeNull()
   })
 })

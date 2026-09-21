@@ -29,7 +29,14 @@ import { localDayKey } from '@/services/date'
 import { parseDayKey } from '@/lib/calendar'
 import { useAppHref } from '@/components/shell/routeBase'
 import { matchesTerms, searchTerms } from '@/lib/search'
-import type { FeedFacet, FeedJob } from '@/services/jobFeed'
+import {
+  SCRAPED_SOURCES,
+  SOURCE_LABELS,
+  type FeedFacet,
+  type FeedJob,
+  type FeedNote,
+  type FeedSource,
+} from '@/services/jobFeed'
 
 /**
  * Newly posted remote roles, grouped by the day they went up.
@@ -80,6 +87,31 @@ export interface JobFeedProps {
    * everything, which is what it did before this existed.
    */
   trackedIds?: Record<string, string>
+  /**
+   * Which paid boards are switched on, and how to change that.
+   *
+   * SEPARATE FROM THE TWO DROPDOWNS because they are a different kind of
+   * control. Region and field narrow a free feed that is already loaded; these
+   * four each start a crawl that costs money and takes tens of seconds. A
+   * reader should be able to tell those apart without reading the source, so
+   * they get their own row and their own wording.
+   */
+  boards?: readonly FeedSource[]
+  onBoardsChange?: (next: FeedSource[]) => void
+  /** Whether a board run is in flight. The rail stays; the row says so. */
+  boardsLoading?: boolean
+  /** Per-board failures, from the extractor. See `FeedNote`. */
+  boardNotes?: FeedNote[]
+  /**
+   * What pressing a board actually does here, when that is not the usual.
+   *
+   * IT EXISTS BECAUSE THE DEMO IS NOT LYING-SHAPED. On the real planner each
+   * press starts a paid crawl and the line says so; on `/demo/planner` the
+   * rows are a fixture and the toggles filter them in memory, so the same
+   * sentence would promise a search that never happens on the one screen whose
+   * whole premise is that it is honest about being invented.
+   */
+  boardsHint?: string
   className?: string
 }
 
@@ -125,6 +157,11 @@ export function JobFeed({
   geo = null,
   onGeoChange,
   trackedIds = {},
+  boards = [],
+  onBoardsChange,
+  boardsLoading = false,
+  boardNotes = [],
+  boardsHint,
   className,
 }: JobFeedProps) {
   const appHref = useAppHref()
@@ -274,6 +311,77 @@ export function JobFeed({
                 : []),
             ]}
           />
+
+          {/* THE BOARDS, AND WHY THEY ARE NOT A THIRD DROPDOWN.
+              (Gabe, 2026-09-21: add LinkedIn, JobStreet, Indeed and Glassdoor.)
+
+              Jobicy is always on and is not in this row. It is keyless and
+              CORS-open, so the browser fetches it directly and it costs
+              nothing -- switching it off would save nobody anything. Each of
+              these four is an Apify actor that crawls a result page: it costs
+              money per posting and takes tens of seconds. Putting them behind
+              the same instant-looking dropdown as `every field` would promise
+              a speed they cannot deliver and spend a balance nobody chose to
+              spend.
+
+              SO THEY ARE OFF UNTIL ASKED FOR, one press each, and the row says
+              what pressing one does. Multi-select rather than single: the
+              whole point is a rail with more than one board in it, and the
+              runs happen concurrently. */}
+          {onBoardsChange && (
+            <div className="flex flex-col gap-2" data-feed-boards>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-label-caps uppercase text-text-muted">boards</span>
+                {SCRAPED_SOURCES.map((source) => {
+                  const on = boards.includes(source)
+                  return (
+                    <Button
+                      key={source}
+                      type="button"
+                      size="s"
+                      variant={on ? 'primary' : 'secondary'}
+                      aria-pressed={on}
+                      data-feed-board={source}
+                      disabled={boardsLoading}
+                      onClick={() =>
+                        onBoardsChange(
+                          on
+                            ? boards.filter((value) => value !== source)
+                            : [...boards, source]
+                        )
+                      }
+                    >
+                      {SOURCE_LABELS[source]}
+                    </Button>
+                  )
+                })}
+              </div>
+              {/* THE COST IS SAID BEFORE IT IS INCURRED, not after. A control
+                  that quietly spends is the one thing this app has refused to
+                  ship anywhere else. */}
+              <p className="text-caption text-text-muted">
+                {boardsLoading
+                  ? 'searching those boards — they crawl a results page, so this takes a moment.'
+                  : (boardsHint ??
+                    (boards.length === 0
+                      ? 'jobicy is always on and free. add a board to search it too.'
+                      : 'these boards are searched on demand and take a moment.'))}
+              </p>
+              {/* A BOARD THAT GAVE NOTHING SAYS SO, ON ITS OWN LINE. Four run
+                  concurrently and each fails on its own, so one being down
+                  must not empty the other three -- and silence would be
+                  indistinguishable from a board with no new roles. */}
+              {boardNotes.map((note) => (
+                <p
+                  key={note.source}
+                  data-feed-board-note={note.source}
+                  className="text-caption text-text-muted"
+                >
+                  {note.message}
+                </p>
+              ))}
+            </div>
+          )}
         </div>
 
 
@@ -372,9 +480,29 @@ export function JobFeed({
                       className="flex h-full w-72 flex-col justify-between gap-3 rounded-md border border-border-subtle bg-card p-4"
                     >
                       <div className="flex min-w-0 flex-col gap-1">
-                        <p className="text-label-caps uppercase text-text-muted">
-                          {formatPostedDay(localDayKey(job.publishedAt), today)}
-                        </p>
+                        {/* THE DAY AND THE BOARD SHARE A ROW, because a
+                            posting from a paid board and one from Jobicy are
+                            otherwise indistinguishable -- and which site it
+                            came from is the first thing a reader needs in
+                            order to judge the rest of the card.
+
+                            NOT A PILL AND NOT A COLOUR. This system separates
+                            with type and hairlines; a tinted chip per board
+                            would introduce four hues that mean nothing next to
+                            the five reserved for status. It is the same
+                            `label-caps` as the day opposite it, which reads as
+                            the pair of facts it is. */}
+                        <div className="flex items-baseline justify-between gap-2">
+                          <p className="text-label-caps uppercase text-text-muted">
+                            {formatPostedDay(localDayKey(job.publishedAt), today)}
+                          </p>
+                          <p
+                            data-feed-source={job.source}
+                            className="shrink-0 text-label-caps uppercase text-text-muted"
+                          >
+                            {SOURCE_LABELS[job.source]}
+                          </p>
+                        </div>
                         {/* `rel="noreferrer"` and a new tab: this is somebody
                             else's site, reached from a list somebody else
                             wrote. `line-clamp-2` because a board title runs to

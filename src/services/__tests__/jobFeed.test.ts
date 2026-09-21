@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { geoSlugForCountry, toFeedJob, trackedFeedRoles } from '../jobFeed'
+import {
+  SCRAPED_SOURCES,
+  geoSlugForCountry,
+  toFeedJob,
+  toScrapedJob,
+  trackedFeedRoles,
+} from '../jobFeed'
 
 const RAW = {
   id: 152938,
@@ -123,6 +129,7 @@ describe('trackedFeedRoles', () => {
     level: null,
     industry: null,
     publishedAt: new Date().toISOString(),
+    source: 'jobicy' as const,
     excerpt: null,
     salaryMin: null,
     salaryMax: null,
@@ -168,5 +175,62 @@ describe('trackedFeedRoles', () => {
   it('leaves an untracked role out rather than guessing', () => {
     const feed = [role('1', 'Backend Engineer', 'Vercel', 'https://jobicy.com/jobs/1')]
     expect(trackedFeedRoles([application('a1', null, 'Netlify', 'Backend Engineer')], feed)).toEqual({})
+  })
+})
+
+describe('rows from the paid boards', () => {
+  const row = (over: Record<string, unknown> = {}) => ({
+    source: 'linkedin',
+    id: 'linkedin:1',
+    title: 'Staff Engineer',
+    company: 'Chainguard',
+    url: 'https://www.linkedin.com/jobs/view/1',
+    geo: 'APAC',
+    level: 'Senior',
+    industry: null,
+    publishedAt: '2026-09-20T09:00:00.000Z',
+    excerpt: null,
+    salaryMin: null,
+    salaryMax: null,
+    salaryCurrency: null,
+    ...over,
+  })
+
+  it('keeps the board a row came from', () => {
+    expect(toScrapedJob(row())?.source).toBe('linkedin')
+  })
+
+  it('refuses a source the app does not know', () => {
+    // The extractor is a separate service over HTTP, so this is a boundary: an
+    // unknown source would reach `SOURCE_LABELS[job.source]` as undefined, and
+    // `jobicy` arriving down the paid path would mislabel a free row.
+    expect(toScrapedJob(row({ source: 'myspace' }))).toBeNull()
+    expect(toScrapedJob(row({ source: 'jobicy' }))).toBeNull()
+  })
+
+  it('refuses a javascript: address even though the extractor cleaned it once', () => {
+    expect(toScrapedJob(row({ url: 'javascript:alert(1)' }))).toBeNull()
+  })
+
+  it('drops a row with no usable date, which the rail groups by', () => {
+    expect(toScrapedJob(row({ publishedAt: 'not a date' }))).toBeNull()
+  })
+
+  it('names four boards, and jobicy is not one of them', () => {
+    // Jobicy is free, keyless and always on; nothing in the paid path may ask
+    // for it, or a free source would be billed through an actor.
+    expect([...SCRAPED_SOURCES]).toEqual(['linkedin', 'jobstreet', 'indeed', 'glassdoor'])
+    expect(SCRAPED_SOURCES).not.toContain('jobicy')
+  })
+
+  it('matches a board posting against an application by company and title', () => {
+    // The tracked indicator has to work for a LinkedIn row the same way it
+    // does for a Jobicy one: the reader tracked the job, not the board.
+    const feed = [toScrapedJob(row())!]
+    const tracked = trackedFeedRoles(
+      [{ id: 'a1', url: null, company: 'Chainguard', role: 'Staff Engineer' }],
+      feed
+    )
+    expect(tracked).toEqual({ 'linkedin:1': 'a1' })
   })
 })

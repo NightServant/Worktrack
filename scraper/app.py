@@ -35,6 +35,7 @@ from extractor.core import extract
 from extractor.net import normalize_target_url, reject_reason
 from extractor.apify_profile import profile_from_apify
 from extractor.github_profile import _login, profile_from_github, projectable
+from extractor.job_board import ACTORS as JOB_ACTORS, SOURCES as JOB_SOURCES, to_feed_jobs
 from extractor.jobstreet_profile import profile_from_jobstreet
 from extractor.linkedin_page import profile_from_linkedin_page
 from extractor.merge_profile import merge_profiles
@@ -1464,3 +1465,192 @@ async def extract_endpoint(body: ExtractRequest) -> JSONResponse:
             body_text = rendered
 
     return JSONResponse(extract(final_url, body_text, response.status_code), status_code=200)
+
+
+#: How many postings one source may return.
+#:
+#: THE ACTORS BILL PER RESULT, so this is a spend cap rather than a page size.
+#: The rail shows a horizontal row that nobody scrolls to the end of; twenty-
+#: five from each of four boards is already a hundred cards.
+MAX_FEED_ITEMS = 25
+
+#: How long one board run may take before it is abandoned.
+#:
+#: LONGER THAN A PROFILE RUN because a search crawls a result page rather than
+#: one profile, and shorter than the web route's patience is worth: a rail is
+#: not worth a two-minute wait, and an actor still running when this gives up
+#: has already been paid for either way.
+JOB_FEED_TIMEOUT_S = 120.0
+
+#: The memory one board actor is started with.
+#:
+#: PINNED FOR THE SAME REASON THE PROFILE RUN PINS ITS OWN: these actors bill
+#: per gigabyte-start, so leaving it to the actor's own default is leaving the
+#: bill to somebody else's configuration.
+JOB_FEED_MEMORY_MB = 1024
+
+
+#: Per-source actor overrides, so one board can be repointed without a deploy.
+#:
+#: `JOB_ACTOR_LINKEDIN=owner~actor` and its three siblings. Same trade as
+#: `APIFY_PROFILE_ACTOR`: these actors get deprecated, renamed and rate-limited
+#: on somebody else's schedule.
+ACTOR_OVERRIDES: dict[str, str] = {
+    source: os.environ.get(f"JOB_ACTOR_{source.upper()}", "").strip()
+    for source in JOB_SOURCES
+}
+
+
+class JobFeedRequest(BaseModel):
+    """A search, and which boards to run it against."""
+
+    #: The boards to ask. Unknown names are refused rather than ignored: a
+    #: typo that silently returns three sources out of four looks like a board
+    #: with nothing new rather than like a mistake.
+    sources: list[str]
+    #: What to search for. Optional -- most of these actors return their own
+    #: idea of recent when given nothing.
+    query: str | None = None
+    #: Where, as the board's own free text ("Philippines", "Remote").
+    location: str | None = None
+    limit: int | None = None
+
+
+async def _apify_jobs(source: str, body: JobFeedRequest) -> tuple[list[dict[str, Any]], str]:
+    """One board through its actor. Returns `(jobs, reason)`.
+
+    EVERY PLAUSIBLE INPUT KEY IS SENT AT ONCE, which is the same bet
+    `_apify_profile` makes and for the same reason: these four actors disagree
+    about whether the search term is `query`, `keyword`, `title` or `position`,
+    none of them sets `additionalProperties: false`, and the one an actor does
+    not know is ignored rather than rejected. That is what lets the actor be
+    swapped for a sibling without a deploy.
+
+    THE REASON IS THE ANSWER when it fails. A rail that renders empty cannot
+    say whether the board had nothing, the token is missing or the credit ran
+    out, and those are three different things to do about it.
+    """
+    token = os.environ.get("APIFY_TOKEN", "").strip()
+    if not token:
+        return [], "no-token"
+
+    actor = ACTOR_OVERRIDES.get(source) or JOB_ACTORS[source]["actor"]
+    count = max(1, min(body.limit or MAX_FEED_ITEMS, MAX_FEED_ITEMS))
+    query = (body.query or "").strip()
+    location = (body.location or "").strip()
+
+    payload: dict[str, Any] = {
+        "maxItems": count,
+        "maxResults": count,
+        "rows": count,
+        "limit": count,
+    }
+    if query:
+        payload.update({"query": query, "keyword": query, "title": query, "position": query,
+                        "searchTerm": query, "search": query})
+    if location:
+        payload.update({"location": location, "country": location, "city": location,
+                        "geoLocation": location})
+
+    try:
+        async with httpx.AsyncClient(timeout=JOB_FEED_TIMEOUT_S) as client:
+            response = await client.post(
+                APIFY_ENDPOINT.format(actor=actor),
+                headers={"Authorization": f"Bearer {token}"},
+                params={"memory": JOB_FEED_MEMORY_MB, "timeout": int(JOB_FEED_TIMEOUT_S)},
+                json=payload,
+            )
+    except httpx.TimeoutException:
+        return [], "timeout"
+    except Exception:
+        return [], "unreachable"
+
+    if response.status_code not in (200, 201):
+        detail = ""
+        try:
+            parsed = response.json()
+            if isinstance(parsed, dict):
+                error = parsed.get("error")
+                detail = str(
+                    (error or {}).get("message") if isinstance(error, dict) else error or ""
+                )[:200]
+        except Exception:
+            detail = response.text[:200]
+        return [], f"http-{response.status_code}" + (f": {detail}" if detail else "")
+
+    try:
+        rows = response.json()
+    except Exception:
+        return [], "unreadable-response"
+    if not isinstance(rows, list):
+        return [], "unreadable-response"
+
+    jobs = to_feed_jobs(rows, source)[:count]
+    return jobs, "ok" if jobs else "no-rows"
+
+
+def _job_feed_message(source: str, reason: str) -> str:
+    """What to tell the reader about one board that returned nothing.
+
+    IT NAMES THE BOARD AND STOPS THERE. Same rule the profile warnings ended up
+    at: say what did not happen, prescribe nothing. There is nothing useful a
+    reader can do about an exhausted Apify balance from inside this app, and
+    every remedy this codebase has written into a warning has outlived it.
+    """
+    label = JOB_ACTORS[source]["label"]
+    if reason == "no-token":
+        return f"{label} is not configured for this deployment."
+    if reason == "no-rows":
+        return f"{label} returned nothing for that search."
+    if reason == "timeout":
+        return f"{label} took too long and was left running."
+    if reason.startswith("http-402") or "credit" in reason.lower():
+        return f"{label} could not run: the Apify balance is exhausted."
+    if reason.startswith("http-401") or reason.startswith("http-403"):
+        return f"{label} refused the request: the Apify token was rejected."
+    if reason.startswith("http-404"):
+        return f"{label} could not run: the actor behind it no longer exists."
+    return f"{label} could not be read right now."
+
+
+@app.post("/jobs")
+async def jobs_endpoint(body: JobFeedRequest) -> JSONResponse:
+    """Recent postings from one or more paid board actors, merged.
+
+    EVERY SOURCE RUNS CONCURRENTLY and a failure is per-source rather than per
+    request. Four boards behind one `await` chain is four timeouts in series,
+    and one board being down is not a reason to return nothing from the other
+    three -- the response carries what came back AND what did not.
+
+    NOTHING IS CACHED HERE. This service is stateless and horizontally scaled;
+    the caching that matters is the browser's, where react-query already holds
+    the rail for fifteen minutes. A cache here would be per-instance and would
+    make the spend depend on which instance answered.
+    """
+    wanted = [source for source in dict.fromkeys(body.sources or []) if source]
+    if not wanted:
+        return JSONResponse({"error": "No source was requested"}, status_code=400)
+
+    unknown = [source for source in wanted if source not in JOB_SOURCES]
+    if unknown:
+        return JSONResponse(
+            {"error": f"Unknown source: {', '.join(unknown[:4])}"}, status_code=400
+        )
+
+    results = await asyncio.gather(
+        *(_apify_jobs(source, body) for source in wanted), return_exceptions=True
+    )
+
+    jobs: list[dict[str, Any]] = []
+    notes: list[dict[str, str]] = []
+    for source, result in zip(wanted, results):
+        if isinstance(result, BaseException):
+            notes.append({"source": source, "message": _job_feed_message(source, "unreachable")})
+            continue
+        found, reason = result
+        jobs.extend(found)
+        if reason != "ok":
+            notes.append({"source": source, "message": _job_feed_message(source, reason)})
+
+    jobs.sort(key=lambda job: job["publishedAt"], reverse=True)
+    return JSONResponse({"jobs": jobs, "notes": notes}, status_code=200)

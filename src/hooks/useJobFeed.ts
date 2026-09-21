@@ -3,8 +3,11 @@ import {
   fetchFeedIndustries,
   fetchFeedLocations,
   fetchRemoteJobs,
+  fetchScrapedJobs,
   type FeedFacet,
   type FeedJob,
+  type FeedSource,
+  type ScrapedFeed,
 } from '@/services/jobFeed'
 
 /**
@@ -55,5 +58,41 @@ export function useJobFeedLocations(enabled = true) {
     gcTime: 24 * 60 * 60_000,
     refetchOnWindowFocus: false,
     retry: 1,
+  })
+}
+
+/**
+ * The paid boards, and only when one has been switched on.
+ *
+ * `enabled` IS THE SPEND SWITCH, which is why it is derived from the list
+ * rather than passed in. An empty selection must not produce a request: this
+ * query runs up to four crawls that bill per posting, so "nobody asked for a
+ * board" has to mean "no request", not "a request for nothing".
+ *
+ * A LONGER `staleTime` THAN JOBICY'S FIFTEEN MINUTES, and the reason is money
+ * rather than freshness. Jobicy is a free GET, so re-fetching it costs a
+ * request nobody pays for; re-running these costs a crawl each. An hour is
+ * still well inside the window in which a board's front page changes, and it
+ * means a reader moving between screens all morning pays once.
+ *
+ * RETRY IS OFF. Every other query in this app retries once, because a failed
+ * GET costs nothing to repeat. A failed actor run has usually already been
+ * charged for, and a retry is a second charge for the same answer -- so a
+ * board that fails, fails, and the panel says which one.
+ */
+export function useScrapedJobs(
+  sources: readonly FeedSource[],
+  options: { query?: string; location?: string } = {}
+) {
+  const { query, location } = options
+  return useQuery<ScrapedFeed>({
+    queryKey: ['job-feed-boards', [...sources].sort().join(','), query ?? '', location ?? ''],
+    queryFn: ({ signal }) => fetchScrapedJobs(sources, { query, location }, signal),
+    enabled: sources.length > 0,
+    staleTime: 60 * 60_000,
+    gcTime: 2 * 60 * 60_000,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    retry: false,
   })
 }
