@@ -4,7 +4,7 @@ import { logSecurityEvent } from '@/lib/securityLog'
 import { SCRAPED_SOURCES, type FeedSource } from '@/services/jobFeed'
 
 /**
- * The paid half of the fresh-roles rail: four boards, behind four Apify actors.
+ * The paid half of the fresh-roles rail: the boards behind Apify actors.
  *
  * WHY THIS ROUTE EXISTS AT ALL, when Jobicy needs none. Jobicy is keyless and
  * CORS-open, so the browser fetches it directly and no server is involved.
@@ -52,7 +52,7 @@ const RATE_LIMIT_WINDOW_MS = 60_000
  * and still caps one person at six crawls a minute rather than sixty.
  *
  * IT IS NOT THE SPEND CEILING and must not be mistaken for one. Six requests
- * times four boards times twenty-five postings is the worst minute this allows,
+ * times three boards times twenty-five postings is the worst minute this allows,
  * and the thing that actually bounds the bill is the Apify account's own
  * balance -- see `.env.example`.
  */

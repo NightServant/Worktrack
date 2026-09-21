@@ -515,7 +515,6 @@ describe('JobFeed — the paid boards', () => {
       'linkedin',
       'jobstreet',
       'indeed',
-      'glassdoor',
     ])
     expect(
       buttons.find((node) => node.getAttribute('data-feed-board') === 'indeed')
@@ -547,14 +546,14 @@ describe('JobFeed — the paid boards', () => {
     render(
       <JobFeed
         jobs={[paid()]}
-        boards={['glassdoor']}
+        boards={['indeed']}
         onBoardsChange={() => {}}
-        boardNotes={[{ source: 'glassdoor', message: 'Glassdoor returned nothing for that search.' }]}
+        boardNotes={[{ source: 'indeed', message: 'Indeed returned nothing for that search.' }]}
       />
     )
     expect(
-      document.querySelector('[data-feed-board-note="glassdoor"]')?.textContent
-    ).toContain('Glassdoor returned nothing')
+      document.querySelector('[data-feed-board-note="indeed"]')?.textContent
+    ).toContain('Indeed returned nothing')
   })
 
   it('still marks a board posting as tracked', () => {

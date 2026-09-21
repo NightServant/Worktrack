@@ -1,8 +1,8 @@
-"""The four board actors, against rows shaped like the ones they return.
+"""The board actors, against rows shaped like the ones they return.
 
 NO NETWORK AND NO SPEND. Every actor here is pay-per-result, so the mappers are
 pure and these rows are saved shapes -- the same arrangement `apify_profile`
-has. What is being checked is the part that actually breaks: four actors that
+has. What is being checked is the part that actually breaks: actors that
 disagree about every field name, and a salary band that arrives as prose.
 """
 
@@ -16,7 +16,8 @@ from extractor.job_board import SOURCES, _iso, _salary, to_feed_job, to_feed_job
 def test_every_source_has_an_actor() -> None:
     from extractor.job_board import ACTORS
 
-    assert set(SOURCES) == {"linkedin", "jobstreet", "indeed", "glassdoor"}
+    # Glassdoor left on 2026-09-21, its Apify actor being in maintenance.
+    assert set(SOURCES) == {"linkedin", "jobstreet", "indeed"}
     for source in SOURCES:
         assert ACTORS[source]["actor"].count("~") == 1
         assert ACTORS[source]["label"]
@@ -89,20 +90,22 @@ def test_indeed_row_with_a_relative_date() -> None:
     assert timedelta(days=2, hours=23) < age < timedelta(days=3, hours=1)
 
 
-def test_glassdoor_row_nested_under_job() -> None:
+def test_a_row_nested_under_job() -> None:
+    # One level of nesting is walked. Kept after Glassdoor was removed, because
+    # the shape is not Glassdoor's -- any actor may wrap its payload, and this
+    # is the only test that proves `_pick` descends.
     job = to_feed_job(
         {
             "job": {
                 "jobTitle": "Commercial Insurance Advisor",
                 "employerName": "Welo Global",
-                "jobLink": "https://www.glassdoor.com/job-listing/JV_123.htm",
+                "jobLink": "https://example.test/job-listing/JV_123.htm",
                 "postedDate": 1_758_240_000,
             }
         },
-        "glassdoor",
+        "indeed",
     )
     assert job is not None
-    # One level of nesting is walked, which is as deep as these four go.
     assert job["title"] == "Commercial Insurance Advisor"
     assert job["company"] == "Welo Global"
     assert job["publishedAt"].startswith("2025-")or job["publishedAt"].startswith("2026-")

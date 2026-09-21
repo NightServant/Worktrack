@@ -1,11 +1,12 @@
 """Job postings from four Apify board scrapers, mapped onto one shape.
 
-WHY THESE FOUR AND WHY THROUGH APIFY (Gabe, 2026-09-21: add LinkedIn,
-JobStreet, Indeed and Glassdoor to the fresh-roles rail). Every one of them is
+WHY THESE AND WHY THROUGH APIFY (Gabe, 2026-09-21: add LinkedIn, JobStreet,
+Indeed and Glassdoor to the fresh-roles rail; Glassdoor removed the same day,
+its actor being in maintenance). Every one of them is
 a board this service already knows it cannot read for itself: Indeed answers an
-anonymous request with a Cloudflare 401, JobStreet and SEEK answer 403,
-LinkedIn serves a guest challenge, and Glassdoor gates a listing behind an
-account. Those are the same walls the POSTING extractor documents, so the
+anonymous request with a Cloudflare 401, JobStreet and SEEK answer 403, and
+LinkedIn serves a guest challenge. Those are the same walls the POSTING
+extractor documents, so the
 answer is the same one the profile reader already uses -- an actor that solves
 the challenge and returns structured rows.
 
@@ -40,9 +41,16 @@ from typing import Any, Iterable
 
 #: The actor behind each source, and the input key it wants its search in.
 #:
-#: THE INPUT SHAPES DISAGREE and there is no way around naming each one. Two of
-#: these take a list of search URLs, two take plain fields; `app.py` builds the
-#: payload from this table rather than from four branches.
+#: THE INPUT SHAPES DISAGREE and there is no way around naming each one. Some
+#: take a list of search URLs, some take plain fields; `app.py` builds the
+#: payload from this table rather than from a branch per board.
+#:
+#: GLASSDOOR IS NOT HERE (Gabe, 2026-09-21: "removed the glassdoor scraper
+#: since the apify is now on maintenance"). `radeance~glassdoor-jobs-scraper`
+#: is the actor it used, and putting it back is this entry plus its two lines
+#: in `services/jobFeed.ts` -- nothing else in this file is board-specific.
+#: It is removed rather than left failing because a board that answers every
+#: search with an error is a control that wastes a press and a throttle tick.
 ACTORS: dict[str, dict[str, Any]] = {
     "linkedin": {
         "actor": "bebity~linkedin-jobs-scraper",
@@ -55,10 +63,6 @@ ACTORS: dict[str, dict[str, Any]] = {
     "indeed": {
         "actor": "curious_coder~indeed-scraper",
         "label": "Indeed",
-    },
-    "glassdoor": {
-        "actor": "radeance~glassdoor-jobs-scraper",
-        "label": "Glassdoor",
     },
 }
 

@@ -56,7 +56,7 @@ export interface DemoFixture {
     conversionMetrics: ConversionMetrics
   }
   /**
-   * Postings from the four paid boards, invented.
+   * Postings from the paid boards, invented.
    *
    * WHY THE DEMO NEEDS ITS OWN (Gabe, 2026-09-21: "why can I not see
    * information from other job posting websites in the demo pages"). On the
@@ -430,7 +430,7 @@ export function buildAnalytics(jobs: Job[]): DemoFixture['analytics'] {
 
 
 /**
- * Invented postings from the four paid boards, dated against the clock.
+ * Invented postings from the paid boards, dated against the clock.
  *
  * RELATIVE DATES, LIKE EVERYTHING ELSE HERE. A posting pinned to a literal day
  * reads "posted 8 months ago" by spring, and this rail's entire subject is how
@@ -541,36 +541,6 @@ function buildBoardJobs(now: Date): FeedJob[] {
       salaryCurrency: null,
       days: 3,
       hour: 16,
-    },
-    {
-      source: 'glassdoor',
-      title: 'Frontend Engineer, Design Systems',
-      company: 'Lumen Studio',
-      url: 'https://www.glassdoor.com/job-listing/example-frontend-engineer-design-systems',
-      geo: 'Remote · Worldwide',
-      level: 'Mid level',
-      industry: 'Computer Hardware & Software',
-      excerpt: 'Tokens, primitives, and the documentation nobody else wants to write.',
-      salaryMin: 95000,
-      salaryMax: 125000,
-      salaryCurrency: 'USD',
-      days: 2,
-      hour: 13,
-    },
-    {
-      source: 'glassdoor',
-      title: 'Staff Engineer, Data Platform',
-      company: 'Northwind Pay',
-      url: 'https://www.glassdoor.com/job-listing/example-staff-engineer-data-platform',
-      geo: 'Hybrid · Manila',
-      level: 'Senior level',
-      industry: 'Financial Services',
-      excerpt: 'The warehouse, the pipelines, and the numbers the board reads.',
-      salaryMin: 150000,
-      salaryMax: 200000,
-      salaryCurrency: 'USD',
-      days: 4,
-      hour: 12,
     },
   ]
 

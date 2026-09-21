@@ -25,7 +25,7 @@ import { SCRAPED_SOURCES, type FeedSource } from '@/services/jobFeed'
  * AND SO ARE THE FOUR BOARDS, for a reason worth stating rather than
  * discovering (Gabe, 2026-09-21: "why can I not see information from other job
  * posting websites in the demo pages"). On the real planner LinkedIn,
- * JobStreet, Indeed and Glassdoor come from Apify actors behind
+ * JobStreet and Indeed come from Apify actors behind
  * `/api/jobfeed`, which authenticates its caller and bills an account. The
  * demo has no session to authenticate and no account to bill, so calling it
  * here would answer 401 on every press -- and a public URL anyone can open

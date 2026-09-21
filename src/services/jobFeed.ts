@@ -49,15 +49,19 @@ import { supabase } from '@/lib/supabase'
  * because the rail renders them identically -- which is the point -- but
  * `SCRAPED_SOURCES` is what any code deciding whether to spend money reads.
  */
-export type FeedSource = 'jobicy' | 'linkedin' | 'jobstreet' | 'indeed' | 'glassdoor'
+export type FeedSource = 'jobicy' | 'linkedin' | 'jobstreet' | 'indeed'
 
-/** The four that cost money and go through the extractor. Order is the panel's. */
-export const SCRAPED_SOURCES: readonly FeedSource[] = [
-  'linkedin',
-  'jobstreet',
-  'indeed',
-  'glassdoor',
-]
+/**
+ * The ones that cost money and go through the extractor. Order is the panel's.
+ *
+ * GLASSDOOR WAS HERE AND IS NOT (Gabe, 2026-09-21: "removed the glassdoor
+ * scraper since the apify is now on maintenance"). Removed rather than left in
+ * to fail, because a board that answers every search with an error is a
+ * control that spends a press and a throttle tick to tell you nothing. Putting
+ * it back is this list, the union above, and its entry in the extractor's
+ * `ACTORS`.
+ */
+export const SCRAPED_SOURCES: readonly FeedSource[] = ['linkedin', 'jobstreet', 'indeed']
 
 /** What to call each source in the interface. */
 export const SOURCE_LABELS: Record<FeedSource, string> = {
@@ -65,7 +69,6 @@ export const SOURCE_LABELS: Record<FeedSource, string> = {
   linkedin: 'LinkedIn',
   jobstreet: 'JobStreet',
   indeed: 'Indeed',
-  glassdoor: 'Glassdoor',
 }
 
 export interface FeedJob {
@@ -394,7 +397,7 @@ export interface ScrapedFeed {
 }
 
 /**
- * Postings from the four paid boards, through `/api/jobfeed`.
+ * Postings from the paid boards, through `/api/jobfeed`.
  *
  * THE OPPOSITE TRADE FROM `fetchRemoteJobs` IN EVERY RESPECT, which is why it
  * is a separate function rather than a parameter. Jobicy is keyless, instant

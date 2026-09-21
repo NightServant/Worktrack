@@ -230,11 +230,16 @@ describe('rows from the paid boards', () => {
     expect(toScrapedJob(row({ publishedAt: 'not a date' }))).toBeNull()
   })
 
-  it('names four boards, and jobicy is not one of them', () => {
+  it('names the paid boards, and jobicy is not one of them', () => {
     // Jobicy is free, keyless and always on; nothing in the paid path may ask
     // for it, or a free source would be billed through an actor.
-    expect([...SCRAPED_SOURCES]).toEqual(['linkedin', 'jobstreet', 'indeed', 'glassdoor'])
+    //
+    // GLASSDOOR LEFT ON 2026-09-21, its Apify actor being in maintenance. A
+    // board that answers every search with an error is a control that spends a
+    // press and a throttle tick to tell you nothing.
+    expect([...SCRAPED_SOURCES]).toEqual(['linkedin', 'jobstreet', 'indeed'])
     expect(SCRAPED_SOURCES).not.toContain('jobicy')
+    expect(SCRAPED_SOURCES).not.toContain('glassdoor')
   })
 
   it('matches a board posting against an application by company and title', () => {

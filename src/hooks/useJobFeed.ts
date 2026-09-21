@@ -66,7 +66,7 @@ export function useJobFeedLocations(enabled = true) {
  *
  * `enabled` IS THE SPEND SWITCH, which is why it is derived from the list
  * rather than passed in. An empty selection must not produce a request: this
- * query runs up to four crawls that bill per posting, so "nobody asked for a
+ * query runs a crawl per board, each billing per posting, so "nobody asked for a
  * board" has to mean "no request", not "a request for nothing".
  *
  * A LONGER `staleTime` THAN JOBICY'S FIFTEEN MINUTES, and the reason is money

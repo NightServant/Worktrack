@@ -103,8 +103,8 @@ export interface JobFeedProps {
    *
    * WHY A BUTTON AND NOT THE TOGGLE ITSELF, which is what shipped first and
    * was wrong (Gabe, 2026-09-21: "Too many requests"). Each press of a board
-   * changed the query key, so picking all four fired four separate searches --
-   * four crawls, each billed per posting, against a throttle of two a minute.
+   * changed the query key, so picking every board fired a separate search --
+   * one crawl each, billed per posting, against a throttle of two a minute.
    * The reader hit the limit before they had finished choosing.
    *
    * Separating them makes the spend match the intent: the toggles say WHICH
@@ -335,7 +335,9 @@ export function JobFeed({
           />
 
           {/* THE BOARDS, AND WHY THEY ARE NOT A THIRD DROPDOWN.
-              (Gabe, 2026-09-21: add LinkedIn, JobStreet, Indeed and Glassdoor.)
+              (Gabe, 2026-09-21: add LinkedIn, JobStreet, Indeed and Glassdoor;
+              Glassdoor removed the same day, its Apify actor being in
+              maintenance.)
 
               Jobicy is always on and is not in this row. It is keyless and
               CORS-open, so the browser fetches it directly and it costs
@@ -351,9 +353,28 @@ export function JobFeed({
               whole point is a rail with more than one board in it, and the
               runs happen concurrently. */}
           {onBoardsChange && (
-            <div className="flex flex-col gap-2" data-feed-boards>
-              <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-col gap-3" data-feed-boards>
+              {/* A GRID ON A PHONE, A ROW WHEN THERE IS ROOM. Measured at
+                  375px: the four labels are 65-86px wide, which with the
+                  `boards` label in front of them wraps to two ragged lines --
+                  three on one, one orphaned below, each a different width.
+
+                  An `auto-fit` grid makes the wrap deliberate instead: as
+                  many equal columns as fit at 96px or wider, every target the
+                  same size, no ragged last line. It is written against the
+                  WIDTH rather than the count, so removing Glassdoor took the
+                  row from four buttons to three without touching this -- three
+                  simply became one even line of 109px each. From `sm` the grid
+                  gives way to the row it always was.
+
+                  THE LABEL LEAVES THE ROW BELOW `sm` rather than shrinking.
+                  It is ~50px of a 343px line, which is the difference between
+                  four buttons fitting and one being orphaned -- and a section
+                  label above its section is the same arrangement every other
+                  caps-label in this app already uses. */}
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                 <span className="text-label-caps uppercase text-text-muted">boards</span>
+                <div className="grid grid-cols-[repeat(auto-fit,minmax(96px,1fr))] gap-2 sm:flex sm:flex-wrap">
                 {SCRAPED_SOURCES.map((source) => {
                   const on = boards.includes(source)
                   return (
@@ -377,11 +398,16 @@ export function JobFeed({
                     </Button>
                   )
                 })}
+                </div>
               </div>
               {/* THE COST IS SAID BEFORE IT IS INCURRED, not after. A control
                   that quietly spends is the one thing this app has refused to
                   ship anywhere else. */}
-              <div className="flex flex-wrap items-center gap-3">
+              {/* STACKED ON A PHONE. Side by side, a two-line sentence and a
+                  button leave the button hanging off the end of the second
+                  line; stacked, the button is a full-width target under the
+                  sentence that explains it. */}
+              <div className="flex flex-col items-start gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
                 <p className="text-caption text-text-muted">
                   {boardsLoading
                     ? 'searching those boards — they crawl a results page, so this takes a moment.'
@@ -399,6 +425,7 @@ export function JobFeed({
                   <Button
                     type="button"
                     size="s"
+                    className="w-full sm:w-auto"
                     data-feed-board-search
                     // A second press of an unchanged selection would buy the
                     // same answer twice at full price.
