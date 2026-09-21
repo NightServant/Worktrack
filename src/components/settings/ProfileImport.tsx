@@ -286,8 +286,14 @@ const PROFILE_SOURCES: ProfileSourceField[] = [
 
 export interface ProfileSourcesProps {
   onFetch: (urls: string[]) => void
-  onClear?: () => void
   fetching?: boolean
+  /**
+   * Whether a clear is running elsewhere on the screen.
+   *
+   * THE DIALOG NO LONGER OFFERS ONE -- see the footer -- but the account can
+   * still be deleted from Danger zone while this is open, and a form that kept
+   * accepting a fetch through that would be racing a delete.
+   */
   clearing?: boolean
   hasProfile?: boolean
   /** What went wrong, or what landed, from the last attempt. */
@@ -307,7 +313,6 @@ function hostOf(url: string): string {
 
 export function ProfileSources({
   onFetch,
-  onClear,
   fetching = false,
   clearing = false,
   hasProfile = false,
@@ -492,18 +497,22 @@ export function ProfileSources({
           )}
           {fetching ? 'Reading' : hasProfile ? 'Fetch again' : 'Build my profile'}
         </Button>
-        {hasProfile && onClear && (
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => onClear()}
-            disabled={busy}
-            className="w-full @sm/profile:w-auto"
-          >
-            <TrashIcon size={16} aria-hidden className={iconMotion('lid')} />
-            {clearing ? 'Removing' : 'Remove profile'}
-          </Button>
-        )}
+        {/* NO `Remove profile` HERE ANY MORE (Gabe, 2026-09-21: "in the update
+            sources dialog remove the CTA for removing profiles").
+
+            WHY IT WAS THE WRONG CONTROL IN THIS DIALOG. Registration now
+            requires at least one source, so a profile is no longer something a
+            person opts into and can opt back out of -- it is part of having an
+            account. A button here that empties it left somebody in a state the
+            sign-up flow will not let anyone start in, and it sat beside `Fetch
+            again` where the destructive and the ordinary action were one
+            mis-click apart.
+
+            WHAT REPLACES IT IS EDITING. A source that should not be there is
+            cleared by emptying its row and fetching again, which is the same
+            gesture as adding one and needs no separate control. Deleting the
+            account, which does remove the profile, is still in Danger zone
+            where an irreversible action belongs. */}
       </div>
 
     </div>

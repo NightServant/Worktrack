@@ -11,10 +11,12 @@ import { useUserPreferences, useSetDefaultCurrency } from '@/hooks/useUserPrefer
 import { SettingsPage } from '@/components/settings/SettingsPage'
 import { ProfileSources, ProfileSourceSteps } from '@/components/settings/ProfileImport'
 import type { ProfileState } from '@/components/settings/ProfileGroup'
+import type { ProfileDetails } from '@/components/settings/ProfileDetailsDialog'
 import {
   useUserProfile,
   useImportProfileFromUrl,
   useClearUserProfile,
+  useSaveProfileDetails,
 } from '@/hooks/useUserProfile'
 import { useBookmarkletImport } from '@/components/applications/useBookmarkletImport'
 import { RouteSkeleton } from '@/components/ui/loading-skeletons'
@@ -49,6 +51,7 @@ function SettingsRoute() {
   const { data: stored, isPending: profileLoading } = useUserProfile()
   const fetchProfile = useImportProfileFromUrl()
   const clearProfile = useClearUserProfile()
+  const saveDetails = useSaveProfileDetails()
   // What the last fetch did, kept here rather than read off the mutation: a
   // page that returned only a name and a headline resolves SUCCESSFULLY with
   // warnings, so `mutation.error` is empty on exactly the case worth saying
@@ -203,13 +206,21 @@ function SettingsRoute() {
     })()
   }, [captured, captureUrl, fetchProfile, success])
 
-  const handleClearProfile = async () => {
+  /**
+   * Saving the person's own two details.
+   *
+   * THE ERROR IS RE-THROWN rather than only toasted, because the dialog that
+   * called this stays open on a failure and shows the reason in place -- a
+   * toast that disappears while an unsaved form is still on screen is the one
+   * arrangement guaranteed to lose somebody's typing.
+   */
+  const handleSaveDetails = async (details: ProfileDetails) => {
     try {
-      await clearProfile.mutateAsync()
-      setProfileNote(null)
-      success('Profile removed')
+      await saveDetails.mutateAsync(details)
+      success('Details saved')
     } catch (err) {
-      showError('Could not remove the profile', err instanceof Error ? err.message : 'Unknown error')
+      showError('Could not save those details', err instanceof Error ? err.message : 'Unknown error')
+      throw err
     }
   }
 
@@ -232,7 +243,6 @@ function SettingsRoute() {
       profileSource={
         <ProfileSources
           onFetch={(urls) => void handleFetchProfile(urls)}
-          onClear={() => void handleClearProfile()}
           fetching={fetchProfile.isPending}
           clearing={clearProfile.isPending}
           hasProfile={!!stored?.profile}
@@ -241,6 +251,7 @@ function SettingsRoute() {
         />
       }
       profileSteps={<ProfileSourceSteps />}
+      onSaveDetails={handleSaveDetails}
       email={user?.email ?? null}
       onDefaultCurrencyChange={(code) => void handleDefaultCurrencyChange(code)}
       savingCurrency={setDefaultCurrency.isPending}

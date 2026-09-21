@@ -45,6 +45,7 @@ vi.mock('@/hooks/useUserProfile', () => ({
   useImportProfileFromUrl: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useImportProfile: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useClearUserProfile: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useSaveProfileDetails: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }))
 // error/success are hoisted mocks, not inline vi.fn()s, so a failure-path
 // test can assert on the actual message a real Supabase error produces --

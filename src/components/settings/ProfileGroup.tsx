@@ -9,6 +9,10 @@ import { EMPTY_PROFILE, type UserProfile } from '@/services/profile'
 import { groupSkills } from '@/services/skillGroups'
 import { Loading } from './profileChrome'
 import { ProfileSections } from './ProfileSections'
+import {
+  ProfileDetailsDialog,
+  type ProfileDetails,
+} from './ProfileDetailsDialog'
 
 /**
  * Settings -> Profile: who you are, as the CV tools see you.
@@ -69,9 +73,16 @@ export interface ProfileGroupProps {
   source?: React.ReactNode
   /** How to get a profile. Shown only when there is none yet. */
   steps?: React.ReactNode
+  /**
+   * Saves the two details the person owns rather than imports.
+   *
+   * ABSENT MEANS NO PENCIL. A read-only surface passes nothing and gets no
+   * edit control, rather than one that opens a dialog with nowhere to save.
+   */
+  onSaveDetails?: (details: ProfileDetails) => Promise<void> | void
 }
 
-export function ProfileGroup({ state, source, steps }: ProfileGroupProps) {
+export function ProfileGroup({ state, source, steps, onSaveDetails }: ProfileGroupProps) {
   const profile = state.status === 'ready' ? state.profile : EMPTY_PROFILE
   const ready = state.status === 'ready'
 
@@ -93,12 +104,13 @@ export function ProfileGroup({ state, source, steps }: ProfileGroupProps) {
   const [sourcesOpen, setSourcesOpen] = React.useState(false)
 
   /**
-   * WHICH SECTION IS OPEN, held here rather than in `ProfileSections` so it
-   * survives that component re-deriving its tab list on every profile change.
-   * `null` means "whichever section comes first", which is what a reader who
-   * has not chosen anything wants.
+   * Whether the details dialog is open.
+   *
+   * THE TAB STATE THAT USED TO LIVE HERE IS GONE with the tabs themselves
+   * (2026-09-21): every section renders now, so there is no "which one is
+   * showing" left to remember.
    */
-  const [chosen, setChosen] = React.useState<string | null>(null)
+  const [detailsOpen, setDetailsOpen] = React.useState(false)
 
   const skillGroups = groupSkills(profile.skills)
 
@@ -131,8 +143,7 @@ export function ProfileGroup({ state, source, steps }: ProfileGroupProps) {
         <ProfileSections
           profile={profile}
           skillGroups={skillGroups}
-          chosen={chosen}
-          onChoose={setChosen}
+          onEditDetails={onSaveDetails ? () => setDetailsOpen(true) : undefined}
           action={
             source && (
               /* THE ONE CONTROL ON THE HEADER, and it is a button rather than
@@ -150,6 +161,19 @@ export function ProfileGroup({ state, source, steps }: ProfileGroupProps) {
               </Button>
             )
           }
+        />
+      )}
+
+      {/* THE PERSON'S OWN TWO DETAILS. A dialog rather than inline fields,
+          because everything else on that card is imported and read-only --
+          two editable rows in a grid of eight static ones would make the
+          whole card look like a form it is not. */}
+      {ready && onSaveDetails && (
+        <ProfileDetailsDialog
+          open={detailsOpen}
+          onOpenChange={setDetailsOpen}
+          profile={profile}
+          onSave={onSaveDetails}
         />
       )}
 

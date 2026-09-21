@@ -20,6 +20,15 @@ afterEach(() => cleanup())
  * bullets -- and spelling six nulls out at four call sites is four places to
  * forget the seventh.
  */
+/** One role, for the tests that only care how many there are. */
+const role = (title: string, company: string) => ({
+  title,
+  company,
+  period: '2024 - 2025',
+  location: null,
+  description: null,
+})
+
 const project = (title: string, description: string, url: string) => ({
   title,
   description,
@@ -57,15 +66,20 @@ const TAB_OF = {
  * hidden panel. A test that wants a section has to open it, the same as a
  * reader.
  */
-const openSection = (section: keyof typeof TAB_OF) => {
-  // A PROFILE WITH ONE GROUP HAS NO STRIP -- a tab that decides nothing is not
-  // drawn -- so the section is already on screen and there is nothing to click.
-  const tab = screen.queryByRole('tab', { name: TAB_OF[section] })
-  if (tab) fireEvent.click(tab)
-}
+/**
+ * NOTHING TO OPEN ANY MORE (2026-09-21). The tabs are gone and every section
+ * renders at once, so this is a no-op kept at the call sites rather than
+ * deleted from eighty lines of assertions -- what each of those tests is
+ * actually checking is the content, not the navigation that used to precede
+ * it. A separate test below holds that there is no tab strip at all.
+ */
+const openSection = (_section: keyof typeof TAB_OF) => {}
 
 /** One profile, shared by both blocks below. */
 const FILLED = {
+  phone: '+63 917 123 4567',
+  phoneType: 'mobile' as const,
+  birthday: '1999-03-07',
   name: 'Elijah Gabe Cervantes',
   headline: 'Front-end developer',
   location: 'Baguio, Philippines',
@@ -520,7 +534,7 @@ describe('the profile panel’s layout', () => {
     )
   })
 
-  it('groups the sections into three tabs, and counts them inside', () => {
+  it('renders every section at once, with no tab strip of its own', () => {
     const { container } = render(
       <SettingsPage
         prefs={null}
@@ -533,30 +547,72 @@ describe('the profile panel’s layout', () => {
         }}
       />
     )
-    // SCOPED TO THE PROFILE'S OWN NAV. Settings carries a `profile | general`
-    // tab row of its own directly above this one, which is the reason these
-    // two strips are drawn in different voices in the first place.
-    const nav = container.querySelector('[data-profile-nav]') as HTMLElement
-    const tabs = [...nav.querySelectorAll('[role="tab"]')].map((tab) => tab.textContent)
-    expect(tabs).toEqual(['background', 'skills(2)', 'projects & credentials'])
+    // NO TAB STRIP AT ALL (Gabe, 2026-09-21). Settings still carries its own
+    // `profile | general` row above this; the profile's second one is gone.
+    expect(container.querySelector('[data-profile-nav]')).toBeNull()
+    // SCOPED TO THE PROFILE GROUP. Settings keeps its own `profile | general`
+    // row above this one -- that strip is not what was removed.
+    const group = container.querySelector('[data-settings-group="profile"]') as HTMLElement
+    expect(group.querySelectorAll('[role="tab"]').length).toBe(0)
 
-    // A TAB OVER SEVERAL SECTIONS CARRIES NO COUNT, because no single number
-    // would be honest -- the counts live on the headings inside instead.
-    const sections = [...container.querySelectorAll('[data-profile-section]')].map((s) =>
-      s.getAttribute('data-profile-section')
-    )
+    // EVERY SECTION RENDERS AT ONCE, in reading order. The scroll is shortened
+    // by cutting each long section down in place rather than by hiding two
+    // thirds of them behind tabs.
+    //
     // NO `about` SECTION SINCE 2026-09-18 (Gabe: "remove about section"). The
     // text is still stored -- it opens a generated CV -- it is simply not a
     // panel on this screen any more.
-    expect(sections).toEqual(['details', 'experience', 'education'])
+    const sections = [...container.querySelectorAll('[data-profile-section]')].map((s) =>
+      s.getAttribute('data-profile-section')
+    )
+    // No `credentials`: this profile has no certifications, and a section with
+    // nothing in it is not drawn. That rule is unchanged by losing the tabs.
+    expect(sections).toEqual(['details', 'experience', 'education', 'skills', 'projects'])
     const experience = container.querySelector('[data-profile-section="experience"]')!
     expect(experience.querySelector('[data-slot="card-header"]')!.textContent).toContain('(1)')
+  })
 
-    // AND THE TAB IS THE HEADING WHERE IT NAMES ONE SECTION: `skills` must not
-    // be written twice, four pixels apart.
-    openSection('skills')
-    const skills = container.querySelector('[data-profile-section="skills"]')!
-    expect(skills.querySelector('[data-slot="card-header"]')).toBeNull()
+  it('shows the first two records and offers the rest in a dialog', async () => {
+    const user = userEvent.setup()
+    const { container } = render(
+      <SettingsPage
+        prefs={null}
+        profile={{
+          status: 'ready',
+          profile: {
+            ...FILLED,
+            experiences: [
+              role('Engineer', 'One'),
+              role('Engineer', 'Two'),
+              role('Engineer', 'Three'),
+            ],
+          },
+        }}
+      />
+    )
+    const experience = container.querySelector('[data-profile-section="experience"]')!
+    expect(experience.textContent).toContain('One')
+    expect(experience.textContent).toContain('Two')
+    expect(experience.textContent).not.toContain('Three')
+
+    await user.click(container.querySelector('[data-profile-view-all="experience"]') as HTMLElement)
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog.textContent).toContain('Three')
+  })
+
+  it('does not offer `view all` on a section that is already whole', () => {
+    // A `view all (2)` over a card showing both is a control that opens a copy
+    // of what is already on screen.
+    const { container } = render(
+      <SettingsPage
+        prefs={null}
+        profile={{
+          status: 'ready',
+          profile: { ...FILLED, experiences: [role('Engineer', 'Only')] },
+        }}
+      />
+    )
+    expect(container.querySelector('[data-profile-view-all="experience"]')).toBeNull()
   })
 })
 
@@ -613,14 +669,13 @@ describe('building a profile from several addresses', () => {
     ])
   })
 
-  it('offers a re-fetch and a removal once a profile exists, and pre-fills each row', () => {
+  it('offers a re-fetch once a profile exists, and pre-fills each row', () => {
     // The stored addresses come back so a re-fetch is one click rather than a
     // trip to four sites to copy the same links again. BY HOST, not by
     // position: the stored list holds only the addresses that were sent.
     render(
       <ProfileSources
         onFetch={vi.fn()}
-        onClear={vi.fn()}
         hasProfile
         sources={[
           {
@@ -643,7 +698,12 @@ describe('building a profile from several addresses', () => {
       />
     )
     expect(screen.getByRole('button', { name: /fetch again/i })).toBeTruthy()
-    expect(screen.getByRole('button', { name: /remove profile/i })).toBeTruthy()
+    // NO REMOVAL HERE (Gabe, 2026-09-21). Registration requires at least one
+    // source, so emptying the profile from this dialog would leave somebody in
+    // a state sign-up will not let anyone start in -- and it sat one mis-click
+    // from `Fetch again`. Deleting the account still removes it, from Danger
+    // zone, where an irreversible action belongs.
+    expect(screen.queryByRole('button', { name: /remove profile/i })).toBeNull()
     expect(screen.getByLabelText(/linkedin profile/i)).toHaveValue(
       'https://www.linkedin.com/in/example'
     )
@@ -734,7 +794,7 @@ describe('building a profile from several addresses', () => {
   })
 
   it('has nothing to remove before the first fetch', () => {
-    render(<ProfileSources onFetch={vi.fn()} onClear={vi.fn()} />)
+    render(<ProfileSources onFetch={vi.fn()} />)
     expect(screen.queryByRole('button', { name: /remove profile/i })).toBeNull()
   })
 
@@ -831,7 +891,12 @@ describe('importing a LinkedIn export', () => {
     expect(container.querySelector('[data-profile-detail="address"]')).toBeTruthy()
     expect(container.querySelector('[data-profile-detail="born"]')).toBeTruthy()
     expect(screen.getByText(/Bamban, Tarlac/)).toBeTruthy()
-    expect(screen.getByText('Mar 7')).toBeTruthy()
+    // THE TYPED DATE WINS OVER THE IMPORTED ONE. `birthday` is a real date the
+    // person entered; `birthDate` is whatever a source printed -- LinkedIn
+    // shows "Mar 7" with no year, because a year identifies you. Both would be
+    // the same fact twice, one of them worse.
+    expect(screen.getByText('7 March 1999')).toBeTruthy()
+    expect(screen.queryByText('Mar 7')).toBeNull()
   })
 
   it('names what the profile was built from, on the header', () => {
@@ -859,7 +924,11 @@ describe('importing a LinkedIn export', () => {
       screen.getByRole('link', { name: 'egabe.cervantes@gmail.com' }).getAttribute('href')
     ).toBe('mailto:egabe.cervantes@gmail.com')
     const details = container.querySelector('[data-profile-section="details"]')!
-    expect(details.querySelector('[data-profile-detail="profile"]')).toBeTruthy()
+    // NO `profile` ROW ANY MORE (Gabe, 2026-09-21: "remove the profile link").
+    // The addresses are on the banner as source tags and editable in the
+    // sources dialog; this row repeated one of them, and on a merged profile
+    // which one it named was arbitrary.
+    expect(details.querySelector('[data-profile-detail="profile"]')).toBeNull()
     // The location is the banner's, once. A row here would be the second copy.
     expect(details.querySelector('[data-profile-detail="location"]')).toBeNull()
   })

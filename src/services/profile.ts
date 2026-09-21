@@ -146,6 +146,17 @@ export interface ProfileAbout {
   text: string
 }
 
+/**
+ * What kind of number a phone number is.
+ *
+ * FOUR, AND `other` IS ONE OF THEM. A dropdown of three that does not contain
+ * somebody's actual situation is a dropdown that makes them lie; `other` is
+ * what keeps this a fact rather than a guess.
+ */
+export const PHONE_TYPES = ['mobile', 'home', 'work', 'other'] as const
+
+export type PhoneType = (typeof PHONE_TYPES)[number]
+
 export interface UserProfile {
   name: string | null
   /** The one-line professional headline. */
@@ -172,6 +183,34 @@ export interface UserProfile {
   address: string | null
   /** As LinkedIn writes it -- "Mar 7". Usually no year, so it is not a date. */
   birthDate: string | null
+  /**
+   * A phone number, as the person typed it.
+   *
+   * KEPT VERBATIM RATHER THAN REFORMATTED. A number is written differently in
+   * every market -- `+63 917 123 4567`, `0917 123 4567`, `(02) 8123 4567` --
+   * and the only thing this app does with it is show it back and put it on a
+   * CV. Normalising to E.164 would need a country the user never gave, and
+   * getting that wrong prints a wrong number on a document somebody sends to
+   * an employer.
+   *
+   * IT IS NOT IMPORTED. No public profile publishes a phone number, and no
+   * parser writes this field -- it comes from the person, at registration or
+   * from the details dialog. That is also why it survives a re-import: the
+   * merge never overwrites a filled field with an empty one.
+   */
+  phone: string | null
+  /** What kind of number it is. See `PHONE_TYPES`. */
+  phoneType: PhoneType | null
+  /**
+   * The date of birth the person entered, as `YYYY-MM-DD`.
+   *
+   * SEPARATE FROM `birthDate`, which is a different fact wearing a similar
+   * name. That one is whatever a source printed -- LinkedIn writes "Mar 7",
+   * with no year, because a year is not public. This one is a real date the
+   * person typed, and only a real date can be stored as one. Mixing them in a
+   * field would mean nothing downstream could tell which it had.
+   */
+  birthday: string | null
   websites: string[]
   experiences: ProfileExperience[]
   education: ProfileEducation[]
@@ -197,6 +236,9 @@ export const EMPTY_PROFILE: UserProfile = {
   industry: null,
   address: null,
   birthDate: null,
+  phone: null,
+  phoneType: null,
+  birthday: null,
   websites: [],
   experiences: [],
   education: [],
@@ -399,6 +441,15 @@ export function normalizeProfile(stored: Partial<UserProfile> | null): UserProfi
      * keys below: stored data written under a rule that no longer holds.
      */
     pictureUrl: isCodeHostAvatar(stored.pictureUrl) ? null : (stored.pictureUrl ?? null),
+    /*
+     * A STORED PHONE TYPE IS STILL CHECKED. It is JSONB written by this app,
+     * but the column has no constraint and a value removed from `PHONE_TYPES`
+     * would otherwise keep rendering forever -- the same repair `pictureUrl`
+     * above makes for data written under a rule that no longer holds.
+     */
+    phoneType: PHONE_TYPES.includes(stored.phoneType as PhoneType)
+      ? (stored.phoneType as PhoneType)
+      : null,
     about: list<ProfileAbout>(stored.about),
     websites: strings(stored.websites),
     skills: strings(stored.skills),

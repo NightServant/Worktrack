@@ -48,11 +48,23 @@ export function Section({
   count,
   bare = false,
   heading = true,
+  action,
   children,
 }: {
   title: string
   icon: IconName
   count?: number
+  /**
+   * One control opposite the heading -- `view all`, or the details pencil.
+   *
+   * ON THE HEADING ROW RATHER THAN UNDER THE CONTENT, which is where a "show
+   * more" usually goes. Under it, the control moves every time the content
+   * above it changes height and a reader scanning a stack of sections has to
+   * find it again in each one; on the heading it is in the same place in every
+   * card, and it reads as belonging to the section rather than to its last
+   * row.
+   */
+  action?: React.ReactNode
   /**
    * No card around it: the heading and the content sit on the page ground.
    *
@@ -77,12 +89,18 @@ export function Section({
   children: React.ReactNode
 }) {
   const title_row = (
-    <CardTitle icon={icon}>
-      <h3>{title}</h3>
-      {count !== undefined && count > 0 && (
-        <span className="tabular text-body-s font-normal text-text-muted">({count})</span>
-      )}
-    </CardTitle>
+    // THE ACTION TRAILS THE TITLE on the same line. `justify-between` rather
+    // than a grid: the title group is one thing and the control is another,
+    // and there is never a third.
+    <div className="flex items-center justify-between gap-3">
+      <CardTitle icon={icon}>
+        <h3>{title}</h3>
+        {count !== undefined && count > 0 && (
+          <span className="tabular text-body-s font-normal text-text-muted">({count})</span>
+        )}
+      </CardTitle>
+      {action}
+    </div>
   )
 
   if (bare) {

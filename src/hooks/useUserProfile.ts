@@ -1,3 +1,4 @@
+import type { PhoneType } from '@/services/profile'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { userProfileService } from '@/services/userProfileService'
 import { importLinkedInExport, type ImportResult } from '@/services/linkedinExport'
@@ -253,6 +254,42 @@ export function useClearUserProfile() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: () => userProfileService.clear(supabase),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['user-profile', user?.id] })
+    },
+  })
+}
+
+/**
+ * Saves the two details the person owns rather than imports.
+ *
+ * IT READS, MERGES AND WRITES BACK rather than patching a column, because the
+ * profile is one JSONB document -- there is no `phone` column to update on its
+ * own. The read is the cache's copy, so this costs one write and no round trip
+ * to fetch what is already on screen.
+ *
+ * IT REFUSES TO WRITE INTO NOTHING. Registration now guarantees a profile
+ * exists before this screen can be reached, but a failed first import could
+ * still leave an account with none -- and upserting a document whose only
+ * fields are a phone number would create a "profile" with no name, no roles
+ * and no sources, which every other part of this app would then render as a
+ * successful import.
+ */
+export function useSaveProfileDetails() {
+  const { user } = useAuth()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (details: {
+      phone: string | null
+      phoneType: PhoneType | null
+      birthday: string | null
+    }) => {
+      const current = await userProfileService.get(supabase)
+      if (!current.profile) {
+        throw new Error('There is no profile to add these to yet.')
+      }
+      await userProfileService.saveProfile(supabase, { ...current.profile, ...details })
+    },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['user-profile', user?.id] })
     },

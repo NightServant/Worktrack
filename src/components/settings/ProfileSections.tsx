@@ -1,8 +1,9 @@
 'use client'
 
 import * as React from 'react'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { icons, type IconName } from '@/components/icons'
+import { AppDialog } from '@/components/ui/app-dialog'
+import { Button } from '@/components/ui/button'
+import { PencilIcon, type IconName } from '@/components/icons'
 import { cn } from '@/lib/utils'
 import { hasProfileContent, type UserProfile } from '@/services/profile'
 import type { SkillGroup } from '@/services/skillGroups'
@@ -57,14 +58,18 @@ export interface ProfileSectionsProps {
   profile: UserProfile
   /** Computed once by the caller; this component only renders it. */
   skillGroups: SkillGroup[]
-  /** The tab the reader picked, or null for "whichever comes first". */
-  chosen: string | null
-  onChoose: (id: string) => void
+  /**
+   * Opens the dialog that edits the person's own two details.
+   *
+   * Absent means no pencil is drawn, which is what the read-only surfaces
+   * want -- a control that cannot save is worse than no control.
+   */
+  onEditDetails?: () => void
   /** The banner's one control -- opening the sources form. */
   action?: React.ReactNode
 }
 
-/** One card inside a tab. */
+/** One card on the profile. */
 interface ProfileSectionPanel {
   id: string
   label: string
@@ -73,95 +78,127 @@ interface ProfileSectionPanel {
   count?: number
   /** No card around it. See `Section`'s `bare`. */
   bare?: boolean
+  /**
+   * What the card shows in place. A section with more than this says so and
+   * offers the rest in a dialog -- see `render`.
+   */
   render: () => React.ReactNode
-}
-
-/** One tab, and the sections it holds. */
-interface ProfileSectionTab {
-  id: string
-  label: string
-  icon: IconName
-  sections: ProfileSectionPanel[]
+  /**
+   * The whole list, for the dialog behind `view all`.
+   *
+   * ABSENT MEANS THE CARD IS ALREADY WHOLE, which is most of them: details,
+   * projects and credentials render everything they have. Only the three that
+   * run long on a real profile -- experience, education and skills -- are cut
+   * down in place, and only those get a dialog.
+   */
+  renderAll?: () => React.ReactNode
 }
 
 export function ProfileSections({
   profile,
   skillGroups,
-  chosen,
-  onChoose,
+  onEditDetails,
   action,
 }: ProfileSectionsProps) {
-  const tabs = buildTabs(profile, skillGroups)
+  const sections = buildSections(profile, skillGroups)
 
-  // READ THROUGH TO THE FIRST SECTION rather than syncing state in an effect:
-  // a re-fetch can drop the section the reader had open, and an effect would
-  // render one frame pointing at a tab that no longer exists.
-  const active = tabs.some((tab) => tab.id === chosen) ? (chosen as string) : tabs[0]?.id
+  /**
+   * Which section has its `view all` dialog open, if any.
+   *
+   * ONE PIECE OF STATE FOR ALL OF THEM rather than one per section: only one
+   * dialog can be open at a time, so a boolean each would be three ways to
+   * describe the same fact and a way to get them out of step.
+   */
+  const [expanded, setExpanded] = React.useState<string | null>(null)
+  const open = sections.find((section) => section.id === expanded) ?? null
 
   return (
     <div className="flex flex-col gap-6" data-profile-state="ready">
-      <Tabs
-        value={active}
-        onValueChange={(next) => onChoose(String(next))}
-        className="gap-6"
-      >
-        {/* WHAT THIS PROFILE WAS BUILT FROM, on the header itself. Four
-            reference screens all put a short row of tags under the name, and
-            the honest thing to put in ours is the sources: it answers "where
-            did this come from" at a glance, and it is the fact a merged
-            profile most needs to carry. Only the ones that READ -- a tag for a
-            link that failed would be a claim the sources form contradicts. */}
-        <Identity
-          profile={profile}
-          tags={profile.sources
-            .filter((entry) => entry.ok)
-            .map((entry) => (
-              <Tag key={entry.url} icon="Link">
-                {entry.site}
-              </Tag>
-            ))}
-          action={action}
-          nav={tabs.length > 1 ? <SectionTabs tabs={tabs} /> : null}
-        />
+      {/* WHAT THIS PROFILE WAS BUILT FROM, on the header itself. Four
+          reference screens all put a short row of tags under the name, and
+          the honest thing to put in ours is the sources: it answers "where
+          did this come from" at a glance, and it is the fact a merged
+          profile most needs to carry. Only the ones that READ -- a tag for a
+          link that failed would be a claim the sources form contradicts. */}
+      <Identity
+        profile={profile}
+        tags={profile.sources
+          .filter((entry) => entry.ok)
+          .map((entry) => (
+            <Tag key={entry.url} icon="Link">
+              {entry.site}
+            </Tag>
+          ))}
+        action={action}
+      />
 
-        {tabs.map((tab) => (
-          <TabsContent key={tab.id} value={tab.id}>
-            {/* ONLY THE OPEN PANEL RENDERS ITS CHILDREN, and that is not an
-                optimisation. Base UI keeps a hidden panel mounted and merely
-                marks it inert, so the projects rail would initialise inside a
-                zero-width box and measure every card at 0 -- embla reads
-                layout at mount and a hidden panel has none to read. Rendering
-                on demand also keeps one copy of each control in the
-                accessibility tree. */}
-            {active === tab.id && (
-              <div className="flex flex-col gap-6">
-                {tab.sections.map((section) => (
-                  <Section
-                    key={section.id}
-                    title={section.label}
-                    icon={section.icon}
-                    count={section.count}
-                    bare={section.bare}
-                    // THE HEADING COMES BACK WHEN A TAB HOLDS SEVERAL SECTIONS
-                    // (Gabe, 2026-09-19, grouping them three ways). With
-                    // `experience` and `education` in one panel there has to be
-                    // something between them saying which is which -- and each
-                    // heading carries its own count, which is where the numbers
-                    // went when the tabs stopped being able to carry them.
-                    //
-                    // IT STAYS OFF WHERE THE TAB IS THE HEADING. `skills` is
-                    // its own tab and its own section, so drawing both is the
-                    // same word twice, four pixels apart.
-                    heading={!namesItsOnlySection(tab)}
-                  >
-                    {section.render()}
-                  </Section>
-                ))}
-              </div>
-            )}
-          </TabsContent>
-        ))}
-      </Tabs>
+      {/* NO TAB BAR ANY MORE (Gabe, 2026-09-21: "remove the tab navigation of
+          user's profile ... to reduce the scroll of the user profile, I highly
+          recommend to use a dialog for viewing all information").
+
+          THE TABS WERE SOLVING THE SCROLL BY HIDING TWO THIRDS OF IT, which
+          cost the sweep: reviewing a whole import was one scroll and became
+          three clicks, and the reader had to remember which tab a section was
+          in. Cutting each long section to its first few rows solves the same
+          2,400px column without hiding anything -- every section is on screen,
+          in order, and the part that ran long is one press away in a dialog
+          rather than behind a tab somebody has to find.
+
+          NOTHING IS HIDDEN, WHICH IS THE POINT. A section that fits renders
+          whole; a section that does not says how many it is holding back. */}
+      {sections.map((section) => (
+        <Section
+          key={section.id}
+          title={section.label}
+          icon={section.icon}
+          count={section.count}
+          bare={section.bare}
+          action={
+            section.renderAll ? (
+              <Button
+                variant="ghost"
+                size="s"
+                data-profile-view-all={section.id}
+                onClick={() => setExpanded(section.id)}
+              >
+                view all{section.count === undefined ? '' : ` (${section.count})`}
+              </Button>
+            ) : section.id === 'details' && onEditDetails ? (
+              /* THE PENCIL SITS BESIDE THE HEADING, NOT INSIDE THE LIST
+                 (Gabe, 2026-09-21: "allow users also to update phone number
+                 and birthday information in the details section by using a
+                 dialog accessible via icon beside the indicator"). Two of the
+                 rows in this card are the person's own rather than imported,
+                 and an edit control per row would draw two pencils in a grid
+                 whose other cells cannot be edited at all. */
+              <Button
+                variant="ghost"
+                size="icon-s"
+                aria-label="Edit your phone number and birthday"
+                data-profile-edit-details
+                onClick={onEditDetails}
+              >
+                <PencilIcon size={16} aria-hidden />
+              </Button>
+            ) : undefined
+          }
+        >
+          {section.render()}
+        </Section>
+      ))}
+
+      {/* THE REST OF WHICHEVER SECTION ASKED FOR IT. One dialog, reused: its
+          title and body come from the open section, so a fourth long section
+          later needs no new markup here. */}
+      <AppDialog
+        open={open !== null}
+        onOpenChange={(next) => !next && setExpanded(null)}
+        title={open?.label ?? ''}
+        icon={open?.icon}
+        size="l"
+      >
+        {open?.renderAll?.()}
+      </AppDialog>
 
       {!hasProfileContent(profile) && (
         <p className="text-body-s text-text-muted">This import came back empty.</p>
@@ -170,110 +207,37 @@ export function ProfileSections({
   )
 }
 
-/** Whether a tab is just one section wearing the same name. */
-function namesItsOnlySection(tab: ProfileSectionTab): boolean {
-  return tab.sections.length === 1 && tab.sections[0].label === tab.label
-}
-
 /**
- * The tab strip: a glyph, the group's name, and -- where it means one thing --
- * how many are in it.
+ * Which sections this profile has, in the order they read.
  *
- * THE COUNT IS THE POINT, not decoration. It is what a reader loses by having
- * the sections behind tabs, handed back in the one place they can see all six
- * at once -- and it is the first thing somebody checking an import looks for.
- *
- * SCROLLS RATHER THAN WRAPS below `sm`. Six tabs do not fit on a phone, and a
- * wrapped strip pushes the panel down a row at a width where vertical space is
- * already the scarce thing. The overflow pair and the height override are
- * `StatusTabs`'s, for the reasons written out there -- a `visible` overflow
- * coerces to `auto` on the other axis and draws a scrollbar across the active
- * tab's rule.
- */
-function SectionTabs({ tabs }: { tabs: ProfileSectionTab[] }) {
-  return (
-    <TabsList
-      aria-label="Profile sections"
-      variant="line"
-      activateOnFocus
-      className={cn(
-        '-mx-4 w-[calc(100%+2rem)] justify-start gap-1 overflow-x-auto overflow-y-hidden',
-        'rounded-none bg-transparent p-0 px-4',
-        '@sm/profile:-mx-5 @sm/profile:w-[calc(100%+2.5rem)] @sm/profile:px-5',
-        'group-data-[orientation=horizontal]/tabs:h-auto'
-      )}
-    >
-      {tabs.map((tab) => {
-        const Icon = icons[tab.icon]
-        return (
-          <TabsTrigger
-            key={tab.id}
-            id={`profile-tab-${tab.id}`}
-            value={tab.id}
-            className={cn(
-              // `grow-0` UNDOES THE VARIANT'S `flex-1`. Left unset, six tabs
-              // share a 1200px card equally and `credentials` ends up a foot
-              // away from `details` -- which reads as a segmented control and
-              // makes the strip slower to scan than the headings it replaced.
-              'relative h-11 shrink-0 grow-0 items-center justify-start gap-2 whitespace-nowrap rounded-none border-0 px-3 py-0',
-              // LOWERCASE BODY TEXT, NOT `label-caps`. The settings tabs eight
-              // pixels above are uppercase; matching them would draw two rows
-              // of the same thing. This is the voice each section's own
-              // heading used -- `experience (1)` -- moved up to the bar.
-              'text-body-s transition-colors duration-(--duration-fast)',
-              'text-text-muted hover:text-text-primary',
-              'data-active:bg-transparent data-active:text-text-primary data-active:shadow-none',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-default',
-              'after:hidden',
-              // The active rule, on the card's own bottom hairline -- the same
-              // 2px accent vocabulary the status marker and the nav item use.
-              'data-active:after:absolute data-active:after:inset-x-0 data-active:after:-bottom-px',
-              'data-active:after:block data-active:after:h-[2px] data-active:after:bg-accent-default'
-            )}
-          >
-            <Icon size={14} aria-hidden className="shrink-0" />
-            {tab.label}
-            {/* ONLY WHERE ONE NUMBER IS HONEST. A tab over three sections has
-                no single count -- see `buildTabs`, where the numbers moved
-                into the section headings instead. */}
-            {namesItsOnlySection(tab) && tab.sections[0].count !== undefined && (
-              <span className="tabular text-caption text-text-muted">
-                ({tab.sections[0].count})
-              </span>
-            )}
-          </TabsTrigger>
-        )
-      })}
-    </TabsList>
-  )
-}
-
-/**
- * Which sections this profile has, and which tab each one lives in.
- *
- * THREE TABS, NOT SIX (Gabe, 2026-09-19): `background` is details, experience
- * and education; `skills` is its own; `projects & credentials` is the two
- * things somebody built or earned. Six tabs was one per section, which is the
- * arrangement that needs no decisions and reads like a filing cabinet -- four
- * of them held a single short card, and `details` and `education` were a click
- * apart for no reason a reader would give.
- *
- * WHAT THE GROUPING COSTS AND WHERE THE COUNTS WENT. A tab over three sections
- * cannot carry one honest number -- `background (3)` would be the roles and
- * the schools with the details silently uncounted -- so the counts moved back
- * into the section headings inside the panel, where each one means exactly one
- * thing. `skills` keeps its count on the tab, because there it is unambiguous.
+ * ONE FLAT LIST, NOT THREE TABS (Gabe, 2026-09-21). The grouping existed to
+ * shorten a 2,400px column and it worked by hiding two thirds of it; cutting
+ * each long section down in place shortens the same column without taking
+ * anything off the screen. Every section is here, in order, and the three that
+ * run long carry the rest in a dialog.
  *
  * THE ORDER IS WHO, THEN FACTS, THEN THE LONG READ -- unchanged, because it was
  * right for the same reason: `details` is the handful of facts somebody came
  * for (Gabe, 2026-09-18: "details first before experience"), and everything
  * after it is a list you read one of.
  *
- * A SECTION WITH NOTHING IN IT IS NOT LISTED, and a tab whose sections are all
- * empty is not drawn. Nothing here renders an empty card, so nothing here
- * needs a tab that opens one.
+ * A SECTION WITH NOTHING IN IT IS NOT LISTED. Nothing here renders an empty
+ * card, so nothing here needs a heading over one.
  */
-function buildTabs(profile: UserProfile, skillGroups: SkillGroup[]): ProfileSectionTab[] {
+
+/**
+ * How much of a long section shows before `view all`.
+ *
+ * TWO RECORDS AND FOUR SKILL ROWS (Gabe, 2026-09-21: "in experience and
+ * education - display two pieces of information, in skills - display four row
+ * of skills"). Two is enough to show what the section holds and what a row
+ * looks like; the reader is deciding whether to open it, not reading it here.
+ */
+const PREVIEW_RECORDS = 2
+const PREVIEW_SKILL_ROWS = 4
+
+function buildSections(profile: UserProfile, skillGroups: SkillGroup[]): ProfileSectionPanel[] {
+
   // SKILLS LEFT `details` and became a section of their own, so they no longer
   // decide whether `details` is drawn at all: a profile with skills and
   // nothing else would otherwise render an empty card.
@@ -286,8 +250,9 @@ function buildTabs(profile: UserProfile, skillGroups: SkillGroup[]): ProfileSect
     profile.websites.length > 0 ||
     !!profile.address ||
     !!profile.email ||
-    !!profile.url ||
     !!profile.birthDate ||
+    !!profile.birthday ||
+    !!profile.phone ||
     !!profile.fetchedAt
 
   const details: ProfileSectionPanel | null = facets
@@ -306,19 +271,13 @@ function buildTabs(profile: UserProfile, skillGroups: SkillGroup[]): ProfileSect
           label: 'experience',
           icon: 'Briefcase',
           count: profile.experiences.length,
-          render: () => (
-            <Records
-              icon="Briefcase"
-              rows={profile.experiences.map((e) => ({
-                lead: e.title,
-                detail: e.company,
-                org: e.company,
-                period: e.period,
-                meta: e.location,
-                body: e.description,
-              }))}
-            />
-          ),
+          render: () => <ExperienceRows rows={profile.experiences.slice(0, PREVIEW_RECORDS)} />,
+          // ONLY WHEN THERE IS MORE. A `view all (2)` over a card already
+          // showing both is a control that opens a copy of what is on screen.
+          renderAll:
+            profile.experiences.length > PREVIEW_RECORDS
+              ? () => <ExperienceRows rows={profile.experiences} />
+              : undefined,
         }
       : null
 
@@ -342,20 +301,11 @@ function buildTabs(profile: UserProfile, skillGroups: SkillGroup[]): ProfileSect
              second net under that: a row stored before those fixes landed is
              still in the database, and re-importing is the user's choice
              rather than a condition of reading their own profile. */
-          render: () => (
-            <Records
-              icon="Documents"
-              rows={profile.education.map((e) => ({
-                lead: e.school,
-                detail:
-                  e.degree && e.degree.trim().toLowerCase() !== e.school.trim().toLowerCase()
-                    ? e.degree
-                    : null,
-                org: e.school,
-                period: e.period ?? e.graduationYear,
-              }))}
-            />
-          ),
+          render: () => <EducationRows rows={profile.education.slice(0, PREVIEW_RECORDS)} />,
+          renderAll:
+            profile.education.length > PREVIEW_RECORDS
+              ? () => <EducationRows rows={profile.education} />
+              : undefined,
         }
       : null
 
@@ -366,7 +316,8 @@ function buildTabs(profile: UserProfile, skillGroups: SkillGroup[]): ProfileSect
           label: 'skills',
           icon: 'Tag',
           count: profile.skills.length,
-          render: () => <SkillsPanel groups={skillGroups} />,
+          render: () => <SkillsPanel groups={skillGroups} rows={PREVIEW_SKILL_ROWS} />,
+          renderAll: () => <SkillsPanel groups={skillGroups} />,
         }
       : null
 
@@ -411,22 +362,82 @@ function buildTabs(profile: UserProfile, skillGroups: SkillGroup[]): ProfileSect
         }
       : null
 
-  const groups: { id: string; label: string; icon: IconName; of: (ProfileSectionPanel | null)[] }[] =
-    [
-      { id: 'background', label: 'background', icon: 'UserRound', of: [details, experience, education] },
-      { id: 'skills', label: 'skills', icon: 'Tag', of: [skills] },
-      {
-        id: 'work',
-        label: 'projects & credentials',
-        icon: 'Code',
-        of: [projects, credentials],
-      },
-    ]
+  return [details, experience, education, skills, projects, credentials].filter(
+    (section): section is ProfileSectionPanel => section !== null
+  )
+}
 
-  return groups.flatMap((group) => {
-    const sections = group.of.filter((section): section is ProfileSectionPanel => section !== null)
-    if (sections.length === 0) return []
-    return [{ id: group.id, label: group.label, icon: group.icon, sections }]
+
+/**
+ * The experience rows, drawn identically in the card and in the dialog.
+ *
+ * ONE RENDERER FOR BOTH so a row cannot come out differently depending on
+ * where it is read -- the card passes the first two, the dialog passes all of
+ * them, and neither knows which it is.
+ */
+function ExperienceRows({ rows }: { rows: UserProfile['experiences'] }) {
+  return (
+    <Records
+      icon="Briefcase"
+      rows={rows.map((e) => ({
+        lead: e.title,
+        detail: e.company,
+        org: e.company,
+        period: e.period,
+        meta: e.location,
+        body: e.description,
+      }))}
+    />
+  )
+}
+
+/**
+ * The school rows, in the card and in the dialog.
+ *
+ * `period ?? graduationYear` because most sources give one or the other and
+ * never both -- a range where the export was read, a bare year where only the
+ * end date came through. A school with neither prints without a date rather
+ * than with a guess.
+ *
+ * THE DEGREE IS DROPPED WHEN IT IS THE SCHOOL AGAIN. The parsers already
+ * refuse to write the same words twice, and this is the second net under
+ * that: a row stored before those fixes landed is still in the database, and
+ * re-importing is the user's choice rather than a condition of reading their
+ * own profile.
+ */
+function EducationRows({ rows }: { rows: UserProfile['education'] }) {
+  return (
+    <Records
+      icon="Documents"
+      rows={rows.map((e) => ({
+        lead: e.school,
+        detail:
+          e.degree && e.degree.trim().toLowerCase() !== e.school.trim().toLowerCase()
+            ? e.degree
+            : null,
+        org: e.school,
+        period: e.period ?? e.graduationYear,
+      }))}
+    />
+  )
+}
+
+
+/**
+ * `7 March 1999` from `1999-03-07`.
+ *
+ * PARSED AS PARTS, NOT AS A DATE. `new Date('1999-03-07')` is UTC midnight,
+ * which in any timezone behind UTC prints the day before -- the same defect
+ * `localDayKey` exists to prevent on the calendar, and a birthday is exactly
+ * the value nobody forgives being off by one.
+ */
+function formatBirthday(value: string): string {
+  const [year, month, day] = value.split('-').map(Number)
+  if (!year || !month || !day) return value
+  return new Date(year, month - 1, day).toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
   })
 }
 
@@ -462,19 +473,41 @@ function DetailsPanel({ profile }: { profile: UserProfile }) {
       {/* NO `industry` ROW. It is printed beside the location under the name,
           and a second copy here is the repetition this pass exists to remove --
           the same reason `location` is absent. */}
-      {profile.birthDate && <Detail label="born">{profile.birthDate}</Detail>}
-      {profile.url && (
-        <Detail label="profile">
+      {/* THE PERSON'S OWN TWO FACTS, and they are the only rows on this card
+          that were typed rather than imported (Gabe, 2026-09-21). The pencil
+          beside the heading edits exactly these.
+
+          THE KIND IS PART OF THE NUMBER rather than a row of its own: `mobile`
+          under a `phone type` label would be a fact nobody asked a question
+          about, and it is meaningless without the number beside it. */}
+      {profile.phone && (
+        <Detail label="phone">
           <a
-            href={profile.url}
-            target="_blank"
-            rel="noreferrer"
-            className="break-all text-accent-default underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-default"
+            href={`tel:${profile.phone.replace(/[^\d+]/g, '')}`}
+            className="text-accent-default underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-default"
           >
-            {profile.url.replace(/^https?:\/\/(www\.)?/, '')}
+            {profile.phone}
           </a>
+          {profile.phoneType && (
+            <span className="text-text-muted"> · {profile.phoneType}</span>
+          )}
         </Detail>
       )}
+      {/* THE TYPED DATE WINS OVER THE IMPORTED ONE. `birthday` is a real date
+          somebody entered; `birthDate` is whatever a source printed, usually
+          "Mar 7" with no year because a year is not public. Showing both would
+          be the same fact twice, one of them worse. */}
+      {(profile.birthday || profile.birthDate) && (
+        <Detail label="born">
+          {profile.birthday ? formatBirthday(profile.birthday) : profile.birthDate}
+        </Detail>
+      )}
+      {/* NO `profile` LINK ROW (Gabe, 2026-09-21: "remove the profile link").
+          The addresses this profile was built from are already on the banner
+          as source tags and are editable in the sources dialog, so a single
+          one of them repeated here was the same fact in a worse place -- and
+          it named only the first source, which on a merged profile is
+          arbitrary. */}
       {profile.languages.length > 0 && (
         <Facet title="languages">
           <div className="flex flex-wrap gap-1.5">
@@ -525,19 +558,43 @@ function DetailsPanel({ profile }: { profile: UserProfile }) {
  * runs across careers, so a profile with no code in it gets clinical or
  * culinary headings from the same table.
  */
-function SkillsPanel({ groups }: { groups: SkillGroup[] }) {
+function SkillsPanel({ groups, rows }: { groups: SkillGroup[]; rows?: number }) {
   if (groups.length === 1) {
+    /**
+     * A CLAMP IN CSS, NOT A SLICE, and the difference matters here.
+     *
+     * A tag cloud has no fixed items-per-row: `React` and
+     * `Test-Driven Development` are different widths, so how many fit depends
+     * on the container, and the reader asked for four ROWS rather than N
+     * skills. Slicing to a number would show three rows on a wide panel and
+     * six on a narrow one. A max-height cuts exactly where the reader said,
+     * whatever the widths turn out to be.
+     *
+     * The arithmetic is the row box plus the gap between rows -- `Tag` is
+     * 24px tall and `gap-1.5` is 6px, so four rows is 4*24 + 3*6, and the
+     * variable is set from `rows` rather than hardcoded so the number stays
+     * in one place.
+     */
+    const clamped = rows !== undefined
     return (
-      <div className="flex flex-wrap gap-1.5">
+      <div
+        className={cn('flex flex-wrap gap-1.5', clamped && 'overflow-hidden')}
+        data-profile-skill-rows={rows}
+        style={clamped ? { maxHeight: `${rows * 24 + (rows - 1) * 6}px` } : undefined}
+      >
         {groups[0].skills.map((skill) => (
           <Tag key={skill}>{skill}</Tag>
         ))}
       </div>
     )
   }
+  // GROUPED, THE ROW IS A GROUP. Each label-and-cloud pair reads as one row of
+  // the section, so the same number means the same thing to a reader whether
+  // their skills arrived grouped or flat.
+  const shown = rows === undefined ? groups : groups.slice(0, rows)
   return (
-    <div className="flex flex-col gap-4">
-      {groups.map((group) => (
+    <div className="flex flex-col gap-4" data-profile-skill-rows={rows}>
+      {shown.map((group) => (
         <div
           key={group.label}
           className="flex flex-col gap-2"

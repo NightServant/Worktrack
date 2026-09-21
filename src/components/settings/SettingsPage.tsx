@@ -8,6 +8,7 @@ import { AccountGroup } from './AccountGroup'
 import { PreferencesGroup } from './PreferencesGroup'
 import { DangerZone } from './DangerZone'
 import { ProfileGroup, type ProfileState } from './ProfileGroup'
+import type { ProfileDetails } from './ProfileDetailsDialog'
 import { resolveDefaultCurrency, type SupportedCurrency, type UserPreferences } from '@/services/userPreferences'
 
 /**
@@ -46,6 +47,11 @@ import { resolveDefaultCurrency, type SupportedCurrency, type UserPreferences } 
  * depend on it.
  */
 export interface SettingsPageProps {
+  /**
+   * Saves the person's own two profile details. Absent means no edit control
+   * is drawn -- see `ProfileGroup`.
+   */
+  onSaveDetails?: (details: ProfileDetails) => Promise<void> | void
   prefs: UserPreferences | null
   email?: string | null
   onDefaultCurrencyChange?: (code: SupportedCurrency) => void
@@ -68,6 +74,7 @@ export interface SettingsPageProps {
 
 
 export function SettingsPage({
+  onSaveDetails,
   prefs,
   email = null,
   onDefaultCurrencyChange,
@@ -131,7 +138,12 @@ export function SettingsPage({
         </TabsList>
 
         <TabsContent value="profile" className="pt-8">
-          <ProfileGroup state={profile} source={profileSource} steps={profileSteps} />
+          <ProfileGroup
+            state={profile}
+            source={profileSource}
+            steps={profileSteps}
+            onSaveDetails={onSaveDetails}
+          />
         </TabsContent>
 
         <TabsContent value="general" className="flex flex-col gap-8 pt-8">
