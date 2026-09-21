@@ -75,6 +75,28 @@ export function toValue(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 }
 
+/**
+ * `20/09/2026` (Gabe, 2026-09-21: "use numbers in month, instead of word").
+ *
+ * SHORTER AND UNAMBIGUOUS IN ORDER. "20 September 2026" is friendlier to read
+ * and three times the width, which is what broke the half-width trigger inside
+ * `DateTimePicker`. Two digits everywhere also means the column does not
+ * change width between the 9th and the 19th.
+ *
+ * `en-GB`, SO THE ORDER IS DAY-MONTH-YEAR and stays that way for every
+ * reader. Left to the browser's own locale, an American machine renders
+ * `09/20/2026` for the same date -- and a date field that silently swaps its
+ * first two numbers depending on who is looking is worse than a long month
+ * name. The app writes dates this way everywhere else.
+ */
+function formatDate(date: Date): string {
+  return date.toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  })
+}
+
 export function DatePicker({
   id,
   value,
@@ -107,16 +129,14 @@ export function DatePicker({
             data-date-picker-trigger
             // `justify-between`, not centred: this is a field wearing a
             // button's chrome, and a field's value sits at its leading edge.
-            className={cn('w-full justify-between font-normal', className)}
+            className={cn('w-full justify-between gap-2 font-normal', className)}
           >
-            <span className={cn(!selected && 'text-text-muted')}>
-              {selected
-                ? selected.toLocaleDateString('en-GB', {
-                    day: 'numeric',
-                    month: 'long',
-                    year: 'numeric',
-                  })
-                : placeholder}
+            {/* NEVER WRAPS. "20 September 2026" in a half-width trigger --
+                which is what `DateTimePicker` gives it -- broke onto three
+                lines and made the control three rows tall. A date is one
+                thing; it truncates rather than reflows. */}
+            <span className={cn('truncate whitespace-nowrap', !selected && 'text-text-muted')}>
+              {selected ? formatDate(selected) : placeholder}
             </span>
             <CalendarIcon size={16} aria-hidden className="text-text-muted" />
           </Button>

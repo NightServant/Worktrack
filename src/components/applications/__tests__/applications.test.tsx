@@ -837,13 +837,21 @@ describe('naming the record\'s fields with glyphs', () => {
   })
 
   it('never puts a second calendar in the date field', () => {
-    // The one case where this was a defect rather than a preference: a
-    // `type="date"` input draws the browser's own calendar button inside the
-    // box, so a leading calendar made two of them in one field.
+    /*
+      THE DEFECT THIS GUARDS IS UNCHANGED, but what causes it is. A
+      `type="date"` input drew the BROWSER's calendar button inside the box, so
+      a leading glyph made two of them; the rule was "no icon on that field".
+
+      Since 2026-09-21 the field is this app's own `DatePicker`, whose trigger
+      carries exactly one calendar glyph and is not a native date input at all.
+      So the rule is now the honest form of the same thing: one calendar, and
+      it is ours.
+    */
     renderForm()
     const date = document.getElementById('date_applied')!
-    expect(date.getAttribute('type')).toBe('date')
-    expect(date.parentElement!.querySelectorAll('svg').length).toBe(0)
+    expect(date.getAttribute('type')).not.toBe('date')
+    expect(date.getAttribute('data-date-picker-trigger')).not.toBeNull()
+    expect(date.querySelectorAll('svg').length).toBe(1)
   })
 
   it('gives the submit control a glyph too', () => {

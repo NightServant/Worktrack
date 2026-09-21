@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { CssSpinner } from '@/components/ui/css-spinner'
 import { Field } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
+import { DatePicker } from '@/components/ui/date-picker'
 import { Select } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { AlertCircleIcon, ArrowRightIcon } from '@/components/icons'
@@ -120,6 +121,13 @@ export interface AddApplicationDialogProps {
    * the confirmation.
    */
   initialHtml?: string | null
+}
+
+/** Today as `YYYY-MM-DD`, locally. `toISOString` is UTC and shifts the day. */
+function todayValue(): string {
+  const now = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
 }
 
 export function AddApplicationDialog({
@@ -409,11 +417,15 @@ export function AddApplicationDialog({
             {draft.status === 'applied' && (
               <div className="flex flex-col gap-5 border-t border-border-subtle pt-5">
                 <Field id="add-date" label="date applied">
-                  <Input
+                  {/* THIS APP'S CALENDAR, NOT THE BROWSER'S (Gabe,
+                      2026-09-21). `<input type="date">` opens Chrome's own
+                      panel -- its blue, its radius, its type -- inside a
+                      dialog whose every other control is this system's. */}
+                  <DatePicker
                     id="add-date"
-                    type="date"
                     value={draft.dateApplied}
-                    onChange={(e) => set('dateApplied', e.target.value)}
+                    onChange={(next) => set('dateApplied', next)}
+                    max={todayValue()}
                   />
                 </Field>
                 <Field

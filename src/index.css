@@ -628,6 +628,20 @@
    only importer AppErrorBoundary is imported by nothing and there is no
    app/error.tsx.
 
+   UPDATE, 2026-09-21: HALF OF THAT IS NOW WRONG, AND IT MATTERED. ErrorFallback
+   is NOT dead -- app/global-error.tsx imports it, which makes it the
+   last-resort screen for the whole app. It was still rendering .btn-primary,
+   whose fill is bg-primary-600, the INDIGO this system replaced with orange,
+   so the one screen somebody sees when everything else has broken was visibly
+   a different application. It has been rewritten against the semantic tokens
+   and uses none of these classes now.
+
+   SO THE LAST USER OF .btn-primary/.btn-secondary IS GONE and this whole block
+   has zero users again. AppErrorBoundary is still imported by nothing. Kept
+   rather than deleted, per Gabe's standing instruction not to remove unused
+   code -- but a note that says "removable" has now been wrong once, so this
+   one says only what was measured and when.
+
    So this whole block, ErrorFallback and AppErrorBoundary are now removable
    together. Not done here because Task 4 is the auth split and deleting three
    more files on the way is how a focused change stops being reviewable. It is

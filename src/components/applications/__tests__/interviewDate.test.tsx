@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ApplicationRecordView } from '../record/ApplicationRecordView'
 import { resolveDefaultCurrency } from '@/services/userPreferences'
@@ -78,9 +78,15 @@ describe('the interview date on an application record', () => {
         defaultCurrency={CURRENCY}
       />
     )
-    const field = screen.getByLabelText(/^interview$/i) as HTMLInputElement
-    expect(field.value).toBe(toLocalDateTimeInput(BOOKED))
-    expect(field.value).toMatch(/T14:30$/)
+    // TWO CONTROLS NOW, not one input (2026-09-21): the day is this app's own
+    // calendar and the time is a field beside it. What must not change is the
+    // reading -- an interview at 14:30 in Manila must not show as 06:30
+    // because `toISOString` was used somewhere.
+    const [day, clock] = toLocalDateTimeInput(BOOKED).split('T')
+    expect(screen.getByLabelText(/^interview$/i).textContent).toContain('20/09/2026')
+    expect((document.getElementById('interview_at-time') as HTMLInputElement).value).toBe(clock)
+    expect(clock).toBe('14:30')
+    expect(day).toBe('2026-09-20')
   })
 
   it('sends an untouched field as undefined, so an unrelated save changes no calendar', async () => {
@@ -113,10 +119,21 @@ describe('the interview date on an application record', () => {
         defaultCurrency={CURRENCY}
       />
     )
-    const field = screen.getByLabelText(/^interview$/i)
-    await userEvent.clear(field)
-    await userEvent.type(field, '2026-09-21T09:00')
+    // Pick the 21st from the calendar, then set the clock beside it.
+    await userEvent.click(screen.getByLabelText(/^interview$/i))
+    await userEvent.click(await screen.findByRole('button', { name: /September 21st, 2026/ }))
+    /*
+      `fireEvent.change` RATHER THAN TYPING. A `type="time"` input is segmented,
+      and in jsdom `userEvent.clear` leaves it reading 09:00 while typing four
+      digits walks the segments and lands on 09:59 -- a wrong minute that has
+      nothing to do with this component. Setting the value is what a picked
+      time actually does.
+    */
+    const time = document.getElementById('interview_at-time') as HTMLInputElement
+    fireEvent.change(time, { target: { value: '09:00' } })
+
     await userEvent.click(screen.getByRole('button', { name: /save application/i }))
+    // Still an instant, and still the reader's own wall clock rather than UTC.
     expect(onSubmit.mock.calls[0][1]).toBe(new Date(2026, 8, 21, 9, 0).toISOString())
   })
 
@@ -135,9 +152,9 @@ describe('the interview date on an application record', () => {
     const save = screen.getByRole('button', { name: /save application/i })
     expect(save).toBeDisabled()
 
-    const field = screen.getByLabelText(/^interview$/i)
-    await userEvent.clear(field)
-    await userEvent.type(field, '2026-09-22T11:15')
+    // The time half alone is enough of a change to open the form.
+    const time = document.getElementById('interview_at-time') as HTMLInputElement
+    fireEvent.change(time, { target: { value: '11:15' } })
     expect(save).not.toBeDisabled()
   })
 })

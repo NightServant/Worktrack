@@ -34,7 +34,10 @@ describe('the date picker', () => {
     const onChange = vi.fn()
     render(<DatePicker id="d" value="1999-03-07" onChange={onChange} max="2026-09-21" />)
 
-    await user.click(screen.getByRole('button', { name: /7 March 1999/ }))
+    // NUMERIC, SINCE 2026-09-21: '07/03/1999', day-month-year. The long
+    // form was three times the width and broke the half-width trigger
+    // inside `DateTimePicker`.
+    await user.click(screen.getByRole('button', { name: '07/03/1999' }))
     // OPENS ON THE SELECTED YEAR, not on this one: without `defaultMonth` a
     // birthday picker opens forty years from where it needs to be.
     await screen.findByRole('grid')

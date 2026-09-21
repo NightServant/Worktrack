@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Field } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
+import { DatePicker } from '@/components/ui/date-picker'
+import { DateTimePicker } from '@/components/ui/date-time-picker'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { PlusIcon } from '@/components/icons'
@@ -70,6 +72,13 @@ export interface RecordBasicsProps {
   resumes?: { id: string; title: string }[]
   resumeId?: string
   onResumeIdChange?: (resumeId: string) => void
+}
+
+/** Today as `YYYY-MM-DD`, locally. `toISOString` is UTC and shifts the day. */
+function todayValue(): string {
+  const now = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
 }
 
 export function RecordBasics({
@@ -171,28 +180,38 @@ export function RecordBasics({
           entry has no interview to book, and an offer's interview has already
           happened.
 
-          `datetime-local`, not `date`. An interview is a time on a day -- "the
-          14th" is not something anyone can turn up to -- and this is what
-          `events.starts_at` stores. The native control is used rather than a
-          picker component for the reason the rest of this form uses native
-          date inputs: it is the one the phone's own wheel opens.
+          A DAY AND A TIME, because an interview is both -- "the 14th" is not
+          something anyone can turn up to, and `events.starts_at` stores an
+          instant. The value is still `YYYY-MM-DDTHH:mm`, byte for byte what
+          `datetime-local` produced, so `useRecordDraft` and `services/date`
+          are untouched.
+
+          IT IS NO LONGER THE NATIVE CONTROL (Gabe, 2026-09-21). The note here
+          used to argue for it -- the phone opens its own wheel -- and what
+          that cost was Chrome's blue calendar, at Chrome's radius, as the
+          largest surface in a form whose every other control is this system's.
+          `DateTimePicker` keeps the day in our own panel and leaves the time
+          as a native field inside our own Input, which is the half where the
+          browser's locale knowledge is worth more than the chrome.
 
           IT WRITES TO `events`, NOT TO `jobs` (see useRecordDraft's
           `interviewAt`), and only when it CHANGES -- so moving an application
           on to `offer` afterwards leaves the interview that happened sitting
-          on the calendar rather than quietly deleting it.
-
-          A `datetime-local` renders "09/09/2026, 10:00 AM" plus its own picker
-          glyph behind this form's leading icon, which is most of a row -- one
-          of several reasons the two-up experiment did not survive. */}
-      {draft.status === 'interviewing' &&
-        text('interviewAt', {
-          id: 'interview_at',
-          label: 'interview',
-          icon: 'Calendar',
-          type: 'datetime-local',
-          hint: 'goes on your calendar when you save.',
-        })}
+          on the calendar rather than quietly deleting it. */}
+      {draft.status === 'interviewing' && (
+        <Field
+          id="interview_at"
+          label="interview"
+          hint="goes on your calendar when you save."
+        >
+          <DateTimePicker
+            id="interview_at"
+            value={draft.interviewAt}
+            onChange={(next) => set('interviewAt', next)}
+            invalid={Boolean(errorFor('interview_at'))}
+          />
+        </Field>
+      )}
 
       {shows('salary') && (
         <>
@@ -240,7 +259,17 @@ export function RecordBasics({
       )}
 
       {shows('dateApplied') &&
-        text('dateApplied', { id: 'date_applied', label: 'date applied', type: 'date' })}
+        (
+          <Field id="date_applied" label="date applied">
+            <DatePicker
+              id="date_applied"
+              value={draft.dateApplied}
+              onChange={(next) => set('dateApplied', next)}
+              max={todayValue()}
+              invalid={Boolean(errorFor('date_applied'))}
+            />
+          </Field>
+        )}
 
       {shows('source') && text('source', { id: 'source', label: 'source', icon: 'Globe', placeholder: 'LinkedIn' })}
 
