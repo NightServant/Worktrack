@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { AppDialog } from '@/components/ui/app-dialog'
 import { Button } from '@/components/ui/button'
 import { Field } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
@@ -59,7 +60,7 @@ interface SourceField {
  * value for each field, so LinkedIn leads because a CV is written from it and
  * GitHub fills the gaps it leaves.
  *
- * LINKEDIN AND GITHUB ARE DRAWN FIRST AND THE REST ARE BEHIND A DISCLOSURE.
+ * LINKEDIN AND GITHUB ARE DRAWN ON THE FORM AND THE REST ARE IN A DIALOG.
  * Five empty fields on a sign-up form reads as five things to do; two reads as
  * a question. The other three are one press away for anybody who has them.
  */
@@ -95,6 +96,22 @@ const SOURCES: SourceField[] = [
     hint: 'only if it is public to a signed-out visitor',
   },
 ]
+
+/**
+ * The two that are asked for outright, and the three that are not.
+ *
+ * THE SPLIT IS 2/3 AND THE REASON IS WHAT A SIGN-UP FORM CAN ASK FOR. LinkedIn
+ * and GitHub are the two almost everybody has and the two that carry the most
+ * -- roles and dates from one, what was actually built from the other. The
+ * remaining three are real sources for the people who have them and dead
+ * fields for everybody else, and a form cannot tell which reader it has.
+ *
+ * ORDER IS STILL AUTHORITY across both halves: `entered` below reads `SOURCES`,
+ * not these, so a JobStreet address added in the dialog still ranks after
+ * LinkedIn's wherever the two disagree.
+ */
+const INLINE_SOURCES = SOURCES.slice(0, 2)
+const EXTRA_SOURCES = SOURCES.slice(2)
 
 export interface PersonaliseDetails {
   urls: string[]
@@ -150,9 +167,67 @@ function todayValue(): string {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
 }
 
+/**
+ * One address field, used by the form AND by the dialog behind it.
+ *
+ * SHARED RATHER THAN COPIED because the two are the same control in two
+ * places, and the thing that would drift is the part that matters -- the
+ * `type="url"`, the `inputMode`, and the message under it when the address is
+ * not one. A source moved between the form and the dialog should not change
+ * how it behaves.
+ */
+function SourceRow({
+  source,
+  value,
+  onChange,
+}: {
+  source: SourceField
+  value: string
+  onChange: (next: string) => void
+}) {
+  const problem = addressProblem(value)
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Field id={`signup-source-${source.id}`} label={source.label} hint={source.hint}>
+        <Input
+          id={`signup-source-${source.id}`}
+          name={source.id}
+          type="url"
+          inputMode="url"
+          autoComplete="url"
+          placeholder={source.placeholder}
+          aria-invalid={Boolean(problem)}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      </Field>
+      {problem && (
+        <p role="alert" className="text-body-s text-status-rejected-mark">
+          {problem}
+        </p>
+      )}
+    </div>
+  )
+}
+
 export function PersonaliseStep({ onSubmit, onSkip }: PersonaliseStepProps) {
   const [urls, setUrls] = React.useState<Record<string, string>>({})
-  const [more, setMore] = React.useState(false)
+  /**
+   * The other three sources, and the draft the dialog is editing (Gabe,
+   * 2026-09-21: "CTA for adding more links must open a dialog that contains
+   * input forms for other profile sources").
+   *
+   * A DRAFT RATHER THAN THE REAL VALUES, which is what makes `cancel` mean
+   * anything. Editing `urls` directly would leave a dialog whose cancel button
+   * only closed a panel -- everything typed would already be on the form
+   * behind it, and there would be nothing to cancel.
+   *
+   * SEEDED EACH TIME IT OPENS, not once. This component stays mounted, so
+   * without re-seeding an address typed, cancelled, and then reopened would
+   * still be sitting there as though it had been kept.
+   */
+  const [extrasOpen, setExtrasOpen] = React.useState(false)
+  const [draft, setDraft] = React.useState<Record<string, string>>({})
   const [phone, setPhone] = React.useState('')
   const [phoneType, setPhoneType] = React.useState<PhoneType>('mobile')
   /*
@@ -170,6 +245,28 @@ export function PersonaliseStep({ onSubmit, onSkip }: PersonaliseStepProps) {
 
   const entered = SOURCES.map((source) => urls[source.id]?.trim() ?? '').filter(Boolean)
   const malformed = SOURCES.some((source) => addressProblem(urls[source.id] ?? ''))
+  /** The extras that have an address, listed under the button that edits them. */
+  const added = EXTRA_SOURCES.filter((source) => (urls[source.id] ?? '').trim())
+  /** A draft cannot be saved with a malformed address in it -- see `saveExtras`. */
+  const draftBlocked = EXTRA_SOURCES.some((source) => addressProblem(draft[source.id] ?? ''))
+
+  const openExtras = () => {
+    setDraft(Object.fromEntries(EXTRA_SOURCES.map((source) => [source.id, urls[source.id] ?? ''])))
+    setExtrasOpen(true)
+  }
+
+  /*
+    SAVED ONLY WHEN EVERY ROW IS AN ADDRESS OR EMPTY. These fields are not on
+    the form behind the dialog, so a malformed one committed here would block
+    `build my profile` with its explanation two layers away in a panel that is
+    now shut. The button is disabled and each row says which one; nothing
+    invalid can leave this dialog.
+  */
+  const saveExtras = () => {
+    if (draftBlocked) return
+    setUrls((current) => ({ ...current, ...draft }))
+    setExtrasOpen(false)
+  }
   const phoneError = phoneProblem(phone)
   const birthdayError = birthdayProblem(birthday)
   const blocked = entered.length === 0 || malformed || Boolean(phoneError || birthdayError)
@@ -198,8 +295,6 @@ export function PersonaliseStep({ onSubmit, onSkip }: PersonaliseStepProps) {
     // which is long enough to press twice.
   }
 
-  const shown = more ? SOURCES : SOURCES.slice(0, 2)
-
   return (
     <form className="flex flex-col gap-6" onSubmit={submit} data-personalise-step>
       <div className="flex flex-col gap-2">
@@ -212,48 +307,105 @@ export function PersonaliseStep({ onSubmit, onSkip }: PersonaliseStepProps) {
       </div>
 
       <div className="flex flex-col gap-4">
-        {shown.map((source) => {
-          const value = urls[source.id] ?? ''
-          const problem = addressProblem(value)
-          return (
-            <div key={source.id} className="flex flex-col gap-1.5">
-              <Field id={`signup-source-${source.id}`} label={source.label} hint={source.hint}>
-                <Input
-                  id={`signup-source-${source.id}`}
-                  name={source.id}
-                  type="url"
-                  inputMode="url"
-                  autoComplete="url"
-                  placeholder={source.placeholder}
-                  aria-invalid={Boolean(problem)}
-                  value={value}
-                  onChange={(event) =>
-                    setUrls((current) => ({ ...current, [source.id]: event.target.value }))
-                  }
-                />
-              </Field>
-              {problem && (
-                <p role="alert" className="text-body-s text-status-rejected-mark">
-                  {problem}
-                </p>
-              )}
-            </div>
-          )
-        })}
+        {INLINE_SOURCES.map((source) => (
+          <SourceRow
+            key={source.id}
+            source={source}
+            value={urls[source.id] ?? ''}
+            onChange={(next) => setUrls((current) => ({ ...current, [source.id]: next }))}
+          />
+        ))}
 
-        {!more && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="s"
-            className="self-start"
-            data-personalise-more
-            onClick={() => setMore(true)}
-          >
-            add another profile
-          </Button>
+        {/* WHAT THE DIALOG ADDED, READ BACK ON THE FORM. Without this the save
+            button would close a panel and change nothing anybody can see, and
+            an address stored where it cannot be seen is one nobody can correct
+            -- these three fields are not on the form to correct it in. The
+            address itself is shown rather than a count, because "JobStreet
+            added" does not tell you whether it is the right JobStreet link. */}
+        {added.length > 0 && (
+          <ul className="flex flex-col gap-1" data-personalise-added>
+            {added.map((source) => (
+              <li
+                key={source.id}
+                data-personalise-added-source={source.id}
+                className="flex min-w-0 items-baseline gap-2 text-body-s"
+              >
+                <span className="shrink-0 text-text-secondary">{source.label}</span>
+                <span className="truncate text-text-muted">{urls[source.id]?.trim()}</span>
+              </li>
+            ))}
+          </ul>
         )}
+
+        {/* IT OPENS A DIALOG RATHER THAN REVEALING THREE MORE FIELDS (Gabe,
+            2026-09-21). Revealing them made the step grow by three empty
+            inputs the moment it was pressed, on the screen where the only
+            question that matters is the one at the top -- and the press was
+            one-way, with no way to put them back. A dialog is the same three
+            fields with somewhere to put `cancel`. */}
+        <Button
+          type="button"
+          variant="ghost"
+          size="s"
+          className="self-start"
+          data-personalise-more
+          onClick={openExtras}
+        >
+          {added.length > 0 ? 'edit other profiles' : 'add another profile'}
+        </Button>
       </div>
+
+      <AppDialog
+        open={extrasOpen}
+        onOpenChange={setExtrasOpen}
+        title="other profiles"
+        icon="Link"
+        description="Worktrack reads whichever of these you have. LinkedIn still leads where two sources disagree."
+        size="m"
+      >
+        {/* A FORM OF ITS OWN, SO ENTER SAVES rather than submitting the step
+            behind it. `stopPropagation` is what makes that true: a dialog is a
+            DOM portal but a React one too, so a submit here bubbles up the
+            component tree to the sign-up form's own `onSubmit` -- which would
+            read the profile and leave the page while this panel was still
+            open. */}
+        <form
+          data-personalise-extras-form
+          className="flex flex-col gap-5"
+          onSubmit={(event) => {
+            event.preventDefault()
+            event.stopPropagation()
+            saveExtras()
+          }}
+        >
+          {EXTRA_SOURCES.map((source) => (
+            <SourceRow
+              key={source.id}
+              source={source}
+              value={draft[source.id] ?? ''}
+              onChange={(next) => setDraft((current) => ({ ...current, [source.id]: next }))}
+            />
+          ))}
+
+          {/* CANCEL LEFT, SAVE RIGHT, which is this app's footer everywhere a
+              dialog edits something -- see `ProfileDetailsDialog`. Cancel keeps
+              nothing: the draft is rebuilt from the form the next time this
+              opens. */}
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              data-personalise-extras-cancel
+              onClick={() => setExtrasOpen(false)}
+            >
+              cancel
+            </Button>
+            <Button type="submit" disabled={draftBlocked} data-personalise-extras-save>
+              save
+            </Button>
+          </div>
+        </form>
+      </AppDialog>
 
       {/* THE TWO OPTIONAL FACTS, under a rule that separates them from the
           thing the step is actually about. They are not sources and nothing
