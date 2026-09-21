@@ -4,8 +4,10 @@ import * as React from 'react'
 import { AppDialog } from '@/components/ui/app-dialog'
 import { Button } from '@/components/ui/button'
 import { Field } from '@/components/ui/field'
-import { Input } from '@/components/ui/input'
-import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
+import { Select } from '@/components/ui/select'
+import { DatePicker } from '@/components/ui/date-picker'
+import { PhoneInput, defaultPhoneCountry } from '@/components/ui/phone-input'
+import type { Country } from 'react-phone-number-input'
 import { PHONE_TYPES, type PhoneType, type UserProfile } from '@/services/profile'
 
 /**
@@ -93,6 +95,13 @@ export function birthdayProblem(value: string): string | null {
   return null
 }
 
+/** Today as `YYYY-MM-DD`, in the reader's own timezone. */
+function todayValue(): string {
+  const now = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+}
+
 export function ProfileDetailsDialog({
   open,
   onOpenChange,
@@ -101,6 +110,12 @@ export function ProfileDetailsDialog({
 }: ProfileDetailsDialogProps) {
   const [phone, setPhone] = React.useState(profile.phone ?? '')
   const [phoneType, setPhoneType] = React.useState<PhoneType>(profile.phoneType ?? 'mobile')
+  /*
+    THE COUNTRY IS NOT STORED, and it does not need to be. The value is
+    E.164, which carries its own calling code -- this state only decides how
+    the digits are grouped while somebody types them.
+  */
+  const [country, setCountry] = React.useState<Country>(() => defaultPhoneCountry())
   const [birthday, setBirthday] = React.useState(profile.birthday ?? '')
   const [saving, setSaving] = React.useState(false)
   const [failed, setFailed] = React.useState<string | null>(null)
@@ -159,69 +174,55 @@ export function ProfileDetailsDialog({
             of the number rather than a second question. On a phone they stack;
             the number takes the width it needs and the kind takes what it
             needs, which is much less. */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-          <div className="flex flex-1 flex-col gap-1.5">
-            <Field id="profile-phone" label="phone number">
-              <Input
-                id="profile-phone"
-                name="phone"
-                // `tel`, NOT `text` OR `number`. It brings up the phone keypad
-                // on a mobile browser, and `number` would strip the `+`, the
-                // spaces and the brackets a written number is full of.
-                type="tel"
-                inputMode="tel"
-                autoComplete="tel"
-                placeholder="+63 917 123 4567"
-                aria-invalid={Boolean(phone && phoneError)}
-                value={phone}
-                onChange={(event) => setPhone(event.target.value)}
-              />
-            </Field>
-            {phone && phoneError && (
-              <p role="alert" className="text-body-s text-status-rejected-mark">
-                {phoneError}
-              </p>
-            )}
-          </div>
-          <div className="sm:w-40">
-            <Field id="profile-phone-type" label="type">
-              <NativeSelect
-                id="profile-phone-type"
-                name="phoneType"
-                value={phoneType}
-                // A kind with no number to describe is a control that means
-                // nothing, so it waits for one.
-                disabled={!phone.trim()}
-                onChange={(event) => setPhoneType(event.target.value as PhoneType)}
-              >
-                {PHONE_TYPES.map((kind) => (
-                  <NativeSelectOption key={kind} value={kind}>
-                    {kind}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
-            </Field>
-          </div>
+        <div className="flex flex-col gap-1.5">
+          <Field id="profile-phone" label="phone number">
+            <PhoneInput
+              id="profile-phone"
+              name="phone"
+              country={country}
+              onCountryChange={setCountry}
+              value={phone}
+              onChange={setPhone}
+              invalid={Boolean(phone && phoneError)}
+            />
+          </Field>
+          {phone && phoneError && (
+            <p role="alert" className="text-body-s text-status-rejected-mark">
+              {phoneError}
+            </p>
+          )}
         </div>
+
+        <Field id="profile-phone-type" label="type">
+          <Select
+            id="profile-phone-type"
+            name="phoneType"
+            aria-label="What kind of number this is"
+            // A kind with no number to describe is a control that means
+            // nothing, so it waits for one.
+            disabled={!phone.trim()}
+            value={phoneType}
+            onValueChange={(next) => setPhoneType(next as PhoneType)}
+            items={PHONE_TYPES.map((kind) => ({ value: kind, label: kind }))}
+          />
+        </Field>
 
         <div className="flex flex-col gap-1.5">
           <Field id="profile-birthday" label="birthday">
-          {/* THE NATIVE PICKER, NOT A LIBRARY ONE. `<input type="date">` is a
-              real calendar on every browser this app supports, is keyboard and
-              screen-reader accessible without any work, and understands the
-              reader's own date format -- which a hand-built picker gets wrong
-              for exactly the people whose format is not the developer's. */}
-            <Input
+          {/* THIS APP'S CALENDAR, NOT THE BROWSER'S. `<input type="date">`
+              was here first and is genuinely the accessible default -- but the
+              panel it opens is Chrome's blue, Chrome's radius and Chrome's
+              type, which on a Swiss screen with one orange accent reads as a
+              piece of a different application. See `DatePicker`. */}
+            <DatePicker
               id="profile-birthday"
-              name="birthday"
-              type="date"
-              autoComplete="bday"
-              // Nobody picks tomorrow as their birthday, and the picker itself
-              // should say so rather than the error underneath it.
-              max={new Date().toISOString().slice(0, 10)}
               value={birthday}
-              onChange={(event) => setBirthday(event.target.value)}
-              aria-invalid={Boolean(birthday && birthdayError)}
+              onChange={setBirthday}
+              // Nobody picks tomorrow as their birthday, and the calendar
+              // itself should say so rather than the error underneath it.
+              max={todayValue()}
+              invalid={Boolean(birthday && birthdayError)}
+              placeholder="pick your birthday"
             />
           </Field>
           {birthday && birthdayError && (

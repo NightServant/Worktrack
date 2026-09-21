@@ -4,7 +4,10 @@ import * as React from 'react'
 import { Button } from '@/components/ui/button'
 import { Field } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
-import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
+import { Select } from '@/components/ui/select'
+import { DatePicker } from '@/components/ui/date-picker'
+import { PhoneInput, defaultPhoneCountry } from '@/components/ui/phone-input'
+import type { Country } from 'react-phone-number-input'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { PHONE_TYPES, type PhoneType } from '@/services/profile'
 import {
@@ -139,11 +142,19 @@ export function addressProblem(value: string): string | null {
   return null
 }
 
+/** Today as `YYYY-MM-DD`, locally. `toISOString` is UTC and shifts the day. */
+function todayValue(): string {
+  const now = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+}
+
 export function PersonaliseStep({ onSubmit, onSkip }: PersonaliseStepProps) {
   const [urls, setUrls] = React.useState<Record<string, string>>({})
   const [more, setMore] = React.useState(false)
   const [phone, setPhone] = React.useState('')
   const [phoneType, setPhoneType] = React.useState<PhoneType>('mobile')
+  const [country, setCountry] = React.useState<Country>(() => defaultPhoneCountry())
   const [birthday, setBirthday] = React.useState('')
   const [busy, setBusy] = React.useState(false)
   const [failed, setFailed] = React.useState<string | null>(null)
@@ -243,57 +254,46 @@ export function PersonaliseStep({ onSubmit, onSkip }: PersonaliseStepProps) {
         <p className="text-label-caps uppercase text-text-secondary">
           about you <span className="normal-case text-text-muted">— optional</span>
         </p>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-          <div className="flex flex-1 flex-col gap-1.5">
-            <Field id="signup-phone" label="phone number">
-              <Input
-                id="signup-phone"
-                name="phone"
-                type="tel"
-                inputMode="tel"
-                autoComplete="tel"
-                placeholder="+63 917 123 4567"
-                aria-invalid={Boolean(phone && phoneError)}
-                value={phone}
-                onChange={(event) => setPhone(event.target.value)}
-              />
-            </Field>
-            {phone && phoneError && (
-              <p role="alert" className="text-body-s text-status-rejected-mark">
-                {phoneError}
-              </p>
-            )}
-          </div>
-          <div className="sm:w-40">
-            <Field id="signup-phone-type" label="type">
-              <NativeSelect
-                id="signup-phone-type"
-                name="phoneType"
-                value={phoneType}
-                disabled={!phone.trim()}
-                onChange={(event) => setPhoneType(event.target.value as PhoneType)}
-              >
-                {PHONE_TYPES.map((kind) => (
-                  <NativeSelectOption key={kind} value={kind}>
-                    {kind}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
-            </Field>
-          </div>
+        <div className="flex flex-col gap-1.5">
+          <Field id="signup-phone" label="phone number">
+            <PhoneInput
+              id="signup-phone"
+              name="phone"
+              country={country}
+              onCountryChange={setCountry}
+              value={phone}
+              onChange={setPhone}
+              invalid={Boolean(phone && phoneError)}
+            />
+          </Field>
+          {phone && phoneError && (
+            <p role="alert" className="text-body-s text-status-rejected-mark">
+              {phoneError}
+            </p>
+          )}
         </div>
+
+        <Field id="signup-phone-type" label="type">
+          <Select
+            id="signup-phone-type"
+            name="phoneType"
+            aria-label="What kind of number this is"
+            disabled={!phone.trim()}
+            value={phoneType}
+            onValueChange={(next) => setPhoneType(next as PhoneType)}
+            items={PHONE_TYPES.map((kind) => ({ value: kind, label: kind }))}
+          />
+        </Field>
 
         <div className="flex flex-col gap-1.5">
           <Field id="signup-birthday" label="birthday">
-            <Input
+            <DatePicker
               id="signup-birthday"
-              name="birthday"
-              type="date"
-              autoComplete="bday"
-              max={new Date().toISOString().slice(0, 10)}
-              aria-invalid={Boolean(birthday && birthdayError)}
               value={birthday}
-              onChange={(event) => setBirthday(event.target.value)}
+              onChange={setBirthday}
+              max={todayValue()}
+              invalid={Boolean(birthday && birthdayError)}
+              placeholder="pick your birthday"
             />
           </Field>
           {birthday && birthdayError && (
