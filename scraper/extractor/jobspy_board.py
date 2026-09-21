@@ -10,12 +10,16 @@ WHAT IT COSTS, AND IT IS NOT MONEY. It is worth writing down plainly, because
 this service refuses routes on exactly this ground everywhere else and the
 README used to claim it always does.
 
-`jobspy/indeed/constant.py` sends `indeed-api-key: 161092c2017b...`, a value
-extracted from Indeed's iOS app, behind that app's own `user-agent` and
-`indeed-app-info` headers, with TLS verification disabled; `apis.indeed.com/
-graphql` is Indeed's PARTNER API and officially wants a bearer token and a
-signed agreement. `jobspy/glassdoor` carries a fallback bearer token of its
-own. Both are borrowed credentials and an impersonated client.
+JobSpy's Indeed module sends a key extracted from Indeed's iOS app, behind
+that app's own `user-agent` and `indeed-app-info` headers, with TLS
+verification disabled; `apis.indeed.com/graphql` is Indeed's PARTNER API and
+officially wants a bearer token and a signed agreement. That is a borrowed
+credential and an impersonated client.
+
+ONLY INDEED IS ROUTED HERE. Glassdoor was, briefly, and is not: JobSpy's
+Glassdoor module returns zero rows for every location tried -- Manila,
+Singapore, London, New York -- failing at its own location lookup with a 400
+before any search happens.
 
 The MIT licence covers JobSpy's code. It does not cover Indeed's key. Anybody
 running this is making that call for themselves, and README section 12 now says
@@ -47,7 +51,6 @@ from typing import Any
 #: required to. JobSpy's `Site` enum is theirs to rename.
 SITES: dict[str, str] = {
     "indeed": "indeed",
-    "glassdoor": "glassdoor",
 }
 
 #: Indeed's scrapers are per-country and the library wants the country NAME.

@@ -103,6 +103,7 @@ def test_the_id_falls_back_to_the_address() -> None:
 
 
 def test_only_the_boards_actually_routed_here_are_mapped() -> None:
-    # LinkedIn reads its own public endpoint and JobStreet is not in JobSpy at
-    # all; neither belongs in this table.
-    assert set(SITES) == {"indeed", "glassdoor"}
+    # LinkedIn reads its own public endpoint, JobStreet reads its own page, and
+    # Glassdoor's JobSpy module returns nothing for any location. Indeed is the
+    # only board that needs this route at all.
+    assert set(SITES) == {"indeed"}

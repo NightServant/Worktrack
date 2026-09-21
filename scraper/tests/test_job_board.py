@@ -16,12 +16,17 @@ from extractor.job_board import SOURCES, _iso, _salary, to_feed_job, to_feed_job
 def test_every_source_is_routed_and_labelled() -> None:
     from extractor.job_board import ACTORS, LABELS, ROUTES
 
-    # Glassdoor's Apify actor went into maintenance on 2026-09-21 and JobSpy
-    # reads it without one, so it left and came back the same day.
-    assert set(SOURCES) == {"linkedin", "jobstreet", "indeed", "glassdoor"}
+    # Glassdoor is gone twice over: its Apify actor went into maintenance, and
+    # JobSpy's Glassdoor module returns zero rows for every location tried.
+    assert set(SOURCES) == {"linkedin", "jobstreet", "indeed"}
     for source in SOURCES:
-        assert ROUTES[source] in {"public", "jobspy", "apify"}
+        assert ROUTES[source] in {"public", "render", "jobspy", "apify"}
         assert LABELS[source]
+
+    # NOTHING IS ON A PAID ACTOR ANY MORE. Every board reads either its own
+    # endpoint, its own page, or a free library -- which is the whole point of
+    # the work on 2026-09-21. An actor creeping back in is a bill nobody chose.
+    assert "apify" not in set(ROUTES.values())
 
     # LINKEDIN IS FREE AND PLAIN and must stay that way: it reads its own
     # public guest endpoint, so neither an actor entry nor a JobSpy route
@@ -30,10 +35,10 @@ def test_every_source_is_routed_and_labelled() -> None:
     assert ROUTES["linkedin"] == "public"
     assert "linkedin" not in ACTORS
 
-    # Every PAID board names exactly one actor.
-    for source, route in ROUTES.items():
-        if route == "apify":
-            assert ACTORS[source]["actor"].count("~") == 1
+    # The actor table is kept for the day a board closes its own door, and
+    # every entry in it must still name exactly one actor.
+    for entry in ACTORS.values():
+        assert entry["actor"].count("~") == 1
 
 
 def test_linkedin_row() -> None:

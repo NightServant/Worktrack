@@ -49,8 +49,12 @@ from typing import Any, Iterable
 #: moved to `linkedin_jobs`, which reads the same postings from LinkedIn's own
 #: public guest endpoint for nothing -- see `ROUTES` below.
 #:
-#: GLASSDOOR LEFT AND CAME BACK the same day: its Apify actor went into
-#: maintenance, and JobSpy reads it without one.
+#: GLASSDOOR IS GONE, twice over and for two different reasons. Its Apify
+#: actor went into maintenance, and JobSpy's Glassdoor module -- tried on
+#: 2026-09-21 against Manila, Singapore, London and New York -- returns zero
+#: rows for every one of them, failing at its own location lookup with a 400
+#: before any search runs. A board that answers every search with nothing is a
+#: control that wastes a press and a throttle tick.
 #:
 #: INDEED AND GLASSDOOR GO THROUGH JobSpy, chosen knowingly. Its Indeed module
 #: sends a key lifted from Indeed's iOS app and its Glassdoor module a bearer
@@ -78,8 +82,13 @@ ACTORS: dict[str, dict[str, Any]] = {
 #:           everything -- its Indeed and Glassdoor modules send credentials
 #:           lifted from those products. See `jobspy_board`, and README
 #:           section 12, which says so rather than claiming otherwise.
+#:   render  the board's own search page, fetched by a real browser because a
+#:           plain request is challenged, and read from the GraphQL payload it
+#:           arrives with. JobStreet, since 2026-09-21 -- see `jobstreet_jobs`.
 #:   apify   a paid actor. Billed per posting, and the operator rather than
-#:           this repository carries how the postings were obtained.
+#:           this repository carries how the postings were obtained. Nothing
+#:           is routed here any more; the table keeps it because an actor is
+#:           the fallback when a board closes its own door.
 #:
 #: THE TABLE EXISTS SO THE CHOICE IS A FACT rather than a branch somebody has
 #: to find. A board moves toward `public` the day somebody finds its own
@@ -87,9 +96,8 @@ ACTORS: dict[str, dict[str, Any]] = {
 #: proved for JobStreet's single postings.
 ROUTES: dict[str, str] = {
     "linkedin": "public",
-    "jobstreet": "apify",
+    "jobstreet": "render",
     "indeed": "jobspy",
-    "glassdoor": "jobspy",
 }
 
 #: Every source the rail may ask for, free or paid.
@@ -100,7 +108,6 @@ LABELS: dict[str, str] = {
     "linkedin": "LinkedIn",
     "jobstreet": "JobStreet",
     "indeed": "Indeed",
-    "glassdoor": "Glassdoor",
 }
 
 

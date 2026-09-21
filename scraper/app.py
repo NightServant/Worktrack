@@ -47,6 +47,11 @@ from extractor.jobspy_board import (
     SITES as JOBSPY_SITES,
     to_feed_jobs as jobspy_to_feed_jobs,
 )
+from extractor.jobstreet_jobs import (
+    PAGE_SIZE as JS_PAGE_SIZE,
+    jobs_from_html as jobstreet_jobs_from_html,
+    search_url as jobstreet_search_url,
+)
 from extractor.linkedin_jobs import PAGE_SIZE as LI_PAGE_SIZE, jobs_from_html, search_url
 from extractor.jobstreet_profile import profile_from_jobstreet
 from extractor.linkedin_page import profile_from_linkedin_page
@@ -1637,6 +1642,11 @@ def _job_feed_message(source: str, reason: str) -> str:
     every remedy this codebase has written into a warning has outlived it.
     """
     label = JOB_LABELS[source]
+    if reason == "no-renderer":
+        return (
+            f"{label} needs a browser this deployment does not have. "
+            "Set FIRECRAWL_API_KEY, or run it locally."
+        )
     if reason == "not-installed":
         return f"{label} needs the JobSpy library, which this deployment has not installed."
     if reason == "unsupported":
@@ -1785,6 +1795,64 @@ async def _jobspy_jobs(source: str, body: JobFeedRequest) -> tuple[list[dict[str
     return jobs, "ok" if jobs else "no-rows"
 
 
+async def _rendered_jobs(source: str, body: JobFeedRequest) -> tuple[list[dict[str, Any]], str]:
+    """One board whose search page is challenged, read through a browser.
+
+    THE PAGE IS 403 TO A PLAIN REQUEST and 200 to a browser -- measured on
+    JobStreet again on 2026-09-21, which is the known shape of this board. So
+    it rides `_fetch_rendered`, the chain this service already owns: Firecrawl
+    in a deployment, the local Chromium on a developer's machine. Nothing new
+    is invented and nothing is forged; it is a real browser asking for a public
+    page.
+
+    WHY NOT THE GRAPHQL ENDPOINT, which is what was asked for. Because the
+    payload is IN the page -- the whole `jobSearchV7` response, server-rendered
+    into `window.SEEK_APOLLO_DATA`. Asking the endpoint for it again is the one
+    route that does not work: the operation validates and the resolver refuses.
+    See `jobstreet_jobs` for the full account.
+
+    ONE PAGE PER THIRTY POSTINGS, and each is a browser render -- which is slow
+    and, through Firecrawl, paid. The loop stops the moment the ask is met.
+    """
+    count = max(1, min(body.limit or MAX_PUBLIC_FEED_ITEMS, MAX_PUBLIC_FEED_ITEMS))
+    jobs: list[dict[str, Any]] = []
+    reason = "ok"
+
+    for page in range(1, (count + JS_PAGE_SIZE - 1) // JS_PAGE_SIZE + 1):
+        url = jobstreet_search_url(body.query, body.location, page)
+        try:
+            markup = await _fetch_rendered(url)
+        except Exception:
+            reason = "unreachable" if not jobs else "ok"
+            break
+        if not markup:
+            # No Firecrawl key and no local browser: the board is unreadable
+            # from this deployment, which is a configuration fact rather than
+            # the board refusing us.
+            reason = "no-renderer" if not jobs else "ok"
+            break
+
+        found = jobstreet_jobs_from_html(markup, source)
+        if not found:
+            reason = "no-rows" if not jobs else "ok"
+            break
+        jobs.extend(found)
+        if len(jobs) >= count:
+            break
+
+    unique: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for job in jobs:
+        if job["url"] in seen:
+            continue
+        seen.add(job["url"])
+        unique.append(job)
+
+    unique.sort(key=lambda job: job["publishedAt"], reverse=True)
+    unique = unique[:count]
+    return unique, reason if (unique or reason != "ok") else "no-rows"
+
+
 @app.post("/jobs")
 async def jobs_endpoint(body: JobFeedRequest) -> JSONResponse:
     """Recent postings from one or more paid board actors, merged.
@@ -1813,6 +1881,8 @@ async def jobs_endpoint(body: JobFeedRequest) -> JSONResponse:
         *(
             _public_jobs(source, body)
             if JOB_ROUTES[source] == "public"
+            else _rendered_jobs(source, body)
+            if JOB_ROUTES[source] == "render"
             else _jobspy_jobs(source, body)
             if JOB_ROUTES[source] == "jobspy"
             else _apify_jobs(source, body)
