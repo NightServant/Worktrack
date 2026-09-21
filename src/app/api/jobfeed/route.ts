@@ -58,8 +58,16 @@ const RATE_LIMIT_WINDOW_MS = 60_000
  */
 const RATE_LIMIT_MAX_REQUESTS = 6
 
-/** The most postings one source may be asked for. Mirrors the extractor's cap. */
-const MAX_LIMIT = 25
+/**
+ * The most postings one source may be asked for.
+ *
+ * THE EXTRACTOR CAPS AGAIN, PER ROUTE, and that is the number that matters: a
+ * free board takes 100 and a paid one takes 25, because one costs time and the
+ * other costs money. This is the outer bound on what a caller may REQUEST, so
+ * it is the larger of the two -- capping here at 25 would quietly hold the free
+ * boards down to the paid boards' budget.
+ */
+const MAX_LIMIT = 100
 
 /**
  * The longest search term forwarded.

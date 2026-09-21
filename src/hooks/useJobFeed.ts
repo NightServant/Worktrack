@@ -26,7 +26,14 @@ import {
 export function useJobFeed(industry: string | null, geo: string | null, enabled = true) {
   return useQuery<FeedJob[]>({
     queryKey: ['job-feed', industry, geo],
-    queryFn: ({ signal }) => fetchRemoteJobs({ count: 24, industry, geo }, signal),
+    /*
+      A HUNDRED, NOT TWENTY-FOUR (Gabe, 2026-09-21: "make sure fetch more jobs
+      as possible"). Jobicy is one keyless GET whose API caps at 200, so the
+      only cost of asking for more is the payload -- and the rail's own search
+      box filters what has arrived, which is a far better control over a
+      hundred roles than over twenty-four.
+    */
+    queryFn: ({ signal }) => fetchRemoteJobs({ count: 100, industry, geo }, signal),
     enabled,
     staleTime: 15 * 60_000,
     gcTime: 60 * 60_000,
@@ -87,6 +94,13 @@ export function useScrapedJobs(
   const { query, location } = options
   return useQuery<ScrapedFeed>({
     queryKey: ['job-feed-boards', [...sources].sort().join(','), query ?? '', location ?? ''],
+    /*
+      NO `limit` SENT, DELIBERATELY. The extractor caps per route -- a hundred
+      from a board that publishes its own postings, twenty-five from one behind
+      a paid actor -- and it is the only layer that knows which board is which.
+      A number chosen here would either hold the free boards down to the paid
+      budget or raise the paid ones to the free one.
+    */
     queryFn: ({ signal }) => fetchScrapedJobs(sources, { query, location }, signal),
     enabled: sources.length > 0,
     staleTime: 60 * 60_000,

@@ -35,7 +35,14 @@ from extractor.core import extract
 from extractor.net import normalize_target_url, reject_reason
 from extractor.apify_profile import profile_from_apify
 from extractor.github_profile import _login, profile_from_github, projectable
-from extractor.job_board import ACTORS as JOB_ACTORS, SOURCES as JOB_SOURCES, to_feed_jobs
+from extractor.job_board import (
+    ACTORS as JOB_ACTORS,
+    LABELS as JOB_LABELS,
+    ROUTES as JOB_ROUTES,
+    SOURCES as JOB_SOURCES,
+    to_feed_jobs,
+)
+from extractor.linkedin_jobs import PAGE_SIZE as LI_PAGE_SIZE, jobs_from_html, search_url
 from extractor.jobstreet_profile import profile_from_jobstreet
 from extractor.linkedin_page import profile_from_linkedin_page
 from extractor.merge_profile import merge_profiles
@@ -1467,12 +1474,25 @@ async def extract_endpoint(body: ExtractRequest) -> JSONResponse:
     return JSONResponse(extract(final_url, body_text, response.status_code), status_code=200)
 
 
-#: How many postings one source may return.
+#: How many postings one PAID board may return.
 #:
 #: THE ACTORS BILL PER RESULT, so this is a spend cap rather than a page size.
-#: The rail shows a horizontal row that nobody scrolls to the end of; twenty-
-#: five from each of four boards is already a hundred cards.
+#: Raising it raises the invoice in direct proportion, which is why it is not
+#: the same number as the free cap below.
 MAX_FEED_ITEMS = 25
+
+#: How many postings one FREE board may return.
+#:
+#: FOUR TIMES THE PAID CAP, because the only thing it costs is time (Gabe,
+#: 2026-09-21: "make sure fetch more jobs as possible"). A board that publishes
+#: its own postings has no invoice attached, so the number is set by what the
+#: board will actually give rather than by what it is worth paying for.
+#:
+#: A HUNDRED IS THE PRACTICAL CEILING, NOT A ROUND NUMBER. LinkedIn's guest
+#: endpoint returns ten cards a page and rate-limits an unauthenticated caller
+#: at around the tenth page from one address -- so a hundred is the last page
+#: that reliably answers, and asking for more buys 429s rather than roles.
+MAX_PUBLIC_FEED_ITEMS = 100
 
 #: How long one board run may take before it is abandoned.
 #:
@@ -1488,6 +1508,13 @@ JOB_FEED_TIMEOUT_S = 120.0
 #: per gigabyte-start, so leaving it to the actor's own default is leaving the
 #: bill to somebody else's configuration.
 JOB_FEED_MEMORY_MB = 1024
+
+#: How long one free board may take.
+#:
+#: SHORTER THAN AN ACTOR RUN because it is a plain GET against a page that
+#: answers in under a second -- nothing is crawling here, so a long wait
+#: means the board is refusing rather than working.
+PUBLIC_FEED_TIMEOUT_S = 20.0
 
 
 #: Per-source actor overrides, so one board can be repointed without a deploy.
@@ -1597,7 +1624,7 @@ def _job_feed_message(source: str, reason: str) -> str:
     reader can do about an exhausted Apify balance from inside this app, and
     every remedy this codebase has written into a warning has outlived it.
     """
-    label = JOB_ACTORS[source]["label"]
+    label = JOB_LABELS[source]
     if reason == "no-token":
         return f"{label} is not configured for this deployment."
     if reason == "no-rows":
@@ -1611,6 +1638,69 @@ def _job_feed_message(source: str, reason: str) -> str:
     if reason.startswith("http-404"):
         return f"{label} could not run: the actor behind it no longer exists."
     return f"{label} could not be read right now."
+
+
+async def _public_jobs(source: str, body: JobFeedRequest) -> tuple[list[dict[str, Any]], str]:
+    """One board through its own public endpoint. Returns `(jobs, reason)`.
+
+    NO TOKEN, NO ACTOR AND NO BILL. This is the route a board gets when it
+    publishes its own postings to anybody who asks -- LinkedIn's guest search
+    today, and whichever board is next. It is an ordinary GET with this
+    service's ordinary headers: no key is sent because none is needed, and none
+    is borrowed because that is the line this service does not cross.
+
+    PAGED UNTIL THE ASK IS MET OR THE BOARD STOPS GIVING. Ten cards a page, so
+    twenty-five postings is three requests; the loop stops early on a short
+    page, which is how the endpoint says there is no more.
+
+    ONE FAILED PAGE KEEPS WHAT THE EARLIER ONES GAVE. LinkedIn rate-limits an
+    unauthenticated caller after a handful of pages, and the honest answer to
+    that is the roles already in hand rather than nothing.
+    """
+    # THE FREE CAP, not the paid one: nothing here is billed per posting.
+    count = max(1, min(body.limit or MAX_PUBLIC_FEED_ITEMS, MAX_PUBLIC_FEED_ITEMS))
+    jobs: list[dict[str, Any]] = []
+    reason = "ok"
+
+    async with httpx.AsyncClient(timeout=PUBLIC_FEED_TIMEOUT_S, follow_redirects=True) as client:
+        for page in range((count + LI_PAGE_SIZE - 1) // LI_PAGE_SIZE):
+            url = search_url(body.query, body.location, page * LI_PAGE_SIZE)
+            try:
+                response = await client.get(url, headers={"Accept": "text/html"})
+            except httpx.TimeoutException:
+                reason = "timeout" if not jobs else "ok"
+                break
+            except Exception:
+                reason = "unreachable" if not jobs else "ok"
+                break
+
+            if response.status_code == 429:
+                # THE BOARD SAYING "ENOUGH", which is a different thing from
+                # being broken and is reported as itself.
+                reason = "rate-limited" if not jobs else "ok"
+                break
+            if response.status_code != 200:
+                reason = f"http-{response.status_code}" if not jobs else "ok"
+                break
+
+            found = jobs_from_html(response.text, source)
+            jobs.extend(found)
+            if len(found) < LI_PAGE_SIZE:
+                break
+
+    # DE-DUPLICATED ACROSS PAGES. A posting that moves between pages while the
+    # loop is running arrives twice, and the rail keys rows on this.
+    unique: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for job in jobs:
+        if job["url"] in seen:
+            continue
+        seen.add(job["url"])
+        unique.append(job)
+
+    unique.sort(key=lambda job: job["publishedAt"], reverse=True)
+    unique = unique[:count]
+    return unique, reason if (jobs or reason != "ok") else "no-rows"
 
 
 @app.post("/jobs")
@@ -1638,7 +1728,13 @@ async def jobs_endpoint(body: JobFeedRequest) -> JSONResponse:
         )
 
     results = await asyncio.gather(
-        *(_apify_jobs(source, body) for source in wanted), return_exceptions=True
+        *(
+            _public_jobs(source, body)
+            if JOB_ROUTES[source] == "public"
+            else _apify_jobs(source, body)
+            for source in wanted
+        ),
+        return_exceptions=True,
     )
 
     jobs: list[dict[str, Any]] = []

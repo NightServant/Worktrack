@@ -13,14 +13,24 @@ from datetime import datetime, timedelta, timezone
 from extractor.job_board import SOURCES, _iso, _salary, to_feed_job, to_feed_jobs
 
 
-def test_every_source_has_an_actor() -> None:
-    from extractor.job_board import ACTORS
+def test_every_source_is_routed_and_labelled() -> None:
+    from extractor.job_board import ACTORS, LABELS, ROUTES
 
     # Glassdoor left on 2026-09-21, its Apify actor being in maintenance.
     assert set(SOURCES) == {"linkedin", "jobstreet", "indeed"}
     for source in SOURCES:
-        assert ACTORS[source]["actor"].count("~") == 1
-        assert ACTORS[source]["label"]
+        assert ROUTES[source] in {"public", "apify"}
+        assert LABELS[source]
+
+    # LINKEDIN IS FREE NOW and must stay that way: it reads its own public
+    # guest endpoint, so an actor entry for it would be a bill nobody needs.
+    assert ROUTES["linkedin"] == "public"
+    assert "linkedin" not in ACTORS
+
+    # Every PAID board names exactly one actor.
+    for source, route in ROUTES.items():
+        if route == "apify":
+            assert ACTORS[source]["actor"].count("~") == 1
 
 
 def test_linkedin_row() -> None:
