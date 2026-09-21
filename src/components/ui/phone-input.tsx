@@ -6,9 +6,15 @@ import PhoneNumberInput, {
   getCountryCallingCode,
   type Country,
 } from 'react-phone-number-input/input'
+// FROM THE PACKAGE THAT IS DECLARED, not from `libphonenumber-js` underneath
+// it. That one is a transitive dependency: importing it directly works until
+// the day the parent bumps its range, and `shadcnHouseRules` fails any ui/
+// file that imports a package package.json does not name.
+import { parsePhoneNumber } from 'react-phone-number-input'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
+import { detectUserCountry } from '@/services/userLocation'
 
 /**
  * A phone number, with the country said out loud rather than guessed.
@@ -81,26 +87,45 @@ const COUNTRIES: { value: string; label: string }[] = (() => {
 })()
 
 /**
- * The country to open on, from the machine's clock.
+ * The country a number actually belongs to, or null.
  *
- * THE CLOCK, NOT THE LANGUAGE, for the same reason the holiday picker uses it:
- * a time zone says where the machine is and a language tag says what its owner
- * reads. `en` maximised to `US` is a guess wearing the clothes of a fact.
+ * THE VALUE OUTRANKS EVERY GUESS, which is the bug this exists for. The
+ * library warns when the `country` prop disagrees with the number it is given
+ * -- "Expected phone number +639282844172 to correspond to country US but in
+ * reality it corresponds to country PH" -- and it is right to: a stored number
+ * is a fact, and detection is a guess. An E.164 string carries its own calling
+ * code, so there is nothing to infer.
+ */
+export function countryOfNumber(value: string): Country | null {
+  if (!value?.startsWith('+')) return null
+  try {
+    return parsePhoneNumber(value)?.country ?? null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The country to open on when there is no number to read one from.
  *
- * It is a DEFAULT, not an answer -- the dropdown is right there, and the value
- * it produces is E.164 either way.
+ * IT ASKS THE APP'S ONE RESOLVER (`services/userLocation`) rather than
+ * guessing here. The first version of this function did guess, with
+ * `new Intl.Locale(navigator.language).maximize().region` -- which turns a
+ * bare `en` into `US` for somebody in Manila, and is exactly the failure the
+ * calendar's own country detection was written to avoid. Two resolvers meant
+ * one of them was wrong.
+ *
+ * NOT SAFE DURING A SERVER RENDER: it reads `navigator`. Call it from an
+ * effect -- `useUserCountry` does.
+ *
+ * It is a DEFAULT, not an answer. The dropdown is right there, and the value
+ * this component produces is E.164 either way.
  */
 export function defaultPhoneCountry(fallback: Country = 'PH'): Country {
-  try {
-    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone
-    if (!zone) return fallback
-    // `Asia/Manila` -> `PH` is not derivable without a table; what IS reliable
-    // is the browser's own locale region, which the clock corroborates.
-    const region = new Intl.Locale(navigator.language).maximize().region
-    return (region && getCountries().includes(region as Country) ? region : fallback) as Country
-  } catch {
-    return fallback
-  }
+  const detected = detectUserCountry()
+  return detected && getCountries().includes(detected as Country)
+    ? (detected as Country)
+    : fallback
 }
 
 export function PhoneInput({
@@ -115,6 +140,17 @@ export function PhoneInput({
   placeholder = '917 123 4567',
   className,
 }: PhoneInputProps) {
+  /*
+    THE NUMBER DECIDES, AND ONLY WHEN THERE IS ONE. A stored `+63...` opened
+    with the dropdown saying United States until 2026-09-21: the country came
+    from detection, the value came from the database, and the two disagreed
+    loudly enough that the library logged it on every render.
+
+    `?? country` rather than replacing the prop: an empty field has no number
+    to read, and that is the case the caller's detected default is for.
+  */
+  const actual = countryOfNumber(value) ?? country
+
   return (
     // THEY STACK ON A PHONE. Side by side at 375px the country trigger and a
     // ten-digit number each get ~160px, and the country name is cut to
@@ -127,7 +163,7 @@ export function PhoneInput({
         icon="Globe"
         className="sm:w-56"
         disabled={disabled}
-        value={country}
+        value={actual}
         onValueChange={(next) => onCountryChange(next as Country)}
         items={COUNTRIES}
       />
@@ -146,7 +182,7 @@ export function PhoneInput({
         // "+63" printed inside the field -- is what the dropdown beside it
         // already says. `country` alone gives national formatting, which is
         // how people write their own number.
-        country={country}
+        country={actual}
         value={value}
         onChange={(next) => onChange(next ?? '')}
         disabled={disabled}

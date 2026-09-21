@@ -4,7 +4,8 @@ import userEvent from '@testing-library/user-event'
 import { readFileSync } from 'node:fs'
 
 import { DatePicker, fromValue, toValue } from '../date-picker'
-import { PhoneInput } from '../phone-input'
+import { PhoneInput, countryOfNumber } from '../phone-input'
+import { resolveUserCountry } from '@/services/userLocation'
 
 afterEach(cleanup)
 
@@ -113,5 +114,59 @@ describe('both controls, against the house rules', () => {
     expect(src).toContain("from '@/components/ui/select'")
     expect(src).toContain("from '@/components/ui/input'")
     expect(src, 'a command palette came back with it').not.toContain('ui/command')
+  })
+})
+
+describe('where the country comes from', () => {
+  it('reads it off the number rather than trusting the guess', () => {
+    /*
+      THE BUG (Gabe, 2026-09-21): "[react-phone-number-input] Expected phone
+      number +639282844172 to correspond to country US but in reality it
+      corresponds to country PH." The country came from detection and the value
+      came from the database, and the two disagreed on every render.
+
+      A stored number is a fact. Detection is a guess. The fact wins.
+    */
+    expect(countryOfNumber('+639282844172')).toBe('PH')
+    expect(countryOfNumber('+14155552671')).toBe('US')
+    expect(countryOfNumber('+442071838750')).toBe('GB')
+  })
+
+  it('has nothing to read off an empty or partial field', () => {
+    // These are the cases the caller's detected default exists for.
+    expect(countryOfNumber('')).toBeNull()
+    expect(countryOfNumber('0917')).toBeNull()
+    expect(countryOfNumber('not a number')).toBeNull()
+  })
+
+  it('shows the number\u2019s own country, not the one it was handed', () => {
+    // The end of the same bug, at the component: a PH number passed alongside
+    // `country="US"` must render as Philippines.
+    render(
+      <PhoneInput
+        id="p"
+        value="+639282844172"
+        onChange={() => {}}
+        country="US"
+        onCountryChange={() => {}}
+      />
+    )
+    expect(screen.getByRole('combobox', { name: /country code/i }).textContent).toContain(
+      'Philippines'
+    )
+  })
+
+  it('never maximises a bare language tag into a country', () => {
+    /*
+      THE ROOT CAUSE, in the resolver everything now shares. The first phone
+      input wrote its own detection with `Intl.Locale(...).maximize().region`,
+      which turns `en` into `US` -- and `en` means "this person reads English",
+      not "this person is American". The calendar's resolver already refused
+      to do that; the phone input had to learn it the hard way.
+    */
+    expect(resolveUserCountry(['en'], null)).toBeNull()
+    expect(resolveUserCountry(['en-PH'], null)).toBe('PH')
+    // The clock outranks the language: en-US reading, Manila clock.
+    expect(resolveUserCountry(['en-US'], 'Asia/Manila')).toBe('PH')
   })
 })

@@ -40,53 +40,20 @@ export interface HolidayCountry {
   name: string
 }
 
-import { countryFromTimeZone } from './timezoneCountry'
-
 const API = 'https://date.nager.at/api/v3'
 
 /** Where the choice is remembered. Per-browser; there is no column for it. */
 export const HOLIDAY_COUNTRY_KEY = 'worktrack.holiday-country'
 
 /**
- * The opening guess at a country, from the browser's language preferences.
+ * The opening guess at a country.
  *
- * It takes the first tag that actually carries a region subtag: `en-PH` gives
- * `PH`, a bare `en` gives nothing rather than being maximised to `US`. A
- * maximised guess is a guess dressed up as knowledge — `en` means "this person
- * reads English", and inferring the United States from it is exactly the
- * failure mode this is trying not to have.
+ * THE IMPLEMENTATION MOVED to `services/userLocation` on 2026-09-21 -- it was
+ * general the whole time and nothing in it knows what a holiday is, which the
+ * phone input found out by writing a second, worse copy. The name stays here
+ * because the calendar's own code and tests read better for it.
  */
-export function resolveHolidayCountry(
-  locales: readonly string[],
-  timeZone?: string | null
-): string | null {
-  // THE CLOCK FIRST. A time zone is about where the machine is; a language tag
-  // is about what its owner reads. Only one of those answers "whose public
-  // holidays are these".
-  //
-  // `undefined` means "not told, go and look"; an explicit `null` means "there
-  // is no zone, use the language". `??` cannot tell those apart, which is how
-  // a test passing `null` to isolate the language path still picked up the
-  // machine's own clock and asserted PH against every expectation.
-  if (timeZone !== null) {
-    const fromZone = countryFromTimeZone(timeZone)
-    if (fromZone) return fromZone
-  }
-
-  for (const tag of locales) {
-    // WALKED SUBTAG BY SUBTAG rather than matched with one pattern, and both
-    // guards below are things a single pattern got wrong on the first try.
-    // `zh-Hans-CN` puts a SCRIPT between the language and the region, so
-    // "the second subtag" is not the region; and `en-u-ca-buddhist` opens a
-    // Unicode EXTENSION whose `ca` is two letters and is not a country.
-    const parts = tag.split(/[-_]/)
-    for (const part of parts.slice(1)) {
-      if (part.length === 1) break // a singleton starts an extension
-      if (/^[A-Za-z]{2}$/.test(part)) return part.toUpperCase()
-    }
-  }
-  return null
-}
+export { resolveUserCountry as resolveHolidayCountry } from './userLocation'
 
 async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
   const response = await fetch(`${API}${path}`, { signal })

@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Field } from '@/components/ui/field'
 import { Select } from '@/components/ui/select'
 import { DatePicker } from '@/components/ui/date-picker'
-import { PhoneInput, defaultPhoneCountry } from '@/components/ui/phone-input'
+import { PhoneInput } from '@/components/ui/phone-input'
+import { useUserCountry } from '@/hooks/useUserCountry'
 import type { Country } from 'react-phone-number-input'
 import { PHONE_TYPES, type PhoneType, type UserProfile } from '@/services/profile'
 
@@ -115,7 +116,15 @@ export function ProfileDetailsDialog({
     E.164, which carries its own calling code -- this state only decides how
     the digits are grouped while somebody types them.
   */
-  const [country, setCountry] = React.useState<Country>(() => defaultPhoneCountry())
+  /*
+    DETECTED AFTER MOUNT, not during render: `navigator` does not exist on the
+    server, and a country resolved while rendering is a hydration mismatch on
+    the dropdown that shows it. `useUserCountry` owns that; this state exists
+    so the reader can override whatever it lands on.
+  */
+  const detected = useUserCountry('PH')
+  const [chosen, setChosen] = React.useState<Country | null>(null)
+  const country = chosen ?? (detected as Country)
   const [birthday, setBirthday] = React.useState(profile.birthday ?? '')
   const [saving, setSaving] = React.useState(false)
   const [failed, setFailed] = React.useState<string | null>(null)
@@ -131,6 +140,10 @@ export function ProfileDetailsDialog({
     setPhone(profile.phone ?? '')
     setPhoneType(profile.phoneType ?? 'mobile')
     setBirthday(profile.birthday ?? '')
+    // Back to detection. A country picked and then abandoned must not survive
+    // into the next open -- and when there IS a stored number, `PhoneInput`
+    // reads the country off it anyway.
+    setChosen(null)
     setFailed(null)
   }, [open, profile.phone, profile.phoneType, profile.birthday])
 
@@ -180,7 +193,7 @@ export function ProfileDetailsDialog({
               id="profile-phone"
               name="phone"
               country={country}
-              onCountryChange={setCountry}
+              onCountryChange={setChosen}
               value={phone}
               onChange={setPhone}
               invalid={Boolean(phone && phoneError)}

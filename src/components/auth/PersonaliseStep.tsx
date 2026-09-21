@@ -6,7 +6,8 @@ import { Field } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { DatePicker } from '@/components/ui/date-picker'
-import { PhoneInput, defaultPhoneCountry } from '@/components/ui/phone-input'
+import { PhoneInput } from '@/components/ui/phone-input'
+import { useUserCountry } from '@/hooks/useUserCountry'
 import type { Country } from 'react-phone-number-input'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { PHONE_TYPES, type PhoneType } from '@/services/profile'
@@ -154,7 +155,15 @@ export function PersonaliseStep({ onSubmit, onSkip }: PersonaliseStepProps) {
   const [more, setMore] = React.useState(false)
   const [phone, setPhone] = React.useState('')
   const [phoneType, setPhoneType] = React.useState<PhoneType>('mobile')
-  const [country, setCountry] = React.useState<Country>(() => defaultPhoneCountry())
+  /*
+    DETECTED AFTER MOUNT, not during render: `navigator` does not exist on the
+    server, and a country resolved while rendering is a hydration mismatch on
+    the dropdown that shows it. `useUserCountry` owns that; this state exists
+    so the reader can override whatever it lands on.
+  */
+  const detected = useUserCountry('PH')
+  const [chosen, setChosen] = React.useState<Country | null>(null)
+  const country = chosen ?? (detected as Country)
   const [birthday, setBirthday] = React.useState('')
   const [busy, setBusy] = React.useState(false)
   const [failed, setFailed] = React.useState<string | null>(null)
@@ -260,7 +269,7 @@ export function PersonaliseStep({ onSubmit, onSkip }: PersonaliseStepProps) {
               id="signup-phone"
               name="phone"
               country={country}
-              onCountryChange={setCountry}
+              onCountryChange={setChosen}
               value={phone}
               onChange={setPhone}
               invalid={Boolean(phone && phoneError)}
