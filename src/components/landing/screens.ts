@@ -56,11 +56,28 @@
  * renders at roughly 1200, so 1600 is sharp at 1x and still reasonable on a
  * 2x display, while the 1920 originals pushed one visitor's download to 2.1MB
  * on a page whose whole argument is restraint. At 1600/q80 a desktop visitor
- * fetches about 1.3MB for all five slides in both themes, and the table text
+ * fetches about 1.4MB for all five slides in both themes, and the table text
  * is still crisp at 1:1 -- checked by cropping one at 2x, not assumed.
  *
  * Re-check with `du -sh public/screens` and the per-tier totals after any
- * recapture.
+ * recapture. Currently 3.7MB for the whole tree: 488K mobile, 800K tablet,
+ * 1.1MB laptop, 1.4MB desktop, both themes in each.
+ *
+ * PLANNER WAS RECAPTURED ON 2026-09-21, all eight files, because the screen
+ * changed underneath the old ones: the rail gained a board picker and it sits
+ * ahead of the region dropdown, so the shipped screenshots showed a filter row
+ * the app no longer has. The tier dimensions are matched EXACTLY to the other
+ * four screens (374x846, 766x846, 1022x846, 1600x779) -- the slides are
+ * `object-contain` in a fixed box, so an odd aspect would letterbox one slide
+ * differently from its neighbours as the carousel moved.
+ *
+ * ONE CAPTURE NEEDED A CROP AND IT IS WORTH SAYING WHICH. The dark phone shot
+ * arrived 396px wide because it kept an overlay scrollbar; the light one was
+ * 375 with none, and no other mobile capture in this tree has one. Cropped
+ * from the left to the page's own right edge, so the framing matches its
+ * siblings rather than the browser it was taken in. The DESKTOP tier's
+ * scrollbar is left alone -- every screen in this set has it, so removing it
+ * from one would be the inconsistency.
  */
 
 /** A viewport tier, narrowest first. `desktop` is the fallback and has no query. */
