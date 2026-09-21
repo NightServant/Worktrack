@@ -106,29 +106,28 @@ def test_the_search_address_carries_what_the_public_form_sends() -> None:
     assert "token" not in url.lower() and "auth" not in url.lower()
 
 
-def test_no_board_is_read_with_a_borrowed_credential() -> None:
-    """The line this service does not cross, asserted rather than only written.
+def test_this_service_writes_no_borrowed_credential_of_its_own() -> None:
+    """What is still true after JobSpy was adopted, stated narrowly.
 
-    JobSpy's LinkedIn module is clean and takes this same route. Its Indeed
-    module sends `indeed-api-key`, a value lifted out of Indeed's iOS app,
-    behind that app's own user-agent. If that ever lands in this tree, this
-    fails.
+    IT IS NOT A CLAIM THAT NOTHING HERE WEARS A DISGUISE. From 2026-09-21 the
+    rail's Indeed half runs through JobSpy, whose Indeed module sends a key
+    extracted from Indeed's mobile app. That is a real cost, it was chosen
+    deliberately, and README section 12 states it rather than denying it.
+    A vendored library's behaviour is not something a grep of this tree can
+    police, and pretending otherwise would make this a comfort, not a check.
+
+    WHAT IT DOES CHECK is the part that is ours: no module we wrote hardcodes
+    somebody else's credential or turns off certificate verification. One
+    arriving in a file here would be a different decision from the one that was
+    actually taken, made without anybody deciding it.
     """
     from pathlib import Path
 
-    banned = (
-        # A header dict entry, which is how a lifted key is actually sent.
-        # `job_board.py` NAMES the key in prose to explain the refusal, and
-        # prose has no quote-colon -- so what is banned here is sending one.
-        '"indeed-api-key":',
-        "'indeed-api-key':",
-        '"authorization":',
-        "verify=False",
-        "is_tls=True",
-    )
+    lifted_key = "indeed-api" + "-key"
+    banned = (f'"{lifted_key}":', f"'{lifted_key}':", "verify=false")
     for path in Path("extractor").glob("*.py"):
-        source = path.read_text(encoding="utf-8")
+        source = path.read_text(encoding="utf-8").lower()
         for needle in banned:
-            assert needle not in source.lower().replace('"authorization": f"bearer {token}"', ""), (
+            assert needle not in source, (
                 f"{path} looks like it sends a borrowed credential: {needle}"
             )

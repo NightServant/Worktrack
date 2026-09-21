@@ -16,14 +16,17 @@ from extractor.job_board import SOURCES, _iso, _salary, to_feed_job, to_feed_job
 def test_every_source_is_routed_and_labelled() -> None:
     from extractor.job_board import ACTORS, LABELS, ROUTES
 
-    # Glassdoor left on 2026-09-21, its Apify actor being in maintenance.
-    assert set(SOURCES) == {"linkedin", "jobstreet", "indeed"}
+    # Glassdoor's Apify actor went into maintenance on 2026-09-21 and JobSpy
+    # reads it without one, so it left and came back the same day.
+    assert set(SOURCES) == {"linkedin", "jobstreet", "indeed", "glassdoor"}
     for source in SOURCES:
-        assert ROUTES[source] in {"public", "apify"}
+        assert ROUTES[source] in {"public", "jobspy", "apify"}
         assert LABELS[source]
 
-    # LINKEDIN IS FREE NOW and must stay that way: it reads its own public
-    # guest endpoint, so an actor entry for it would be a bill nobody needs.
+    # LINKEDIN IS FREE AND PLAIN and must stay that way: it reads its own
+    # public guest endpoint, so neither an actor entry nor a JobSpy route
+    # belongs to it -- one would be a bill and the other a dependency, for a
+    # board that needs neither.
     assert ROUTES["linkedin"] == "public"
     assert "linkedin" not in ACTORS
 

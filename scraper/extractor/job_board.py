@@ -49,27 +49,13 @@ from typing import Any, Iterable
 #: moved to `linkedin_jobs`, which reads the same postings from LinkedIn's own
 #: public guest endpoint for nothing -- see `ROUTES` below.
 #:
-#: GLASSDOOR IS NOT HERE EITHER (Gabe, 2026-09-21: "removed the glassdoor
-#: scraper since the apify is now on maintenance"). It is removed rather than
-#: left failing because a board that answers every search with an error is a
-#: control that wastes a press and a throttle tick.
+#: GLASSDOOR LEFT AND CAME BACK the same day: its Apify actor went into
+#: maintenance, and JobSpy reads it without one.
 #:
-#: WHY INDEED AND GLASSDOOR ARE NOT SIMPLY MOVED TO `JobSpy` TOO, which is the
-#: obvious question given LinkedIn was. JobSpy is MIT and its LinkedIn module
-#: is clean -- it asks the same public endpoint `linkedin_jobs` does. Its other
-#: two are not. `jobspy/indeed/constant.py` carries
-#: `indeed-api-key: 161092c2017b...`, a credential lifted out of Indeed's iOS
-#: app, and sends it behind `user-agent: ... Indeed App 193.1` and
-#: `indeed-app-info: appid=com.indeed.jobsearch; os=ios` with TLS verification
-#: disabled; `apis.indeed.com/graphql` is Indeed's PARTNER API and officially
-#: requires a bearer token and a signed agreement. Glassdoor's module carries a
-#: fallback bearer token of its own.
-#:
-#: That is a borrowed credential and an impersonated client, which is the one
-#: thing this service has refused everywhere else -- README: "Nothing here
-#: wears a disguise: no challenge is solved, no session borrowed, no
-#: residential proxy bought." The licence covers JobSpy's code; it does not
-#: cover Indeed's key.
+#: INDEED AND GLASSDOOR GO THROUGH JobSpy, chosen knowingly. Its Indeed module
+#: sends a key lifted from Indeed's iOS app and its Glassdoor module a bearer
+#: token of its own -- what that means is set out in `jobspy_board`, and
+#: README section 12 states it rather than claiming this service never does it.
 ACTORS: dict[str, dict[str, Any]] = {
     "jobstreet": {
         "actor": "easyapi~jobstreet-job-scraper",
@@ -84,15 +70,26 @@ ACTORS: dict[str, dict[str, Any]] = {
 
 #: How each board is read: for nothing, or through a paid actor.
 #:
-#: THE FREE ROUTE IS ALWAYS PREFERRED and the table exists so that preference
-#: is a fact rather than a branch somebody has to find. A board moves from
-#: `apify` to `public` the day somebody finds its own endpoint -- which is what
-#: happened to LinkedIn on 2026-09-21, and what `seek_api` already proved for
-#: JobStreet's single postings.
+#: THREE ROUTES, AND THE DIFFERENCE IS WHAT EACH ONE COSTS:
+#:
+#:   public  the board's own endpoint, asked plainly. Free, and nothing is
+#:           borrowed or forged. LinkedIn, since 2026-09-21.
+#:   jobspy  `speedyapply/JobSpy`, MIT. Free in money and not free of
+#:           everything -- its Indeed and Glassdoor modules send credentials
+#:           lifted from those products. See `jobspy_board`, and README
+#:           section 12, which says so rather than claiming otherwise.
+#:   apify   a paid actor. Billed per posting, and the operator rather than
+#:           this repository carries how the postings were obtained.
+#:
+#: THE TABLE EXISTS SO THE CHOICE IS A FACT rather than a branch somebody has
+#: to find. A board moves toward `public` the day somebody finds its own
+#: endpoint -- which is what happened to LinkedIn, and what `seek_api` already
+#: proved for JobStreet's single postings.
 ROUTES: dict[str, str] = {
     "linkedin": "public",
     "jobstreet": "apify",
-    "indeed": "apify",
+    "indeed": "jobspy",
+    "glassdoor": "jobspy",
 }
 
 #: Every source the rail may ask for, free or paid.
@@ -103,6 +100,7 @@ LABELS: dict[str, str] = {
     "linkedin": "LinkedIn",
     "jobstreet": "JobStreet",
     "indeed": "Indeed",
+    "glassdoor": "Glassdoor",
 }
 
 

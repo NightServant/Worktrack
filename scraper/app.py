@@ -42,6 +42,11 @@ from extractor.job_board import (
     SOURCES as JOB_SOURCES,
     to_feed_jobs,
 )
+from extractor.jobspy_board import (
+    DEFAULT_COUNTRY as JOBSPY_COUNTRY,
+    SITES as JOBSPY_SITES,
+    to_feed_jobs as jobspy_to_feed_jobs,
+)
 from extractor.linkedin_jobs import PAGE_SIZE as LI_PAGE_SIZE, jobs_from_html, search_url
 from extractor.jobstreet_profile import profile_from_jobstreet
 from extractor.linkedin_page import profile_from_linkedin_page
@@ -1516,6 +1521,13 @@ JOB_FEED_MEMORY_MB = 1024
 #: means the board is refusing rather than working.
 PUBLIC_FEED_TIMEOUT_S = 20.0
 
+#: How long one JobSpy board may take.
+#:
+#: LONGER THAN A PLAIN GET because the library pages through a board and
+#: sleeps between requests to stay under its rate limit, and shorter than an
+#: actor run because nothing here is crawling a whole site.
+JOBSPY_TIMEOUT_S = 90.0
+
 
 #: Per-source actor overrides, so one board can be repointed without a deploy.
 #:
@@ -1625,6 +1637,12 @@ def _job_feed_message(source: str, reason: str) -> str:
     every remedy this codebase has written into a warning has outlived it.
     """
     label = JOB_LABELS[source]
+    if reason == "not-installed":
+        return f"{label} needs the JobSpy library, which this deployment has not installed."
+    if reason == "unsupported":
+        return f"{label} has no reader configured."
+    if reason == "rate-limited":
+        return f"{label} is rate limiting this address. Try again in a few minutes."
     if reason == "no-token":
         return f"{label} is not configured for this deployment."
     if reason == "no-rows":
@@ -1703,6 +1721,70 @@ async def _public_jobs(source: str, body: JobFeedRequest) -> tuple[list[dict[str
     return unique, reason if (jobs or reason != "ok") else "no-rows"
 
 
+async def _jobspy_jobs(source: str, body: JobFeedRequest) -> tuple[list[dict[str, Any]], str]:
+    """One board through JobSpy. Returns `(jobs, reason)`.
+
+    IT RUNS IN A THREAD because `scrape_jobs` is synchronous and spends its
+    whole life waiting on somebody else's server. Called directly it would
+    block the event loop and stall every other board running beside it, which
+    is the one thing the concurrent gather exists to prevent.
+
+    THE COUNTRY IS NOT OPTIONAL FOR INDEED. `country_indeed` picks the Indeed
+    domain, and its default is the United States -- so a search with no country
+    returns American roles to a reader in Manila. `body.location` is the rail's
+    own region when one is chosen; `DEFAULT_COUNTRY` is the floor under it.
+
+    A FAILURE IS THIS BOARD'S ALONE. JobSpy reaches endpoints that change
+    without notice and rate-limit without warning; anything it raises is caught
+    and reported as this board giving nothing, never as the request failing.
+    """
+    site = JOBSPY_SITES.get(source)
+    if not site:
+        return [], "unsupported"
+
+    count = max(1, min(body.limit or MAX_PUBLIC_FEED_ITEMS, MAX_PUBLIC_FEED_ITEMS))
+    location = (body.location or "").strip() or JOBSPY_COUNTRY
+    query = (body.query or "").strip() or "developer"
+
+    def run() -> Any:
+        # IMPORTED HERE, NOT AT MODULE SCOPE. JobSpy pulls pandas, numpy and
+        # tls_client; paying that import cost on every cold start of a service
+        # whose other four routes never touch it is a slower /extract for
+        # nothing. It also keeps the module importable where the library is
+        # absent, which is what the mapper's own tests rely on.
+        from jobspy import scrape_jobs
+
+        return scrape_jobs(
+            site_name=[site],
+            search_term=query,
+            location=location,
+            results_wanted=count,
+            country_indeed=location,
+            # DESCRIPTIONS OFF. They are kilobytes of third-party markup per
+            # row that the rail shows two lines of, and fetching them is a
+            # second request per posting against boards that rate-limit.
+            description_format="markdown",
+            verbose=0,
+        )
+
+    try:
+        frame = await asyncio.wait_for(
+            asyncio.to_thread(run), timeout=JOBSPY_TIMEOUT_S
+        )
+    except asyncio.TimeoutError:
+        return [], "timeout"
+    except ImportError:
+        return [], "not-installed"
+    except Exception:
+        # THE REASON IS DELIBERATELY COARSE HERE. JobSpy raises whatever the
+        # board's client raised, and those messages carry URLs and occasionally
+        # the credential it sent -- neither belongs in a log drain.
+        return [], "unreachable"
+
+    jobs = jobspy_to_feed_jobs(frame, source)[:count]
+    return jobs, "ok" if jobs else "no-rows"
+
+
 @app.post("/jobs")
 async def jobs_endpoint(body: JobFeedRequest) -> JSONResponse:
     """Recent postings from one or more paid board actors, merged.
@@ -1731,6 +1813,8 @@ async def jobs_endpoint(body: JobFeedRequest) -> JSONResponse:
         *(
             _public_jobs(source, body)
             if JOB_ROUTES[source] == "public"
+            else _jobspy_jobs(source, body)
+            if JOB_ROUTES[source] == "jobspy"
             else _apify_jobs(source, body)
             for source in wanted
         ),
