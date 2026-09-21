@@ -93,9 +93,11 @@ describe('resumeService.list', () => {
     expect((await resumeService.list(client)).map((d) => d.mode)).toEqual(['word', 'word', 'word'])
   })
 
-  it('names an untitled CV rather than rendering an empty row', async () => {
+  it('names an untitled row without guessing which kind it is', async () => {
+    // `Untitled CV` was wrong for half of them: this list holds cover letters
+    // too (Gabe, 2026-09-21).
     const { client } = fakeClient({ data: [{ ...ROW, title: '', resume_snapshots: [] }], error: null })
-    expect((await resumeService.list(client))[0].title).toBe('Untitled CV')
+    expect((await resumeService.list(client))[0].title).toBe('Untitled document')
   })
 
   it('returns an empty list when PostgREST returns null data', async () => {

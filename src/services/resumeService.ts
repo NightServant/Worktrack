@@ -125,7 +125,11 @@ function normalizeMode(mode: string | null | undefined): ResumeMode {
 function toDraft(row: ResumeRow): ResumeDraft {
   return {
     id: row.id,
-    title: row.title || 'Untitled CV',
+    // `document`, NOT `CV`: this names an untitled row for the documents list,
+    // and a cover letter was being listed as "Untitled CV" (Gabe, 2026-09-21).
+    // `row.mode` is right here and could pick the noun -- neutral instead, so
+    // one string is true of both kinds and cannot fall out of step.
+    title: row.title || 'Untitled document',
     mode: normalizeMode(row.mode),
     content: row.content,
     updated_at: row.updated_at,
@@ -157,7 +161,7 @@ export const resumeService = {
     if (error) throw toError(error)
     return ((data ?? []) as SummaryRow[]).map((row) => ({
       id: row.id,
-      title: row.title || 'Untitled CV',
+      title: row.title || 'Untitled document',
       mode: normalizeMode(row.mode),
       updated_at: row.updated_at,
       sections: row.sections ?? null,

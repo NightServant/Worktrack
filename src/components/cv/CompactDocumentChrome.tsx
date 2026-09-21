@@ -152,7 +152,7 @@ export function CompactDocumentChrome({
    * before they have asked "what does it say".
    */
   const [view, setView] = React.useState<DocumentView>('scroll')
-  const displayTitle = title.trim() || 'untitled CV'
+  const displayTitle = title.trim() || 'untitled document'
 
   /**
    * A TAB PER SURFACE THE CALLER ACTUALLY PASSED, and none for the ones it
@@ -219,8 +219,8 @@ export function CompactDocumentChrome({
           <input
             value={title}
             onChange={(e) => onTitleChange(e.target.value)}
-            placeholder="untitled CV"
-            aria-label="CV title"
+            placeholder="untitled document"
+            aria-label="Document title"
             title={displayTitle}
             className={cn(
               'w-full min-w-0 truncate border-0 bg-transparent p-0 text-center text-body-m text-accent-default',

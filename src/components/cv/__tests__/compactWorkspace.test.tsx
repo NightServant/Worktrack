@@ -60,7 +60,7 @@ describe('the editor below lg', () => {
     expect(shell.className).toContain('fixed')
     expect(shell.className).toContain('inset-0')
     // Still the h1, still typed into in place -- the document names the screen.
-    expect(screen.getByLabelText('CV title')).toHaveValue('My CV')
+    expect(screen.getByLabelText('Document title')).toHaveValue('My CV')
   })
 
   it('keeps a way out, the save state, and the formatting controls', async () => {
@@ -164,7 +164,7 @@ describe('the editor below lg', () => {
     // would read the whole toolbar twice.
     const user = userEvent.setup()
     renderWorkspace()
-    expect(screen.getAllByLabelText('CV title')).toHaveLength(1)
+    expect(screen.getAllByLabelText('Document title')).toHaveLength(1)
     await user.click(screen.getByRole('tab', { name: 'format' }))
     expect(screen.getAllByRole('button', { name: 'bold' })).toHaveLength(1)
   })

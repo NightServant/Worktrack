@@ -227,7 +227,7 @@ describe('/cv route states', () => {
     resolved(null)
     render(<Page />)
     expect(screen.getByText(/could not find that cv/i)).toBeTruthy()
-    expect(screen.queryByLabelText(/cv title/i)).toBeNull()
+    expect(screen.queryByLabelText(/document title/i)).toBeNull()
   })
 
   it('says the read failed rather than treating a failed fetch as a missing CV', () => {
@@ -251,7 +251,7 @@ describe('/cv?draft=<id> opens the right editor', () => {
     expect(screen.queryByRole('heading', { name: 'Word CV' })).toBeNull()
     expect(container.querySelector('.ProseMirror')).toBeTruthy()
     expect(container.textContent).toContain('Shipped the rewrite')
-    expect((screen.getByLabelText(/cv title/i) as HTMLInputElement).value).toBe('Backend CV')
+    expect((screen.getByLabelText(/document title/i) as HTMLInputElement).value).toBe('Backend CV')
   })
 
   /**
@@ -310,7 +310,7 @@ describe('the editor still saves', () => {
     resolved(wordDraft())
     render(<Page />)
 
-    fireEvent.change(screen.getByLabelText(/cv title/i), { target: { value: 'Renamed CV' } })
+    fireEvent.change(screen.getByLabelText(/document title/i), { target: { value: 'Renamed CV' } })
     expect(updateMutate).not.toHaveBeenCalled()
 
     await act(async () => {
@@ -328,7 +328,7 @@ describe('the editor still saves', () => {
     resolved(wordDraft())
     render(<Page />)
 
-    fireEvent.change(screen.getByLabelText(/cv title/i), { target: { value: 'Renamed CV' } })
+    fireEvent.change(screen.getByLabelText(/document title/i), { target: { value: 'Renamed CV' } })
     await act(async () => {
       vi.advanceTimersByTime(5000)
     })
@@ -376,7 +376,7 @@ describe('the editor still saves', () => {
     resolved(wordDraft())
     const view = render(<Page />)
 
-    fireEvent.change(screen.getByLabelText(/cv title/i), { target: { value: 'Renamed CV' } })
+    fireEvent.change(screen.getByLabelText(/document title/i), { target: { value: 'Renamed CV' } })
     expect(updateMutate).not.toHaveBeenCalled()
 
     await act(async () => {
@@ -400,7 +400,7 @@ describe('the editor still saves', () => {
     resolved(wordDraft())
     render(<Page />)
 
-    fireEvent.change(screen.getByLabelText(/cv title/i), { target: { value: 'Renamed CV' } })
+    fireEvent.change(screen.getByLabelText(/document title/i), { target: { value: 'Renamed CV' } })
     await act(async () => {
       vi.advanceTimersByTime(5000)
     })
@@ -541,7 +541,7 @@ describe('deleting a CV from the editor', () => {
     render(<Page />)
 
     await openActions()
-    await user.click(screen.getByRole('button', { name: /delete this cv/i }))
+    await user.click(screen.getByRole('button', { name: /delete this document/i }))
     expect(screen.getByRole('alertdialog', { name: /delete this cv/i })).toBeTruthy()
     await user.click(screen.getByRole('button', { name: 'cancel' }))
     expect(deleteMutate).not.toHaveBeenCalled()
@@ -554,7 +554,7 @@ describe('deleting a CV from the editor', () => {
     render(<Page />)
 
     await openActions()
-    await user.click(screen.getByRole('button', { name: /delete this cv/i }))
+    await user.click(screen.getByRole('button', { name: /delete this document/i }))
     await user.click(screen.getByRole('button', { name: 'delete' }))
     expect(deleteMutate).toHaveBeenCalledWith('cv-1')
     expect(routerReplace).toHaveBeenCalledWith('/documents')
@@ -589,7 +589,7 @@ describe('keystrokes during an in-flight save are not lost', () => {
     updateMutate.mockReturnValueOnce(inFlight.promise)
     render(<Page />)
 
-    const titleField = screen.getByLabelText(/cv title/i)
+    const titleField = screen.getByLabelText(/document title/i)
     fireEvent.change(titleField, { target: { value: 'A' } })
     await act(async () => {
       vi.advanceTimersByTime(1200)
@@ -627,7 +627,7 @@ describe('the Word autosave keeps running after a failure', () => {
     updateMutate.mockRejectedValueOnce(new Error('permission denied'))
     render(<Page />)
 
-    fireEvent.change(screen.getByLabelText(/cv title/i), { target: { value: 'Renamed' } })
+    fireEvent.change(screen.getByLabelText(/document title/i), { target: { value: 'Renamed' } })
     await act(async () => {
       vi.advanceTimersByTime(1200)
     })
@@ -655,7 +655,7 @@ describe('snapshots survive the autosave that precedes them', () => {
     resolved(wordDraft())
     render(<Page />)
 
-    fireEvent.change(screen.getByLabelText(/cv title/i), { target: { value: 'Renamed' } })
+    fireEvent.change(screen.getByLabelText(/document title/i), { target: { value: 'Renamed' } })
     await act(async () => {
       vi.advanceTimersByTime(1200)
     })
@@ -766,7 +766,7 @@ describe('an overlapping pair of saves cannot un-save the newer one', () => {
 
   it('leaves the Word editor clean after the slower write finally lands', async () => {
     await overlap(wordDraft(), 'Title', (value) =>
-      fireEvent.change(screen.getByLabelText(/cv title/i), { target: { value } })
+      fireEvent.change(screen.getByLabelText(/document title/i), { target: { value } })
     )
     expect(screen.queryByText(/unsaved changes/i)).toBeNull()
 

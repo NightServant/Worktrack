@@ -226,7 +226,7 @@ export function DesktopDocumentChrome({
   children,
   footnote,
 }: DocumentWorkspaceProps) {
-  const displayTitle = title.trim() || 'untitled CV'
+  const displayTitle = title.trim() || 'untitled document'
 
   /**
    * ONE BOOLEAN FOR BOTH RAILS, AND IT STARTS OPEN AT EVERY WIDTH.
@@ -477,8 +477,8 @@ export function DesktopDocumentChrome({
           <input
             value={title}
             onChange={(e) => onTitleChange(e.target.value)}
-            placeholder="untitled CV"
-            aria-label="CV title"
+            placeholder="untitled document"
+            aria-label="Document title"
             // `text-ellipsis` on an input is honoured while it is NOT focused,
             // which is exactly what is wanted: a long name reads truncated at
             // rest and gives back the whole string the moment you click in.

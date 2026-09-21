@@ -644,7 +644,7 @@ export function WordResumeEditor({
     try {
       const updated = await onPersistDraft(
         draft.id,
-        title.trim() || 'Untitled CV',
+        title.trim() || 'Untitled document',
         'word',
         editor.getJSON()
       )
@@ -1035,7 +1035,7 @@ export function WordResumeEditor({
          breadcrumb between `documents` and the file's own name, so on a letter
          it has to say letter -- otherwise the path claims you are somewhere
          you are not. */
-      kindLabel={isLetter ? 'cover letter' : 'word'}
+      kindLabel={isLetter ? 'cover letter' : 'CV'}
       documentsHref={backHref}
       // Leaving mid-write loses the polish silently -- see DocumentWorkspace.
       polishing={polishing}
@@ -1120,8 +1120,16 @@ export function WordResumeEditor({
                   <PopoverTitle className="text-heading-s text-text-primary">
                     document actions
                   </PopoverTitle>
+                  {/* THE NOUN IS `document`, NOT `CV` (Gabe, 2026-09-21:
+                      "document actions not considering cover letters ... add
+                      neutral wording"). This panel opens over both kinds --
+                      the editor is one surface and `documentTabs` is what
+                      differs -- so every row that named a CV was wrong half
+                      the time it was read. Neutral rather than switched on
+                      `isLetter`, which is in scope: one string that is true of
+                      both cannot drift out of step with the other. */}
                   <PopoverDescription className="text-body-s text-text-muted">
-                    export a copy, start over, or remove this CV. saving stays on the bar.
+                    export a copy, start over, or remove this document. saving stays on the bar.
                   </PopoverDescription>
                 </PopoverHeader>
 
@@ -1157,7 +1165,7 @@ export function WordResumeEditor({
                   <ActionRow
                     icon={<DownloadIcon size={16} aria-hidden className={iconMotion('drop')} />}
                     label={exportState.isExportingLatex ? 'exporting .tex…' : 'export .tex'}
-                    hint="LaTeX source — the best-looking version of this CV"
+                    hint="LaTeX source — the best-looking version of this document"
                     recommended
                     disabled={!editor || exportState.isExportingLatex}
                     onClick={() => {
@@ -1189,7 +1197,7 @@ export function WordResumeEditor({
                       exports: the heavier rule is the pause before it. */}
                   <ActionRow
                     icon={<TrashIcon size={16} aria-hidden className={iconMotion('lid')} />}
-                    label="delete this CV"
+                    label="delete this document"
                     hint="cannot be undone"
                     destructive
                     className="border-t-2 border-t-border-default"
