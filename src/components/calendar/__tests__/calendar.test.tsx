@@ -565,3 +565,72 @@ describe('JobFeed — the paid boards', () => {
     expect(screen.queryByRole('link', { name: /track it/i })).toBeNull()
   })
 })
+
+describe('JobFeed — choosing boards is free, searching is not', () => {
+  it('does not search when a board is merely picked', async () => {
+    /*
+      THE DEFECT THIS EXISTS FOR (Gabe, 2026-09-21: "Too many requests"). Each
+      toggle used to change the query key, so choosing all four boards was four
+      crawls against a throttle of two a minute -- the reader was rate-limited
+      before they had finished choosing.
+    */
+    const user = userEvent.setup()
+    const onSearchBoards = vi.fn()
+    const onBoardsChange = vi.fn()
+    render(
+      <JobFeed
+        jobs={[]}
+        boards={[]}
+        onBoardsChange={onBoardsChange}
+        onSearchBoards={onSearchBoards}
+      />
+    )
+    await user.click(document.querySelector('[data-feed-board="linkedin"]') as HTMLElement)
+    expect(onBoardsChange).toHaveBeenCalledWith(['linkedin'])
+    expect(onSearchBoards).not.toHaveBeenCalled()
+  })
+
+  it('searches once, when asked', async () => {
+    const user = userEvent.setup()
+    const onSearchBoards = vi.fn()
+    render(
+      <JobFeed
+        jobs={[]}
+        boards={['linkedin', 'indeed']}
+        onBoardsChange={() => {}}
+        onSearchBoards={onSearchBoards}
+      />
+    )
+    await user.click(document.querySelector('[data-feed-board-search]') as HTMLElement)
+    expect(onSearchBoards).toHaveBeenCalledTimes(1)
+  })
+
+  it('will not buy the same answer twice at full price', () => {
+    // A selection that has already been searched has nothing new to fetch.
+    render(
+      <JobFeed
+        jobs={[]}
+        boards={['linkedin']}
+        boardsSearched
+        onBoardsChange={() => {}}
+        onSearchBoards={() => {}}
+      />
+    )
+    expect(document.querySelector('[data-feed-board-search]')).toBeDisabled()
+  })
+
+  it('offers nothing to search when nothing is picked', () => {
+    // The sentence beside it already says what to do; a disabled button would
+    // be a second, worse way of saying it.
+    render(<JobFeed jobs={[]} boards={[]} onBoardsChange={() => {}} onSearchBoards={() => {}} />)
+    expect(document.querySelector('[data-feed-board-search]')).toBeNull()
+  })
+
+  it('applies the toggles itself where a search costs nothing', () => {
+    // `/demo/planner` filters a fixture in memory. A search button in front of
+    // that would be ceremony over nothing.
+    render(<JobFeed jobs={[]} boards={['linkedin']} onBoardsChange={() => {}} />)
+    expect(document.querySelector('[data-feed-boards]')).toBeTruthy()
+    expect(document.querySelector('[data-feed-board-search]')).toBeNull()
+  })
+})

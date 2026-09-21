@@ -21,8 +21,8 @@ import { SCRAPED_SOURCES, type FeedSource } from '@/services/jobFeed'
  * lives here:
  *
  *   1. Who is asking -- `authenticate`, before the body is read.
- *   2. How often     -- a per-caller throttle, tighter than auto-fill's,
- *                       because one request here is up to four actor runs.
+ *   2. How often     -- a per-caller throttle. One request here is up to four
+ *                       actor runs, and a run is a crawl rather than a fetch.
  *   3. What they may ask for -- a closed set of sources, and a capped limit.
  *
  * NO URL IS TAKEN FROM THE CALLER, which is what makes this route a smaller
@@ -38,13 +38,25 @@ export const runtime = 'nodejs'
 const RATE_LIMIT_WINDOW_MS = 60_000
 
 /**
- * Two runs a minute per person.
+ * Six searches a minute per person.
  *
- * TIGHTER THAN `/api/profile`'s THREE, because one request there is one hosted
- * fetch and one request here is up to four crawls. Nobody refreshes a job rail
- * twice a minute for a reason that is not a stuck retry.
+ * IT WAS TWO AND TWO WAS WRONG, though not for the reason the 429s suggested
+ * (Gabe, 2026-09-21: "Too many requests"). The real fault was upstream: every
+ * board TOGGLE fired a search, so picking four boards was four requests and
+ * the reader was rate-limited before they had finished choosing. That is fixed
+ * where it belonged -- the toggles select, one press searches.
+ *
+ * With a search now costing a deliberate press, the number can describe what
+ * it is actually for: a stuck retry loop and a rage-clicked button. Six leaves
+ * room to try a board, change your mind and try again without the app arguing,
+ * and still caps one person at six crawls a minute rather than sixty.
+ *
+ * IT IS NOT THE SPEND CEILING and must not be mistaken for one. Six requests
+ * times four boards times twenty-five postings is the worst minute this allows,
+ * and the thing that actually bounds the bill is the Apify account's own
+ * balance -- see `.env.example`.
  */
-const RATE_LIMIT_MAX_REQUESTS = 2
+const RATE_LIMIT_MAX_REQUESTS = 6
 
 /** The most postings one source may be asked for. Mirrors the extractor's cap. */
 const MAX_LIMIT = 25
@@ -105,8 +117,16 @@ export async function POST(request: Request) {
       userId: auth.user.id,
       status: 429,
     })
+    // THE WAIT IS THE USEFUL HALF. "Too many requests" tells somebody they
+    // were refused; the number tells them what to do about it, and it is
+    // already computed.
     return NextResponse.json(
-      { error: 'Too many requests', retryAfterSeconds: limit.retryAfterSeconds },
+      {
+        error: `That is a lot of searching. Try again in ${limit.retryAfterSeconds} second${
+          limit.retryAfterSeconds === 1 ? '' : 's'
+        }.`,
+        retryAfterSeconds: limit.retryAfterSeconds,
+      },
       { status: 429, headers: { 'Retry-After': String(limit.retryAfterSeconds) } }
     )
   }

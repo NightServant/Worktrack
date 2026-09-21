@@ -56,6 +56,8 @@ export interface CalendarExtras {
     | 'onBoardsChange'
     | 'boardsLoading'
     | 'boardNotes'
+    | 'onSearchBoards'
+    | 'boardsSearched'
   >
 }
 
@@ -196,7 +198,31 @@ export function useCalendarExtras({ boards: allowBoards = true }: CalendarExtras
     return { query: field?.name, location: place?.name }
   }, [industries.data, industry, offered, geo])
 
-  const boardFeed = useScrapedJobs(allowBoards ? boards : [], boardQuery)
+  /**
+   * The boards a search was actually asked for, as opposed to the ones ticked.
+   *
+   * THE TWO USED TO BE ONE THING and that was the defect (Gabe, 2026-09-21:
+   * "Too many requests"). The query key was the SELECTION, so every toggle
+   * started a fresh search -- picking four boards was four crawls against a
+   * throttle of two a minute, and the reader was rate-limited before they had
+   * finished choosing. Splitting them means the selection is free and only a
+   * press spends anything.
+   */
+  const [searched, setSearched] = React.useState<FeedSource[]>([])
+
+  /*
+    A BOARD SWITCHED OFF LEAVES THE SEARCH, but switching one ON does not join
+    it -- that needs a press, because it needs a crawl. Without this, unticking
+    a board would leave its postings in the rail with its own toggle dark.
+  */
+  React.useEffect(() => {
+    setSearched((current) => {
+      const kept = current.filter((source) => boards.includes(source))
+      return kept.length === current.length ? current : kept
+    })
+  }, [boards])
+
+  const boardFeed = useScrapedJobs(allowBoards ? searched : [], boardQuery)
   React.useEffect(() => {
     if (geoSettled.current || offered.length === 0 || !country) return
     const slug = geoSlugForCountry(country, offered)
@@ -231,6 +257,11 @@ export function useCalendarExtras({ boards: allowBoards = true }: CalendarExtras
       error: !!feed.error,
       boards: allowBoards ? boards : [],
       boardsLoading: boardFeed.isFetching,
+      // EVERY PICKED BOARD HAS BEEN SEARCHED, which is what makes the button
+      // read `searched` rather than offering to buy the same answer again.
+      boardsSearched:
+        boards.length > 0 && boards.every((source) => searched.includes(source)),
+      onSearchBoards: allowBoards ? () => setSearched([...boards]) : undefined,
       /**
        * A FAILED REQUEST IS A NOTE TOO, so the row never goes quiet. The
        * extractor reports per-board failures in `notes`; a request that did

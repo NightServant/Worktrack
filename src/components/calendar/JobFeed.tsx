@@ -98,6 +98,26 @@ export interface JobFeedProps {
    */
   boards?: readonly FeedSource[]
   onBoardsChange?: (next: FeedSource[]) => void
+  /**
+   * Runs the search against whichever boards are switched on.
+   *
+   * WHY A BUTTON AND NOT THE TOGGLE ITSELF, which is what shipped first and
+   * was wrong (Gabe, 2026-09-21: "Too many requests"). Each press of a board
+   * changed the query key, so picking all four fired four separate searches --
+   * four crawls, each billed per posting, against a throttle of two a minute.
+   * The reader hit the limit before they had finished choosing.
+   *
+   * Separating them makes the spend match the intent: the toggles say WHICH
+   * boards, one press says GO. It is also the honest shape for a control that
+   * costs money -- nothing is charged for changing your mind.
+   *
+   * ABSENT MEANS THE TOGGLES APPLY THEMSELVES, which is what `/demo/planner`
+   * wants: its rows are a fixture, filtering them is free and instant, and a
+   * search button in front of that would be ceremony over nothing.
+   */
+  onSearchBoards?: () => void
+  /** Whether the current selection has already been searched. */
+  boardsSearched?: boolean
   /** Whether a board run is in flight. The rail stays; the row says so. */
   boardsLoading?: boolean
   /** Per-board failures, from the extractor. See `FeedNote`. */
@@ -159,6 +179,8 @@ export function JobFeed({
   trackedIds = {},
   boards = [],
   onBoardsChange,
+  onSearchBoards,
+  boardsSearched = false,
   boardsLoading = false,
   boardNotes = [],
   boardsHint,
@@ -359,14 +381,34 @@ export function JobFeed({
               {/* THE COST IS SAID BEFORE IT IS INCURRED, not after. A control
                   that quietly spends is the one thing this app has refused to
                   ship anywhere else. */}
-              <p className="text-caption text-text-muted">
-                {boardsLoading
-                  ? 'searching those boards — they crawl a results page, so this takes a moment.'
-                  : (boardsHint ??
-                    (boards.length === 0
-                      ? 'jobicy is always on and free. add a board to search it too.'
-                      : 'these boards are searched on demand and take a moment.'))}
-              </p>
+              <div className="flex flex-wrap items-center gap-3">
+                <p className="text-caption text-text-muted">
+                  {boardsLoading
+                    ? 'searching those boards — they crawl a results page, so this takes a moment.'
+                    : (boardsHint ??
+                      (boards.length === 0
+                        ? 'jobicy is always on and free. pick a board to search it too.'
+                        : boardsSearched
+                          ? 'these boards are searched on demand and take a moment.'
+                          : 'pick the boards you want, then search — each one is a crawl that takes a moment.'))}
+                </p>
+                {/* NOTHING TO SEARCH IS NOT A REASON TO DRAW A DISABLED
+                    BUTTON. With no board picked the sentence beside it already
+                    says what to do. */}
+                {onSearchBoards && boards.length > 0 && (
+                  <Button
+                    type="button"
+                    size="s"
+                    data-feed-board-search
+                    // A second press of an unchanged selection would buy the
+                    // same answer twice at full price.
+                    disabled={boardsLoading || boardsSearched}
+                    onClick={onSearchBoards}
+                  >
+                    {boardsLoading ? 'searching' : boardsSearched ? 'searched' : 'search these boards'}
+                  </Button>
+                )}
+              </div>
               {/* A BOARD THAT GAVE NOTHING SAYS SO, ON ITS OWN LINE. Four run
                   concurrently and each fails on its own, so one being down
                   must not empty the other three -- and silence would be
