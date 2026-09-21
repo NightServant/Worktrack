@@ -10,6 +10,7 @@ import { DangerZone } from './DangerZone'
 import { ProfileGroup, type ProfileState } from './ProfileGroup'
 import type { ProfileDetails } from './ProfileDetailsDialog'
 import { resolveDefaultCurrency, type SupportedCurrency, type UserPreferences } from '@/services/userPreferences'
+import { useUserCountry } from '@/hooks/useUserCountry'
 
 /**
  * The Settings screen's body, over plain props -- the same split as
@@ -87,6 +88,14 @@ export function SettingsPage({
   profileSource,
   profileSteps,
 }: SettingsPageProps) {
+  /*
+    THE OPENING CURRENCY FOLLOWS THE READER, for anybody who has never set one
+    -- the preferences row is created lazily, so most people have none and
+    every one of them used to get PHP. Detected after mount; see
+    `useUserCountry` for why not during render.
+  */
+  const country = useUserCountry('PH')
+
   return (
     <div className="flex flex-col gap-8">
       <PageHeader
@@ -149,7 +158,7 @@ export function SettingsPage({
         <TabsContent value="general" className="flex flex-col gap-8 pt-8">
           <AccountGroup email={email} onSignOut={onSignOut} signingOut={signingOut} />
           <PreferencesGroup
-            defaultCurrency={resolveDefaultCurrency(prefs)}
+            defaultCurrency={resolveDefaultCurrency(prefs, country)}
             onDefaultCurrencyChange={onDefaultCurrencyChange}
             saving={savingCurrency}
           />

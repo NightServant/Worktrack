@@ -29,6 +29,7 @@ import {
 } from '@/hooks/useDocumentLinks'
 import { useScheduleInterview } from '@/hooks/useJobEvents'
 import { resolveDefaultCurrency } from '@/services/userPreferences'
+import { useUserCountry } from '@/hooks/useUserCountry'
 import type { Job, JobFormData } from '@/types'
 
 function message(err: unknown, fallback: string): string {
@@ -59,6 +60,13 @@ function message(err: unknown, fallback: string): string {
 function ApplicationsRoute() {
   const { data: jobs = [], isLoading, error } = useJobs()
   const { data: prefs = null } = useUserPreferences()
+  /*
+    THE OPENING CURRENCY FOLLOWS THE READER when they have never set one. The
+    preferences row is created lazily on first write, so most people have none
+    and every one of them used to start a new application in PHP. Detected
+    after mount -- see `useUserCountry`.
+  */
+  const country = useUserCountry('PH')
   const createJob = useCreateJob()
   const createJobsBulk = useCreateJobsBulk()
   const updateJob = useUpdateJob()
@@ -277,7 +285,7 @@ function ApplicationsRoute() {
     <>
       <ApplicationsPage
         jobs={jobs}
-        defaultCurrency={resolveDefaultCurrency(prefs)}
+        defaultCurrency={resolveDefaultCurrency(prefs, country)}
         onDigest={(text) => digest.mutateAsync(text)}
         resumes={resumes.map((resume) => ({ id: resume.id, title: resume.title }))}
         linkedResumeId={openLinks[0]?.resume_id ?? null}

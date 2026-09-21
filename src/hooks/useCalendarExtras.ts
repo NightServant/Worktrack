@@ -72,6 +72,24 @@ export interface CalendarExtras {
  */
 const JOB_FEED_BOARDS_KEY = 'worktrack.job-feed-boards'
 
+
+/**
+ * `PH` -> `Philippines`, for the boards that take a country as free text.
+ *
+ * `Intl.DisplayNames` RATHER THAN A TABLE, which is the same trick
+ * `geoSlugForCountry` uses: the browser already knows every country's name,
+ * in the reader's own language, and it stays correct as countries are renamed
+ * without anybody maintaining a list.
+ */
+function countryName(code: string | null): string | undefined {
+  if (!code) return undefined
+  try {
+    return new Intl.DisplayNames(['en'], { type: 'region' }).of(code) ?? undefined
+  } catch {
+    return undefined
+  }
+}
+
 /** `all` is the panel's sentinel for "no filter", not an API slug. */
 const ANY_INDUSTRY = 'all'
 
@@ -195,8 +213,27 @@ export function useCalendarExtras({ boards: allowBoards = true }: CalendarExtras
   const boardQuery = React.useMemo(() => {
     const field = (industries.data ?? []).find((facet) => facet.slug === industry)
     const place = offered.find((facet) => facet.slug === geo)
-    return { query: field?.name, location: place?.name }
-  }, [industries.data, industry, offered, geo])
+    /*
+      THE DETECTED COUNTRY IS THE FALLBACK, and it is not a duplicate of the
+      region dropdown above it -- it reaches roles the dropdown cannot name.
+
+      Jobicy publishes 55 locations, so most countries are not among them and
+      `geoSlugForCountry` leaves the filter on `anywhere`. That is the right
+      answer for Jobicy, which genuinely has nothing narrower to offer. It is
+      the WRONG answer for these boards: LinkedIn, JobStreet and Indeed take a
+      country as free text and will happily search one Jobicy has never heard
+      of. Sending nothing made a reader in a country off that list of 55 pay
+      for a worldwide crawl and read roles they cannot take.
+
+      A CHOSEN REGION STILL WINS. `place?.name` first: somebody who picked
+      `anywhere` on purpose, or picked a region other than their own, meant it.
+      Detection only fills the gap where no choice has been made.
+    */
+    return {
+      query: field?.name,
+      location: place?.name ?? countryName(country),
+    }
+  }, [industries.data, industry, offered, geo, country])
 
   /**
    * The boards a search was actually asked for, as opposed to the ones ticked.
