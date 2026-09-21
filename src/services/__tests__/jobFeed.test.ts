@@ -296,3 +296,69 @@ describe('asking the paid boards', () => {
     expect(result).toEqual({ jobs: [], notes: [] })
   })
 })
+
+describe('what counts as the same posting', () => {
+  const role = (id: string, title: string, company: string, url: string) => ({
+    source: 'indeed' as const,
+    id,
+    title,
+    company,
+    url,
+    geo: null,
+    level: null,
+    industry: null,
+    publishedAt: '2026-09-20T00:00:00.000Z',
+    excerpt: null,
+    salaryMin: null,
+    salaryMax: null,
+    salaryCurrency: null,
+  })
+
+  it('does not mark every Indeed row tracked because one of them is', () => {
+    /*
+      THE DEFECT (Gabe, 2026-09-21: "wrong tracked logic"). The address key
+      dropped the whole query string, which is right for boards whose identity
+      is the path and catastrophic for Indeed: every posting lives at
+      `/viewjob` and is told apart only by `?jk=`. One tracked Indeed
+      application marked the entire rail.
+    */
+    const feed = [
+      role('indeed:1', 'Parts Supervisor', 'Laus Group', 'https://ph.indeed.com/viewjob?jk=aaa'),
+      role('indeed:2', 'Systems Admin', 'Archipelago', 'https://ph.indeed.com/viewjob?jk=bbb'),
+    ]
+    const tracked = trackedFeedRoles(
+      [{ id: 'a1', url: 'https://ph.indeed.com/viewjob?jk=aaa', company: 'Laus Group', role: 'Parts Supervisor' }],
+      feed
+    )
+    expect(tracked).toEqual({ 'indeed:1': 'a1' })
+    expect(tracked['indeed:2']).toBeUndefined()
+  })
+
+  it('still ignores the parts of an address that carry no meaning', () => {
+    // Tracking parameters say where a link was clicked, not what it is. The
+    // identifying one has to survive; these must not.
+    const feed = [role('indeed:1', 'Parts Supervisor', 'Laus Group', 'https://ph.indeed.com/viewjob?jk=aaa')]
+    const tracked = trackedFeedRoles(
+      [
+        {
+          id: 'a1',
+          url: 'https://ph.indeed.com/viewjob?from=serp&jk=aaa&tk=xyz&utm_source=feed',
+          company: 'Other Name Entirely',
+          role: 'Different Title',
+        },
+      ],
+      feed
+    )
+    expect(tracked).toEqual({ 'indeed:1': 'a1' })
+  })
+
+  it('matches on company and title when the addresses differ', () => {
+    // The ordinary case for anybody who applied from the employer's own page.
+    const feed = [role('indeed:1', 'Parts Supervisor', 'Laus Group', 'https://ph.indeed.com/viewjob?jk=aaa')]
+    const tracked = trackedFeedRoles(
+      [{ id: 'a1', url: 'https://laus.example/careers/5', company: 'laus group', role: 'parts supervisor' }],
+      feed
+    )
+    expect(tracked).toEqual({ 'indeed:1': 'a1' })
+  })
+})

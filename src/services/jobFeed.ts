@@ -319,12 +319,57 @@ export async function fetchFeedIndustries(signal?: AbortSignal): Promise<FeedFac
  * Comparing raw strings would call the same posting untracked over a question
  * mark.
  */
+/**
+ * Query parameters that say where a link was CLICKED rather than what it is.
+ *
+ * EVERYTHING ELSE IS KEPT, and that direction is the fix. The first version
+ * dropped the whole query string, which is correct for Jobicy and JobStreet --
+ * their identity is the path -- and catastrophic for Indeed, whose every
+ * posting lives at `/viewjob` and is told apart only by `?jk=`. So a reader
+ * with ONE tracked Indeed application saw every Indeed row in the rail marked
+ * `tracked`, which is what Gabe reported.
+ *
+ * A DENY LIST RATHER THAN AN ALLOW LIST because the identifying parameter is
+ * named differently on every board and a board we have not met yet would be
+ * broken by default. Tracking parameters, on the other hand, are the same
+ * handful everywhere.
+ */
+const TRACKING_PARAMS = new Set([
+  'ref',
+  'refid',
+  'referer',
+  'referrer',
+  'trackingid',
+  'position',
+  'pagenum',
+  'origin',
+  'from',
+  'source',
+  'src',
+  'seed',
+  'sid',
+  'tk',
+  'alid',
+  'xpse',
+  'xkcb',
+  'xfps',
+])
+
 function addressKey(url: string | null): string | null {
   if (!url) return null
   try {
     const parsed = new URL(url)
     const path = parsed.pathname.replace(/\/+$/, '')
-    return `${parsed.host.replace(/^www\./, '').toLowerCase()}${path.toLowerCase()}`
+
+    // SORTED, so the same posting reached by two links with the parameters in
+    // a different order is one posting.
+    const meaningful = [...parsed.searchParams.entries()]
+      .filter(([key]) => !TRACKING_PARAMS.has(key.toLowerCase()) && !key.toLowerCase().startsWith('utm_'))
+      .map(([key, value]) => `${key.toLowerCase()}=${value.toLowerCase()}`)
+      .sort()
+
+    const query = meaningful.length > 0 ? `?${meaningful.join('&')}` : ''
+    return `${parsed.host.replace(/^www\./, '').toLowerCase()}${path.toLowerCase()}${query}`
   } catch {
     return null
   }

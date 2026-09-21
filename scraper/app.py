@@ -1920,6 +1920,42 @@ async def _rendered_jobs(source: str, body: JobFeedRequest) -> tuple[list[dict[s
     return unique, reason if (unique or reason != "ok") else "no-rows"
 
 
+def _dedupe_jobs(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The same posting once, however many times a board listed it.
+
+    TWO KEYS, AND THE SECOND IS THE ONE THAT WAS MISSING (Gabe, 2026-09-21:
+    "double information about job postings"). Every route already dropped a
+    repeated ADDRESS, which catches a posting that appears on two pages of the
+    same search. It does not catch what Indeed actually does: list one job
+    twice under different ids because it was posted to two locations --
+    measured on "Operations & Trade Accounts Manager" at d2B, once as `PH` and
+    once as `P00, PH`, with different `jk` values and therefore different URLs.
+
+    SO COMPANY-AND-TITLE IS THE SECOND KEY, scoped to one source. Across
+    sources it would be wrong: the same job on Indeed and on JobStreet is two
+    real listings, and which one a reader opens is theirs to choose. Within one
+    board it is the same advert twice.
+
+    THE FIRST ONE WINS, which after the sort is the most recent -- the fresher
+    listing of a job posted twice is the one still open.
+    """
+    seen_url: set[str] = set()
+    seen_role: set[str] = set()
+    unique: list[dict[str, Any]] = []
+    for job in jobs:
+        url = job.get("url") or ""
+        company = " ".join(str(job.get("company") or "").split()).lower()
+        title = " ".join(str(job.get("title") or "").split()).lower()
+        role = f"{job.get('source')}|{company}|{title}" if company and title else ""
+        if url in seen_url or (role and role in seen_role):
+            continue
+        seen_url.add(url)
+        if role:
+            seen_role.add(role)
+        unique.append(job)
+    return unique
+
+
 @app.post("/jobs")
 async def jobs_endpoint(body: JobFeedRequest) -> JSONResponse:
     """Recent postings from one or more paid board actors, merged.
@@ -1969,5 +2005,8 @@ async def jobs_endpoint(body: JobFeedRequest) -> JSONResponse:
         if reason != "ok":
             notes.append({"source": source, "message": _job_feed_message(source, reason)})
 
+    # SORTED FIRST, DEDUPED SECOND, so the copy that survives a duplicate is
+    # the most recently listed one rather than whichever the board returned
+    # first.
     jobs.sort(key=lambda job: job["publishedAt"], reverse=True)
-    return JSONResponse({"jobs": jobs, "notes": notes}, status_code=200)
+    return JSONResponse({"jobs": _dedupe_jobs(jobs), "notes": notes}, status_code=200)
