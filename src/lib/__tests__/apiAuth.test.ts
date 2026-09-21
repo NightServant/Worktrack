@@ -35,8 +35,8 @@ describe('who is allowed to spend the quota', () => {
   })
 
   it('rejects a request with no Authorization header at all', async () => {
-    // The state these three routes shipped in. Anyone with the path could
-    // drain a paid FormaTeX or LLM allowance from a curl loop.
+    // The state those routes shipped in. Anyone with the path could drain a
+    // paid LLM or Apify allowance from a curl loop.
     const result = await authenticate(request())
     expect(result).toMatchObject({ ok: false, status: 401 })
   })

@@ -111,11 +111,6 @@ describe('what this deployment can do', () => {
     // Nothing set at all is not a problem -- it is the normal unconfigured state.
     expect(configProblems(configWith())).toEqual([])
   })
-
-  it('defaults FormaTeX to the base URL that was actually probed', () => {
-    // `/api/v1` is not a guess: POST /api/v1/compile answered 401 while
-    // /v1/compile answered 404, which is how the path was established.
-  })
 })
 
 describe('reading a tailoring reply', () => {

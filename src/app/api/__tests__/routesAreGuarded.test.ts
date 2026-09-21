@@ -6,12 +6,14 @@ import { join, relative } from 'node:path'
  * EVERY route under /api authenticates, and this is what keeps that true for
  * the next one somebody adds.
  *
- * All three existing routes shipped unauthenticated -- `/api/latex/compile`
- * spends FormaTeX quota per call, `/api/tailor` spends a metered LLM
- * allowance, `/api/cv/docx` spends CPU -- so anyone who found the path could
- * drain a paid allowance from a curl loop. Adding the gate fixed those three;
- * without this test the fourth route starts the problem over, and nothing
- * fails until a bill does.
+ * The routes that existed at the time shipped unauthenticated -- `/api/tailor`
+ * spends a metered LLM allowance, `/api/autofill` reaches a service that can
+ * spend an Apify balance, `/api/cv/docx` spends CPU -- so anyone who found the
+ * path could drain a paid allowance from a curl loop. Adding the gate fixed
+ * those; without this test the NEXT route starts the problem over, and nothing
+ * fails until a bill does. That is why this counts nothing and asserts a
+ * property instead: the number of routes has more than doubled since, and a
+ * test that named three would have gone stale before the fourth landed.
  *
  * It reads source rather than exercising handlers, deliberately. The invariant
  * is "no route file is missing the call", which is a property of the SET of

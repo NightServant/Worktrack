@@ -17,22 +17,38 @@ that stops someone re-investigating.
 
 | Service | For | Verified | Status |
 |---|---|---|---|
-| **FormaTeX** | LaTeX → PDF | 2026-09-04 | **Integrated** — `src/services/integrations/formatex.ts` |
 | **Any OpenAI-compatible endpoint** | CV tailoring | 2026-09-04 | **Integrated** — `src/services/integrations/tailoring.ts` |
 | **ESCO** (EU skills taxonomy) | ATS skill synonyms | 2026-09-04 | **Integrated, narrowly** — `src/services/integrations/esco.ts` |
 | **`docx`** (npm, 9.7.1) | headless Word export | 2026-09-04 | **Integrated** — `src/services/integrations/docxExport.ts` |
 | **Scrapling** | job posting parsing | 2026-09-06 | **Integrated** — `scraper/`, deployed as a Vercel service |
 | **Firecrawl** | fetching the pages we cannot | 2026-09-07 | **Integrated, optional** — `scraper/app.py` |
-| **Apify** (`crawlerbros/linkedin-profile-scraper`) | LinkedIn profile, when Firecrawl cannot open it | 2026-09-10 | **Integrated** — `scraper/extractor/apify_profile.py` |
+| **Apify** | a LinkedIn profile Firecrawl cannot open, and the rail's JobStreet board | 2026-09-21 | **Integrated, keyed** — `scraper/extractor/apify_profile.py`, `scraper/extractor/job_board.py` |
 | **LinkedIn data export** | your own profile | 2026-09-06 | **Integrated** — `src/services/linkedinExport.ts` |
 | **Nager.Date** | public holidays on the calendar | 2026-09-10 | **Integrated, keyless** — `src/services/holidays.ts` |
+| **Jobicy** | the roles rail's default board | 2026-09-21 | **Integrated, keyless** — `src/services/jobFeed.ts`, fetched by the BROWSER |
+| **LinkedIn guest search** | the roles rail's LinkedIn board | 2026-09-21 | **Integrated, keyless** — `scraper/extractor/linkedin_jobs.py` |
+| **JobSpy** (npm-free, PyPI `python-jobspy`) | the roles rail's Indeed board | 2026-09-21 | **Integrated, keyless — and it wears a disguise**; see README §12 and `scraper/extractor/jobspy_board.py` |
+| **GitHub REST API** | the GitHub half of profile import | 2026-09-21 | **Integrated, keyless** — `scraper/extractor/github_profile.py`; `GITHUB_TOKEN` only raises the rate limit |
+| **LanguageTool** | grammar, spelling and style in the editor | 2026-09-21 | **Integrated, keyless** — `src/services/grammar.ts`, called by the BROWSER so the per-IP free tier is per reader |
 
-That is the whole list. Nine working integrations. Anything
-not in this table is not in this application.
+That is the whole list. Anything not in this table is not in this application.
+
+**How the 2026-09-21 rows were checked**, because rule 1 below applies to this
+paragraph as much as to any other. Jobicy, the LinkedIn guest search and Indeed
+through JobSpy were each RUN that day and returned rows — the guest endpoint
+answered 200 with a full page of cards to a bare request, and one `/jobs` call
+for all three boards came back with a hundred and thirty postings in 0.8s. The
+GitHub and LanguageTool rows were read from their clients and NOT re-probed, so
+they are claims about this repository rather than about those services today.
+The **JobStreet** actor has never been run: there is no `APIFY_TOKEN` on this
+machine, so its field mapping is tested against the actor's documented row
+shape and nothing more.
 
 (Apify had a section below and no row here until 2026-09-10 — a stale table is
 the one failure mode this file exists to prevent, so it was corrected while
-Nager.Date was being added.)
+Nager.Date was being added. It happened again and worse by 2026-09-21: five
+services had been wired up with no row at all, and FormaTeX kept a row and a
+section for a fortnight after the code that called it was deleted.)
 
 ---
 
@@ -245,24 +261,29 @@ since only the Python process reads it.
 
 ---
 
-## FormaTeX — LaTeX → PDF
+## FormaTeX — removed 2026-09-21, and it is worth one paragraph
 
-Real REST API at `api.formatex.io/api/v1`. The contract in
-`src/services/integrations/formatex.ts` comes from probing, because FormaTeX's
-own `/docs/api` page 404s:
+It was a hosted LaTeX → PDF compiler, and it is gone because the thing that
+needed it is gone. The LaTeX EDITOR was deleted on 2026-09-13 — a second
+authoring surface for one kind of document is two surfaces to keep in step —
+and `LATEX_TEMPLATES` followed on 2026-09-14. PDF is rendered in JavaScript
+now (`src/services/integrations/pdfExport.ts`, and see the README's note on why
+it cannot live in an edge function), and `.tex` survives as an EXPORT: one
+function over the Tiptap document somebody already typed, in the same shape as
+the `.docx` one. Nothing in that path compiles anything, so there is nothing
+left for a key to buy.
 
-```
-GET  api.formatex.io/api/v1/health   -> 200 {"status":"ok"}
-POST api.formatex.io/api/v1/compile  -> 401 {"error":"missing API key"}
-POST api.formatex.io/api/v1/compile
-     with X-API-Key: bogus           -> 401 {"error":"invalid API key"}
-POST api.formatex.io/v1/compile      -> 404   (wrong base path)
-GET  formatex.io/mcp                 -> 200 text/html (a docs PAGE, not an endpoint)
-```
+`src/services/integrations/formatex.ts` no longer exists. This section stays,
+compressed, for the reason the [Ruled out](#ruled-out--do-not-re-investigate)
+table exists: without it the next person reading `FORMATEX_API_KEY` in an old
+`.env` file has to rediscover why it does nothing.
 
-The header name `X-API-Key` is **known** rather than assumed, because the error
-**changed** when it was sent. That is the standard every claim in this file is
-held to.
+What was measured about it is kept, because it was measured and it is still
+true of FormaTeX: the base path is `/api/v1`, `POST /api/v1/compile` answers
+`401 {"error":"missing API key"}` where `/v1/compile` answers 404, and the
+header is `X-API-Key` — **known** rather than assumed, because the error
+CHANGED when it was sent. That is the standard every claim in this file is held
+to, and it is why this paragraph survives its own integration.
 
 ## CV tailoring — the contract, not a vendor
 
@@ -451,12 +472,13 @@ cp .env.example .env.local   # then fill in only what you want
 
 | Variable | Needed for | Where to get it |
 |---|---|---|
-| `FORMATEX_API_KEY` | LaTeX → PDF | formatex.io dashboard |
-| `FORMATEX_BASE_URL` | LaTeX → PDF | defaults to the verified base path |
 | `TAILORING_BASE_URL` | AI tailoring | any OpenAI-compatible endpoint |
 | `TAILORING_API_KEY` | AI tailoring | same provider |
 | `TAILORING_MODEL` | AI tailoring | a model id that provider serves |
 | `ESCO_ENABLED` | skills synonyms | nothing — on by default, no key |
+| `FIRECRAWL_API_KEY` | fetching pages this server cannot | firecrawl.dev. **Read by the PYTHON service**, so it belongs in `scraper/.env` locally, not `.env.local` |
+| `APIFY_TOKEN` | profile import, and the JobStreet board | apify.com. Also the Python service. The only key here that spends money per call |
+| `GITHUB_TOKEN` | nothing new — only the rate limit | optional; 60 requests an hour anonymous, 5,000 with it |
 
 Nothing here is required. Every client degrades to a documented fallback, and
 `capabilitiesOf()` is what the UI branches on, so an unconfigured feature says

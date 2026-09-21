@@ -9,10 +9,12 @@ import { DesktopDocumentChrome } from './DesktopDocumentChrome'
  * The chrome every CV editor sits in: breadcrumb, name, save state, actions,
  * a docked tool strip, and the page itself.
  *
- * ONE COMPONENT FOR BOTH EDITORS. Word and LaTeX had separate headers that had
- * already drifted, and a third surface is coming (the docx-editor.dev
- * component, and FormaTeX's compiled preview) -- three hand-maintained copies
- * of the same bar is three chances to disagree about where Save lives.
+ * ONE COMPONENT, AND IT OUTLIVED THE REASON IT WAS WRITTEN. Word and LaTeX had
+ * separate headers that had already drifted, so they were merged here. The
+ * LaTeX editor was then deleted on 2026-09-13 and the third surface this note
+ * anticipated never arrived -- but the chrome is still shared, by the CV and
+ * the cover letter, which are two document kinds through one bar rather than
+ * two bars that disagree about where Save lives.
  *
  * WHAT CHANGED IN THE REFORMAT, and why each one, since "make it nicer" is
  * not a spec:

@@ -122,14 +122,15 @@ The dates move with the clock. A fixture pinned to literal dates would say "appl
 
 ### CV builder
 - Word-style rich text editor (Tiptap). **There is no Save button**: the document writes itself 1200ms after you stop typing, the header says where the work stands, and ⌘S says so too rather than letting the browser offer to save the page
-- LaTeX source editor with live side-by-side preview
-- Template presets for both modes, browsable on their own screen
+- Two kinds of document, one editor: a CV and a cover letter. **The LaTeX source editor is gone** — it was a second authoring surface with its own pane, its own templates and its own compile round trip, and two editors for one kind of document is two things to keep in step. It went on 2026-09-13; `.tex` survives as an export, below
+- Template presets for both kinds, browsable on their own screen
 - **A template opens already filled in.** The first ten minutes with somebody else's template are spent deleting "Your Name" and retyping four contact fields the app already stores, so the substitution happens at *create* time rather than being offered as a button. Two mechanisms, because one is not enough: `{{name|Your Name}}` tokens are replaced in place — name, headline, location, the account's email, phone, birthday, and the LinkedIn and GitHub addresses you gave at registration — while Experience, Education, Skills, Projects and Certifications are whole sections, regenerated from the profile's entries. Every token carries its own fallback, so a reader who has connected nothing gets the document the template always produced; a token with no value and no fallback takes its separator with it rather than leaving a stranded `|`. It runs on the way in and never over a saved draft, which is the user's own work
 - Grammar, spelling and style checks over the open document, from LanguageTool's keyless public endpoint. The browser calls it directly rather than through this server, because the free tier is rate limited per IP and a proxy would put every user behind one address
 - Version history — autosave snapshots, capped at 60 per CV and written no more often than once every five minutes. It was ten, sized for one job, and ten snapshots five minutes apart cover under an hour of editing: a fine crash-recovery window and useless as a record of what was sent where, which the same table also holds. The cap is soft — a pinned snapshot is exempt, so it governs churn rather than evidence
-- Export to `.tex`, `.docx` or PDF — three Next.js routes, with no headless browser between you and the file
+- Export to `.tex`, `.docx` or PDF — three Next.js routes, with no headless browser between you and the file. `.tex` is one function over the document you already typed, in the same shape as the `.docx` one: nothing there can be edited, so there is no second surface to drift
 - An ATS check that reads the document rather than guessing at it, and names both the matched and the missing keywords. Its synonyms come from **ESCO**, the European Commission's skills taxonomy — keyless, and used narrowly: it is an occupational index rather than a technology one, so it is asked about skills and not about frameworks
 - Tailoring against a job description, through your own OpenAI-compatible endpoint rather than a credit meter. Unset the `TAILORING_*` variables and every model feature switches off and says why, rather than failing at the point of use
+- **A cover letter gets neither of those two and something else instead.** ATS scoring and tailoring are about a CV being read by a machine against a posting, and neither question is what a letter is for — so the rail's third pane is a letter check: who it is addressed to, how it opens, whether it shows anything rather than asserting it, and whether it ends with a next step. It is deterministic, because a general writing score would have replaced a check that knows what a CV is for with one that knows nothing about what a letter is for
 
 ### Profile
 - **Several public addresses, read and merged into one profile**: LinkedIn, GitHub, JobStreet, Indeed and Glassdoor. One source is half a person — a signed-out LinkedIn page carries roles and dates and no skills at all, while GitHub carries what you have built and in which languages and has no concept of employment
@@ -152,7 +153,7 @@ Worktrack is not trying to out-feature the commercial trackers. It is trying to 
 |---|---|---|---|
 | Applications tracked | no cap in the app; your Postgres quota is the ceiling | unlimited | up to 100 |
 | CVs | no cap in the app | unlimited | unlimited base résumés |
-| CV templates | Word **and** LaTeX presets (see the Templates screen) | 10 | all templates |
+| CV templates | CV **and** cover-letter presets (see the Templates screen) | 10 | all templates |
 | Job-description keyword matching | every keyword, matched and missing, against the CV you linked | top 5 keywords | basic |
 | AI generations | your own API key, unmetered by us | 10 bullet credits, 2 summary, 2 cover letter | limited credits, then paid |
 | Tailored CVs | limited only by your own API key | unlimited résumés, top-5 matching | 2 |
@@ -188,7 +189,8 @@ xychart-beta
 
 #### What Worktrack does that neither page lists
 
-- **A LaTeX CV editor** with a live side-by-side preview and PDF output, alongside the Word-style one
+- **`.tex` export**, alongside `.docx` and PDF, so a CV written here can be taken to a LaTeX toolchain rather than re-typed into one
+- **Cover letters through the same editor and the same model pass as a CV**, with five presets, rather than a separate generator with its own credit meter
 - **Public holidays on the calendar**, per country, from a keyless open-source API
 - **A rail of newly posted remote roles** inside the tracker, where *track it* hands the URL to the add flow and the app reads the employer's own page
 - **Self-hosting on your own Supabase project**, with row-level security scoping every row to its owner — nobody's terms of service sit between you and your applications
@@ -202,7 +204,7 @@ Stated plainly, because a comparison that only runs one way is an advertisement:
 - **A browser extension.** Both list one; Huntr's "Chrome Job Clipper" saves a posting in a click and its **application autofill** fills employer forms for you. Worktrack has no extension, and a bookmarklet covers the clipper's half of that — one click hands over the posting your browser is already showing, which is the only way to read a board that answers a server with a challenge. It installs by dragging a link rather than through a store listing and a review queue. Nothing here fills an employer's form for you.
 - **A job board of their own.** Teal and Huntr surface listings and company data in-product. Worktrack shows a third-party remote feed and nothing else.
 - **Contact management.** Huntr lists it as unlimited on the free tier. Worktrack removed contacts from the record on purpose; the columns still exist, nothing renders them.
-- **AI cover letters.** Both list generation; Worktrack tailors CVs and does not write cover letters.
+- **A cover letter written against the posting.** Both list generation from a job description. Worktrack writes letters — five templates, and the same model pass that fills a CV fills a letter from your profile — but the *tailoring* pane is CV-only, so nothing here rewrites a letter to match a particular advert. The letter's own rail pane is a deterministic check (who it is addressed to, how it opens, whether it shows anything, whether it ends with a next step) rather than a second generator.
 - **Maturity.** Support, a company behind it, and years of iteration. Worktrack is one person's project.
 
 #### Check the rest yourself
@@ -430,7 +432,7 @@ Twelve tables, RLS enabled on all of them:
 | `job_status_history` | Append-only status transitions, written by trigger |
 | `activity_log` | Free-form timestamped notes per application |
 | `events` | Interviews, deadlines, take-homes |
-| `resumes` | CV drafts; structured sections, Tiptap JSON, or LaTeX |
+| `resumes` | CV and cover-letter drafts, as Tiptap JSON. The `sections` column is the JSON Resume shape, and nothing writes it — see Limitations |
 | `resume_snapshots` | Immutable version history |
 | `application_documents` | Which CV snapshot was sent to which application |
 | `contacts` / `application_contacts` | Recruiters and referrals, linked many-to-many |

@@ -1,9 +1,9 @@
 /**
  * `fetch` with the caller's Supabase session attached.
  *
- * Every route under /api costs something to serve -- FormaTeX quota, an LLM
- * allowance, CPU -- so all three are authenticated, and all three need the
- * token. This is that one place: without it each caller grows its own
+ * Every route under /api costs something to serve -- an LLM allowance, an
+ * Apify balance, CPU -- so every one of them is authenticated, and every one
+ * needs the token. This is that one place: without it each caller grows its own
  * `getSession()` dance, and the one that forgets does not fail loudly, it
  * just starts 401ing after a change nobody connected to it.
  *

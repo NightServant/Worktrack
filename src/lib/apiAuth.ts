@@ -5,12 +5,17 @@ import { logSecurityEvent } from './securityLog'
 /**
  * Who is calling one of this app's API routes.
  *
- * WHY THESE ROUTES NEEDED IT. `/api/latex/compile` spends FormaTeX quota per
- * request and `/api/tailor` spends a metered LLM allowance; `/api/cv/docx`
- * spends CPU. All three shipped unauthenticated, which means anyone who found
- * the path could drain a paid allowance from a curl loop. Nothing about them
- * is public -- every one exists to serve a signed-in user editing their own
- * CV -- so the gate is simply the one that was missing.
+ * WHY THESE ROUTES NEEDED IT. `/api/tailor` spends a metered LLM allowance,
+ * `/api/autofill` and `/api/jobfeed` reach a service that can spend an Apify
+ * balance, and `/api/cv/docx` spends CPU. They shipped unauthenticated, which
+ * means anyone who found the path could drain a paid allowance from a curl
+ * loop. Nothing about them is public -- every one exists to serve a signed-in
+ * user -- so the gate is simply the one that was missing.
+ *
+ * (This paragraph used to lead with `/api/latex/compile` and FormaTeX quota.
+ * Both are gone: the LaTeX editor went on 2026-09-13 and the compiler with
+ * it. The rule did not change, only the examples, which is the way a docblock
+ * usually goes wrong.)
  *
  * THE SCHEME IS THE ONE THE APP ALREADY USES, not a new one. `WordResumeEditor`
  * has always sent `Authorization: Bearer <session.access_token>`, first to the
