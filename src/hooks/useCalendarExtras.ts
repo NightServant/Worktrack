@@ -52,12 +52,10 @@ export interface CalendarExtras {
     | 'locations'
     | 'geo'
     | 'onGeoChange'
-    | 'boards'
-    | 'onBoardsChange'
+    | 'source'
+    | 'onSourceChange'
     | 'boardsLoading'
     | 'boardNotes'
-    | 'onSearchBoards'
-    | 'boardsSearched'
   >
 }
 
@@ -173,23 +171,31 @@ export function useCalendarExtras({ boards: allowBoards = true }: CalendarExtras
   const locations = useJobFeedLocations()
 
   /**
-   * The paid boards, off until somebody says otherwise.
+   * Which board the rail is reading. Jobicy until somebody says otherwise.
+   *
+   * ONE SOURCE, NOT A SET (Gabe, 2026-09-21: "use a dropdown only with a
+   * default setting of jobicy"). This was an array of switched-on boards with
+   * a separate `search` press in front of it, and both existed to manage a
+   * problem a single choice does not have -- a half-made selection that every
+   * toggle paid for separately. Picking a board IS asking for it now.
+   *
+   * JOBICY IS THE DEFAULT because it is the only one that is keyless, free and
+   * instant: the rail is full when the page opens rather than empty behind a
+   * control somebody has to find first.
    *
    * READ ONCE ON MOUNT rather than as lazy state, which is the pattern the two
    * choices above already use: this is a client component that renders on the
    * server first, and reading `localStorage` during render is a hydration
    * mismatch waiting to happen.
    */
-  const [boards, setBoards] = React.useState<FeedSource[]>([])
+  const [source, setSource] = React.useState<FeedSource>('jobicy')
   React.useEffect(() => {
     const stored = readStored(JOB_FEED_BOARDS_KEY)
-    if (!stored) return
-    // Filtered against the known set: a board removed from the app must not
+    // Checked against the known set: a board removed from the app must not
     // come back out of a browser that remembers it.
-    const remembered = stored
-      .split(',')
-      .filter((value): value is FeedSource => SCRAPED_SOURCES.includes(value as FeedSource))
-    if (remembered.length > 0) setBoards(remembered)
+    if (stored === 'jobicy' || SCRAPED_SOURCES.includes(stored as FeedSource)) {
+      setSource(stored as FeedSource)
+    }
   }, [])
 
   // THE FEED OPENS WHERE THE READER IS, when the feed knows that country.
@@ -235,31 +241,16 @@ export function useCalendarExtras({ boards: allowBoards = true }: CalendarExtras
     }
   }, [industries.data, industry, offered, geo, country])
 
-  /**
-   * The boards a search was actually asked for, as opposed to the ones ticked.
-   *
-   * THE TWO USED TO BE ONE THING and that was the defect (Gabe, 2026-09-21:
-   * "Too many requests"). The query key was the SELECTION, so every toggle
-   * started a fresh search -- picking four boards was four crawls against a
-   * throttle of two a minute, and the reader was rate-limited before they had
-   * finished choosing. Splitting them means the selection is free and only a
-   * press spends anything.
-   */
-  const [searched, setSearched] = React.useState<FeedSource[]>([])
-
   /*
-    A BOARD SWITCHED OFF LEAVES THE SEARCH, but switching one ON does not join
-    it -- that needs a press, because it needs a crawl. Without this, unticking
-    a board would leave its postings in the rail with its own toggle dark.
+    ONE BOARD AT A TIME, AND `jobicy` IS NOT ONE OF THEM HERE -- it is the free
+    browser-side feed above, not something `/api/jobfeed` can be asked for.
+    Picking it means the paid query simply does not run, which is also what
+    makes it a safe default.
   */
-  React.useEffect(() => {
-    setSearched((current) => {
-      const kept = current.filter((source) => boards.includes(source))
-      return kept.length === current.length ? current : kept
-    })
-  }, [boards])
-
-  const boardFeed = useScrapedJobs(allowBoards ? searched : [], boardQuery)
+  const boardFeed = useScrapedJobs(
+    allowBoards && source !== 'jobicy' ? [source] : [],
+    boardQuery
+  )
   React.useEffect(() => {
     if (geoSettled.current || offered.length === 0 || !country) return
     const slug = geoSlugForCountry(country, offered)
@@ -292,34 +283,34 @@ export function useCalendarExtras({ boards: allowBoards = true }: CalendarExtras
       jobs,
       loading: feed.isLoading,
       error: !!feed.error,
-      boards: allowBoards ? boards : [],
+      // ONE SOURCE, AND JOBICY IS ONE OF THE OPTIONS. `allowBoards` is false
+      // on /demo/planner, which pins the rail to the free feed it can reach
+      // without a session.
+      source: allowBoards ? source : 'jobicy',
       boardsLoading: boardFeed.isFetching,
-      // EVERY PICKED BOARD HAS BEEN SEARCHED, which is what makes the button
-      // read `searched` rather than offering to buy the same answer again.
-      boardsSearched:
-        boards.length > 0 && boards.every((source) => searched.includes(source)),
-      onSearchBoards: allowBoards ? () => setSearched([...boards]) : undefined,
       /**
-       * A FAILED REQUEST IS A NOTE TOO, so the row never goes quiet. The
+       * A FAILED REQUEST IS A NOTE TOO, so the line never goes quiet. The
        * extractor reports per-board failures in `notes`; a request that did
-       * not land at all has no notes, and the reader still switched something
-       * on and deserves to be told why nothing came of it.
+       * not land at all has no notes, and the reader still picked something
+       * and deserves to be told why nothing came of it.
        */
       boardNotes:
         boardFeed.data?.notes ??
-        (boardFeed.error
-          ? boards.map((source) => ({
-              source,
-              message:
-                boardFeed.error instanceof Error
-                  ? boardFeed.error.message
-                  : 'That board could not be searched right now.',
-            }))
+        (boardFeed.error && source !== 'jobicy'
+          ? [
+              {
+                source,
+                message:
+                  boardFeed.error instanceof Error
+                    ? boardFeed.error.message
+                    : 'That board could not be read right now.',
+              },
+            ]
           : []),
-      onBoardsChange: allowBoards
-        ? (next: FeedSource[]) => {
-            setBoards(next)
-            writeStored(JOB_FEED_BOARDS_KEY, next.join(','))
+      onSourceChange: allowBoards
+        ? (next: FeedSource) => {
+            setSource(next)
+            writeStored(JOB_FEED_BOARDS_KEY, next)
           }
         : undefined,
       industries: industries.data ?? [],

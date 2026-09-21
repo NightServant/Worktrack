@@ -22,6 +22,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { FilterBar } from '@/components/ui/filter-bar'
+import { Select } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { CheckIcon, ExternalIcon, PlusIcon } from '@/components/icons'
 import { ICON_MOTION_GROUP, iconMotion } from '@/components/icons/motion'
@@ -88,48 +89,35 @@ export interface JobFeedProps {
    */
   trackedIds?: Record<string, string>
   /**
-   * Which paid boards are switched on, and how to change that.
+   * Which board the rail is reading, and how to change it.
    *
-   * SEPARATE FROM THE TWO DROPDOWNS because they are a different kind of
-   * control. Region and field narrow a free feed that is already loaded; these
-   * four each start a crawl that costs money and takes tens of seconds. A
-   * reader should be able to tell those apart without reading the source, so
-   * they get their own row and their own wording.
+   * ONE SOURCE, NOT A SET (Gabe, 2026-09-21: "use a dropdown only with a
+   * default setting of jobicy"). This was a row of toggles, then a
+   * multi-select, and both were more machinery than the question deserves:
+   * the panel asks what went up recently, and which board that came from is
+   * one choice rather than a set to assemble.
+   *
+   * IT ALSO RETIRES THE SEPARATE `search` PRESS. That existed because a
+   * selection could sit around half-made while every toggle fired its own
+   * crawl -- the "Too many requests" defect. With one source, picking it IS
+   * asking for it, so there is nothing left waiting to be paid for.
+   *
+   * ABSENT MEANS NO PICKER IS DRAWN, which is what `/demo/planner` wants.
    */
-  boards?: readonly FeedSource[]
-  onBoardsChange?: (next: FeedSource[]) => void
-  /**
-   * Runs the search against whichever boards are switched on.
-   *
-   * WHY A BUTTON AND NOT THE TOGGLE ITSELF, which is what shipped first and
-   * was wrong (Gabe, 2026-09-21: "Too many requests"). Each press of a board
-   * changed the query key, so picking every board fired a separate search --
-   * one crawl each, billed per posting, against a throttle of two a minute.
-   * The reader hit the limit before they had finished choosing.
-   *
-   * Separating them makes the spend match the intent: the toggles say WHICH
-   * boards, one press says GO. It is also the honest shape for a control that
-   * costs money -- nothing is charged for changing your mind.
-   *
-   * ABSENT MEANS THE TOGGLES APPLY THEMSELVES, which is what `/demo/planner`
-   * wants: its rows are a fixture, filtering them is free and instant, and a
-   * search button in front of that would be ceremony over nothing.
-   */
-  onSearchBoards?: () => void
-  /** Whether the current selection has already been searched. */
-  boardsSearched?: boolean
-  /** Whether a board run is in flight. The rail stays; the row says so. */
+  source?: FeedSource
+  onSourceChange?: (next: FeedSource) => void
+  /** Whether a board read is in flight. The rail stays; the line says so. */
   boardsLoading?: boolean
   /** Per-board failures, from the extractor. See `FeedNote`. */
   boardNotes?: FeedNote[]
   /**
-   * What pressing a board actually does here, when that is not the usual.
+   * What picking a board actually does here, when that is not the usual.
    *
-   * IT EXISTS BECAUSE THE DEMO IS NOT LYING-SHAPED. On the real planner each
-   * press starts a paid crawl and the line says so; on `/demo/planner` the
-   * rows are a fixture and the toggles filter them in memory, so the same
-   * sentence would promise a search that never happens on the one screen whose
-   * whole premise is that it is honest about being invented.
+   * IT EXISTS BECAUSE THE DEMO IS NOT LYING-SHAPED. On the real planner a
+   * pick starts a read and the line says so; on `/demo/planner` the rows are
+   * a fixture, so the same sentence would promise a fetch that never happens
+   * on the one screen whose whole premise is being honest about being
+   * invented.
    */
   boardsHint?: string
   className?: string
@@ -177,10 +165,8 @@ export function JobFeed({
   geo = null,
   onGeoChange,
   trackedIds = {},
-  boards = [],
-  onBoardsChange,
-  onSearchBoards,
-  boardsSearched = false,
+  source = 'jobicy',
+  onSourceChange,
   boardsLoading = false,
   boardNotes = [],
   boardsHint,
@@ -352,93 +338,50 @@ export function JobFeed({
               what pressing one does. Multi-select rather than single: the
               whole point is a rail with more than one board in it, and the
               runs happen concurrently. */}
-          {onBoardsChange && (
-            <div className="flex flex-col gap-3" data-feed-boards>
-              {/* A GRID ON A PHONE, A ROW WHEN THERE IS ROOM. Measured at
-                  375px: the four labels are 65-86px wide, which with the
-                  `boards` label in front of them wraps to two ragged lines --
-                  three on one, one orphaned below, each a different width.
+          {onSourceChange && (
+            <div className="flex flex-col gap-2" data-feed-boards>
+              {/* ONE DROPDOWN, AND JOBICY IS AN OPTION IN IT (Gabe,
+                  2026-09-21: "use a dropdown only with a default setting of
+                  jobicy").
 
-                  An `auto-fit` grid makes the wrap deliberate instead: as
-                  many equal columns as fit at 96px or wider, every target the
-                  same size, no ragged last line. It is written against the
-                  WIDTH rather than the count, so removing Glassdoor took the
-                  row from four buttons to three without touching this -- three
-                  simply became one even line of 109px each. From `sm` the grid
-                  gives way to the row it always was.
+                  JOBICY LEADS AND IS THE DEFAULT because it is the only source
+                  that costs nothing and answers instantly -- so the rail is
+                  full the moment the page opens, and every other option is a
+                  deliberate step away from that. It used to be an invisible
+                  always-on source with the others as toggles beside it, which
+                  made the panel's one real question -- which board is this? --
+                  the one thing it did not answer.
 
-                  THE LABEL LEAVES THE ROW BELOW `sm` rather than shrinking.
-                  It is ~50px of a 343px line, which is the difference between
-                  four buttons fitting and one being orphaned -- and a section
-                  label above its section is the same arrangement every other
-                  caps-label in this app already uses. */}
-              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-                <span className="text-label-caps uppercase text-text-muted">boards</span>
-                <div className="grid grid-cols-[repeat(auto-fit,minmax(96px,1fr))] gap-2 sm:flex sm:flex-wrap">
-                {SCRAPED_SOURCES.map((source) => {
-                  const on = boards.includes(source)
-                  return (
-                    <Button
-                      key={source}
-                      type="button"
-                      size="s"
-                      variant={on ? 'primary' : 'secondary'}
-                      aria-pressed={on}
-                      data-feed-board={source}
-                      disabled={boardsLoading}
-                      onClick={() =>
-                        onBoardsChange(
-                          on
-                            ? boards.filter((value) => value !== source)
-                            : [...boards, source]
-                        )
-                      }
-                    >
-                      {SOURCE_LABELS[source]}
-                    </Button>
-                  )
-                })}
-                </div>
+                  IT IS THIS APP'S `Select`, so it reads as the third control
+                  in the filter row above rather than a fourth vocabulary. */}
+              <div className="sm:w-64">
+                <Select
+                  id="job-feed-source"
+                  aria-label="Which job board to read"
+                  icon="Globe"
+                  disabled={boardsLoading}
+                  value={source}
+                  onValueChange={(next) => onSourceChange(next as FeedSource)}
+                  items={[
+                    { value: 'jobicy', label: SOURCE_LABELS.jobicy },
+                    ...SCRAPED_SOURCES.map((entry) => ({
+                      value: entry,
+                      label: SOURCE_LABELS[entry],
+                    })),
+                  ]}
+                />
               </div>
-              {/* THE COST IS SAID BEFORE IT IS INCURRED, not after. A control
-                  that quietly spends is the one thing this app has refused to
-                  ship anywhere else. */}
-              {/* STACKED ON A PHONE. Side by side, a two-line sentence and a
-                  button leave the button hanging off the end of the second
-                  line; stacked, the button is a full-width target under the
-                  sentence that explains it. */}
-              <div className="flex flex-col items-start gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
-                <p className="text-caption text-text-muted">
-                  {boardsLoading
-                    ? 'searching those boards — they crawl a results page, so this takes a moment.'
-                    : (boardsHint ??
-                      (boards.length === 0
-                        ? 'jobicy is always on and free. pick a board to search it too.'
-                        : boardsSearched
-                          ? 'these boards are searched on demand and take a moment.'
-                          : 'pick the boards you want, then search — each one is a crawl that takes a moment.'))}
-                </p>
-                {/* NOTHING TO SEARCH IS NOT A REASON TO DRAW A DISABLED
-                    BUTTON. With no board picked the sentence beside it already
-                    says what to do. */}
-                {onSearchBoards && boards.length > 0 && (
-                  <Button
-                    type="button"
-                    size="s"
-                    className="w-full sm:w-auto"
-                    data-feed-board-search
-                    // A second press of an unchanged selection would buy the
-                    // same answer twice at full price.
-                    disabled={boardsLoading || boardsSearched}
-                    onClick={onSearchBoards}
-                  >
-                    {boardsLoading ? 'searching' : boardsSearched ? 'searched' : 'search these boards'}
-                  </Button>
-                )}
-              </div>
-              {/* A BOARD THAT GAVE NOTHING SAYS SO, ON ITS OWN LINE. Four run
-                  concurrently and each fails on its own, so one being down
-                  must not empty the other three -- and silence would be
+
+              <p className="text-caption text-text-muted">
+                {boardsLoading
+                  ? `reading ${SOURCE_LABELS[source]} — it works through a results page, so this takes a moment.`
+                  : (boardsHint ??
+                    (source === 'jobicy'
+                      ? 'jobicy is keyless and free, which is why it opens here. pick another board to read that one instead.'
+                      : `${SOURCE_LABELS[source]} is read on demand, so it takes a moment.`))}
+              </p>
+
+              {/* A BOARD THAT GAVE NOTHING SAYS SO. Silence would be
                   indistinguishable from a board with no new roles. */}
               {boardNotes.map((note) => (
                 <p
@@ -455,7 +398,14 @@ export function JobFeed({
 
 
         <CardContent className="flex flex-col gap-4 px-0">
-          {loading && (
+          {/* THE SKELETON COVERS A BOARD READ TOO (Gabe, 2026-09-21: "add a
+              skeleton loader for loading job posts from various sources").
+              `loading` is the free feed's first fetch; `boardsLoading` is a
+              board being read, which takes seconds rather than milliseconds --
+              so the one case that most needed a skeleton was the one that did
+              not have it, and the rail sat showing the PREVIOUS board's roles
+              while the new one arrived. */}
+          {(loading || boardsLoading) && (
             <div className="flex gap-4 overflow-hidden" data-job-feed-state="loading">
               {Array.from({ length: 4 }, (_, index) => (
                 <Skeleton key={index} className="h-36 w-72 shrink-0" />
@@ -466,7 +416,7 @@ export function JobFeed({
           {/* A FAILED THIRD-PARTY READ IS NOT AN EMPTY BOARD. Saying "nothing
               posted" when the request never landed would be a claim about the
               job market made on the strength of a network error. */}
-          {!loading && error && (
+          {!loading && !boardsLoading && error && (
             <p className="text-body-s text-text-muted" data-job-feed-state="error">
               could not reach the job feed just now. the calendar below is unaffected.
             </p>
@@ -482,7 +432,7 @@ export function JobFeed({
               landed is a claim about the job market made out of a network
               error. `py-10`, half its default: this is one band, not a
               screen. */}
-          {!loading && !error && jobs.length === 0 && (
+          {!loading && !boardsLoading && !error && jobs.length === 0 && (
             <EmptyState icon="Applications" className="py-10" data-job-feed-state="empty">
               nothing posted here right now. try another region or field.
             </EmptyState>
@@ -496,7 +446,7 @@ export function JobFeed({
               market, and the region and field dropdowns are innocent. Only the
               word that was typed can have done this, so that is what is named,
               and clearing it is offered as the action rather than described. */}
-          {!loading && !error && jobs.length > 0 && visible.length === 0 && (
+          {!loading && !boardsLoading && !error && jobs.length > 0 && visible.length === 0 && (
             <EmptyState
               icon="Search"
               className="py-10"
@@ -522,7 +472,7 @@ export function JobFeed({
               Rendering the row only in the populated branch is what keeps the
               rule true: the loading, error and empty branches above are not
               wrapped in it, so there is nothing to disable. */}
-          {!loading && !error && visible.length > 0 && (
+          {!loading && !boardsLoading && !error && visible.length > 0 && (
             <CarouselRow>
               <CarouselPrevious />
               {/* -ml-4 / pl-4 is the carousel's own gutter idiom: the track

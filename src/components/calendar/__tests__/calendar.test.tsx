@@ -475,7 +475,7 @@ describe('where the calendar puts its own controls', () => {
   })
 })
 
-describe('JobFeed — the paid boards', () => {
+describe('JobFeed — the source dropdown', () => {
   const paid = (over: Partial<FeedJob> = {}): FeedJob => ({
     source: 'linkedin',
     id: 'linkedin:1',
@@ -501,135 +501,73 @@ describe('JobFeed — the paid boards', () => {
     expect(labels).toEqual(['LinkedIn', 'Indeed'])
   })
 
-  it('draws no board row at all without a handler', () => {
-    // This is what keeps the paid controls off `/demo/planner`, which has no
-    // session to authenticate with and no account to bill.
+  it('draws no picker at all without a handler', () => {
+    // This is what keeps the paid path off any surface that cannot reach it --
+    // a control that cannot work is worse than no control.
     render(<JobFeed jobs={[paid()]} />)
     expect(document.querySelector('[data-feed-boards]')).toBeNull()
   })
 
-  it('offers the four boards and reports which are on', () => {
-    render(<JobFeed jobs={[]} boards={['indeed']} onBoardsChange={() => {}} />)
-    const buttons = [...document.querySelectorAll('[data-feed-board]')]
-    expect(buttons.map((node) => node.getAttribute('data-feed-board'))).toEqual([
-      'linkedin',
-      'jobstreet',
-      'indeed',
-    ])
-    expect(
-      buttons.find((node) => node.getAttribute('data-feed-board') === 'indeed')
-    ).toHaveAttribute('aria-pressed', 'true')
-    expect(
-      buttons.find((node) => node.getAttribute('data-feed-board') === 'linkedin')
-    ).toHaveAttribute('aria-pressed', 'false')
+  it('opens on Jobicy, which is the one that is free and instant', () => {
+    render(<JobFeed jobs={[]} onSourceChange={() => {}} />)
+    const trigger = document.getElementById('job-feed-source')!
+    expect(trigger.textContent).toContain('Jobicy')
   })
 
-  it('adds and removes a board rather than replacing the selection', async () => {
-    // Multi-select is the point: the runs are concurrent and the rail is one
-    // list. A picker that replaced would make four boards four visits.
+  it('offers Jobicy and every paid board, in that order', async () => {
+    /*
+      ONE DROPDOWN SINCE 2026-09-21 (Gabe: "use a dropdown only with a default
+      setting of jobicy"). Jobicy used to be an invisible always-on source with
+      the others as toggles beside it, which left the panel's one real question
+      -- which board is this? -- the one thing it did not answer.
+    */
     const user = userEvent.setup()
-    const onBoardsChange = vi.fn()
-    const { rerender } = render(
-      <JobFeed jobs={[]} boards={['linkedin']} onBoardsChange={onBoardsChange} />
-    )
-    await user.click(document.querySelector('[data-feed-board="indeed"]') as HTMLElement)
-    expect(onBoardsChange).toHaveBeenLastCalledWith(['linkedin', 'indeed'])
+    render(<JobFeed jobs={[]} onSourceChange={() => {}} />)
+    await user.click(document.getElementById('job-feed-source') as HTMLElement)
 
-    rerender(<JobFeed jobs={[]} boards={['linkedin', 'indeed']} onBoardsChange={onBoardsChange} />)
-    await user.click(document.querySelector('[data-feed-board="linkedin"]') as HTMLElement)
-    expect(onBoardsChange).toHaveBeenLastCalledWith(['indeed'])
+    const options = (await screen.findAllByRole('option')).map((node) => node.textContent)
+    expect(options).toEqual(['Jobicy', 'LinkedIn', 'JobStreet', 'Indeed'])
+  })
+
+  it('reports the board that was picked', async () => {
+    const user = userEvent.setup()
+    const onSourceChange = vi.fn()
+    render(<JobFeed jobs={[]} onSourceChange={onSourceChange} />)
+
+    await user.click(document.getElementById('job-feed-source') as HTMLElement)
+    await user.click(await screen.findByRole('option', { name: 'Indeed' }))
+    expect(onSourceChange).toHaveBeenCalledWith('indeed')
   })
 
   it('says a board gave nothing rather than going quiet', () => {
-    // Four boards run concurrently and fail on their own. Silence would be
-    // indistinguishable from a board with no new roles.
+    // A board that failed must say so: silence is indistinguishable from a
+    // board with no new roles.
     render(
       <JobFeed
-        jobs={[paid()]}
-        boards={['indeed']}
-        onBoardsChange={() => {}}
+        jobs={[]}
+        source="indeed"
+        onSourceChange={() => {}}
         boardNotes={[{ source: 'indeed', message: 'Indeed returned nothing for that search.' }]}
       />
     )
-    expect(
-      document.querySelector('[data-feed-board-note="indeed"]')?.textContent
-    ).toContain('Indeed returned nothing')
+    expect(document.querySelector('[data-feed-board-note="indeed"]')?.textContent).toContain(
+      'Indeed returned nothing'
+    )
   })
 
   it('still marks a board posting as tracked', () => {
-    // The reader tracked the job, not the board -- so the indicator has to work
-    // for a LinkedIn row exactly as it does for a Jobicy one.
+    // The reader tracked the job, not the board -- so the indicator works for
+    // a LinkedIn row exactly as it does for a Jobicy one.
     render(<JobFeed jobs={[paid()]} trackedIds={{ 'linkedin:1': 'a1' }} />)
     expect(screen.getByRole('link', { name: /tracked/i })).toBeTruthy()
     expect(screen.queryByRole('link', { name: /track it/i })).toBeNull()
   })
-})
 
-describe('JobFeed — choosing boards is free, searching is not', () => {
-  it('does not search when a board is merely picked', async () => {
-    /*
-      THE DEFECT THIS EXISTS FOR (Gabe, 2026-09-21: "Too many requests"). Each
-      toggle used to change the query key, so choosing all four boards was four
-      crawls against a throttle of two a minute -- the reader was rate-limited
-      before they had finished choosing.
-    */
-    const user = userEvent.setup()
-    const onSearchBoards = vi.fn()
-    const onBoardsChange = vi.fn()
-    render(
-      <JobFeed
-        jobs={[]}
-        boards={[]}
-        onBoardsChange={onBoardsChange}
-        onSearchBoards={onSearchBoards}
-      />
-    )
-    await user.click(document.querySelector('[data-feed-board="linkedin"]') as HTMLElement)
-    expect(onBoardsChange).toHaveBeenCalledWith(['linkedin'])
-    expect(onSearchBoards).not.toHaveBeenCalled()
-  })
-
-  it('searches once, when asked', async () => {
-    const user = userEvent.setup()
-    const onSearchBoards = vi.fn()
-    render(
-      <JobFeed
-        jobs={[]}
-        boards={['linkedin', 'indeed']}
-        onBoardsChange={() => {}}
-        onSearchBoards={onSearchBoards}
-      />
-    )
-    await user.click(document.querySelector('[data-feed-board-search]') as HTMLElement)
-    expect(onSearchBoards).toHaveBeenCalledTimes(1)
-  })
-
-  it('will not buy the same answer twice at full price', () => {
-    // A selection that has already been searched has nothing new to fetch.
-    render(
-      <JobFeed
-        jobs={[]}
-        boards={['linkedin']}
-        boardsSearched
-        onBoardsChange={() => {}}
-        onSearchBoards={() => {}}
-      />
-    )
-    expect(document.querySelector('[data-feed-board-search]')).toBeDisabled()
-  })
-
-  it('offers nothing to search when nothing is picked', () => {
-    // The sentence beside it already says what to do; a disabled button would
-    // be a second, worse way of saying it.
-    render(<JobFeed jobs={[]} boards={[]} onBoardsChange={() => {}} onSearchBoards={() => {}} />)
+  it('has no separate search press any more', () => {
+    // It existed because a half-made selection could sit around while every
+    // toggle fired its own crawl. With one source, picking it IS asking.
+    render(<JobFeed jobs={[]} source="indeed" onSourceChange={() => {}} />)
     expect(document.querySelector('[data-feed-board-search]')).toBeNull()
-  })
-
-  it('applies the toggles itself where a search costs nothing', () => {
-    // `/demo/planner` filters a fixture in memory. A search button in front of
-    // that would be ceremony over nothing.
-    render(<JobFeed jobs={[]} boards={['linkedin']} onBoardsChange={() => {}} />)
-    expect(document.querySelector('[data-feed-boards]')).toBeTruthy()
-    expect(document.querySelector('[data-feed-board-search]')).toBeNull()
+    expect(document.querySelectorAll('[data-feed-board]').length).toBe(0)
   })
 })

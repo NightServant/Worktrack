@@ -1533,6 +1533,23 @@ PUBLIC_FEED_TIMEOUT_S = 20.0
 #: actor run because nothing here is crawling a whole site.
 JOBSPY_TIMEOUT_S = 90.0
 
+#: How many browser renders may run at once for one board.
+#:
+#: THREE, AND THE NUMBER IS ABOUT WHAT A RENDER COSTS rather than about
+#: speed. Locally each one is a Chromium; through Firecrawl each one is a
+#: paid call. Unbounded, a hundred-posting ask would start four of them at
+#: once on a laptop and four billable calls in a deployment.
+RENDER_CONCURRENCY = 3
+
+#: How many plain page requests may run at once for one board.
+#:
+#: THREE, BECAUSE THE BOARD'S LIMITER IS THE CONSTRAINT rather than our
+#: bandwidth. LinkedIn's guest search refuses an address that asks for ten
+#: pages simultaneously -- measured 2026-09-21, where the burst succeeded
+#: and the NEXT search came back empty and rate-limited. Three keeps the
+#: whole speed-up and stays under it.
+PUBLIC_CONCURRENCY = 3
+
 
 #: Per-source actor overrides, so one board can be repointed without a deploy.
 #:
@@ -1690,31 +1707,60 @@ async def _public_jobs(source: str, body: JobFeedRequest) -> tuple[list[dict[str
     jobs: list[dict[str, Any]] = []
     reason = "ok"
 
+    pages = (count + LI_PAGE_SIZE - 1) // LI_PAGE_SIZE
+
     async with httpx.AsyncClient(timeout=PUBLIC_FEED_TIMEOUT_S, follow_redirects=True) as client:
-        for page in range((count + LI_PAGE_SIZE - 1) // LI_PAGE_SIZE):
+
+        async def fetch(page: int) -> tuple[int, str | None, str]:
+            """`(page, markup, reason)` for one page, raising nothing."""
             url = search_url(body.query, body.location, page * LI_PAGE_SIZE)
             try:
                 response = await client.get(url, headers={"Accept": "text/html"})
             except httpx.TimeoutException:
-                reason = "timeout" if not jobs else "ok"
-                break
+                return page, None, "timeout"
             except Exception:
-                reason = "unreachable" if not jobs else "ok"
-                break
-
+                return page, None, "unreachable"
             if response.status_code == 429:
                 # THE BOARD SAYING "ENOUGH", which is a different thing from
                 # being broken and is reported as itself.
-                reason = "rate-limited" if not jobs else "ok"
-                break
+                return page, None, "rate-limited"
             if response.status_code != 200:
-                reason = f"http-{response.status_code}" if not jobs else "ok"
-                break
+                return page, None, f"http-{response.status_code}"
+            return page, response.text, "ok"
 
-            found = jobs_from_html(response.text, source)
-            jobs.extend(found)
-            if len(found) < LI_PAGE_SIZE:
-                break
+        # CONCURRENT, BUT CAPPED (Gabe, 2026-09-21: "implement faster
+        # loading"). Ten pages one after another is ten round trips in series,
+        # about eight seconds for a hundred postings and nearly all of it idle.
+        # Run together it is the slowest single page, under one second --
+        # measured at 100 jobs in 0.7s.
+        #
+        # THE CAP IS NOT ABOUT POLITENESS, IT IS THE DIFFERENCE BETWEEN WORKING
+        # AND NOT. Ten simultaneous requests from one address trip LinkedIn's
+        # guest limiter almost immediately -- measured the same afternoon: the
+        # very next search came back rate-limited with nothing in it. Sequential
+        # requests are slow; unbounded ones are fast once and then refused.
+        gate = asyncio.Semaphore(PUBLIC_CONCURRENCY)
+
+        async def limited(page: int) -> tuple[int, str | None, str]:
+            async with gate:
+                return await fetch(page)
+
+        results = await asyncio.gather(*(limited(page) for page in range(pages)))
+
+    # ORDERED BY PAGE, NOT BY WHAT FINISHED FIRST. The board returns its own
+    # ranking and a gather resolves in completion order; sorting restores it.
+    # A page that failed stops the run THERE rather than leaving a hole -- page
+    # three failing while four succeeded would otherwise splice results either
+    # side of a gap nobody can see.
+    for page, markup, page_reason in sorted(results, key=lambda entry: entry[0]):
+        if page_reason != "ok" or markup is None:
+            if not jobs:
+                reason = page_reason
+            break
+        found = jobs_from_html(markup, source)
+        jobs.extend(found)
+        if len(found) < LI_PAGE_SIZE:
+            break
 
     # DE-DUPLICATED ACROSS PAGES. A posting that moves between pages while the
     # loop is running arrives twice, and the rail keys rows on this.
@@ -1818,23 +1864,44 @@ async def _rendered_jobs(source: str, body: JobFeedRequest) -> tuple[list[dict[s
     jobs: list[dict[str, Any]] = []
     reason = "ok"
 
-    for page in range(1, (count + JS_PAGE_SIZE - 1) // JS_PAGE_SIZE + 1):
-        url = jobstreet_search_url(body.query, body.location, page)
-        try:
-            markup = await _fetch_rendered(url)
-        except Exception:
-            reason = "unreachable" if not jobs else "ok"
-            break
-        if not markup:
-            # No Firecrawl key and no local browser: the board is unreadable
-            # from this deployment, which is a configuration fact rather than
-            # the board refusing us.
-            reason = "no-renderer" if not jobs else "ok"
-            break
+    pages = (count + JS_PAGE_SIZE - 1) // JS_PAGE_SIZE
 
+    # CONCURRENT, BUT CAPPED (Gabe, 2026-09-21: "implement faster loading").
+    # Four pages one after another is four browser renders in series -- fifteen
+    # seconds or so, nearly all of it idle. Run together it is the slowest one.
+    #
+    # THE CAP IS WHY THIS IS NOT JUST `gather`. Each page here is a real
+    # browser, not a GET: locally that is a Chromium apiece, and through
+    # Firecrawl it is a paid call apiece. Three at a time is the whole win
+    # without either of those becoming the new problem.
+    gate = asyncio.Semaphore(RENDER_CONCURRENCY)
+
+    async def fetch(page: int) -> tuple[int, str | None, str]:
+        """`(page, markup, reason)` for one page, raising nothing."""
+        async with gate:
+            try:
+                markup = await _fetch_rendered(jobstreet_search_url(body.query, body.location, page))
+            except Exception:
+                return page, None, "unreachable"
+        # No Firecrawl key and no local browser: the board is unreadable from
+        # this deployment, which is a configuration fact rather than the board
+        # refusing us.
+        return (page, markup, "ok") if markup else (page, None, "no-renderer")
+
+    results = await asyncio.gather(*(fetch(page) for page in range(1, pages + 1)))
+
+    # ORDERED BY PAGE, NOT BY WHAT FINISHED FIRST -- the board returns its own
+    # ranking and a gather resolves in completion order. A page that failed
+    # stops the run there rather than leaving a hole in the middle of it.
+    for page, markup, page_reason in sorted(results, key=lambda entry: entry[0]):
+        if page_reason != "ok" or markup is None:
+            if not jobs:
+                reason = page_reason
+            break
         found = jobstreet_jobs_from_html(markup, source)
         if not found:
-            reason = "no-rows" if not jobs else "ok"
+            if not jobs:
+                reason = "no-rows"
             break
         jobs.extend(found)
         if len(jobs) >= count:

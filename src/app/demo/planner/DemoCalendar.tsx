@@ -7,7 +7,7 @@ import { useCalendarExtras } from '@/hooks/useCalendarExtras'
 import { sentApplicationsByDay } from '@/lib/calendar'
 import { buildUpNext } from '@/lib/upNext'
 import { DEMO } from '@/lib/demoFixture'
-import { SCRAPED_SOURCES, type FeedSource } from '@/services/jobFeed'
+import type { FeedSource } from '@/services/jobFeed'
 
 /**
  * The demo's calendar, with the same two live panels the real one has.
@@ -47,7 +47,13 @@ export function DemoCalendar() {
   // is ever made from here. The board rows below are the fixture's.
   const extras = useCalendarExtras({ boards: false })
 
-  const [boards, setBoards] = React.useState<FeedSource[]>(() => [...SCRAPED_SOURCES])
+  /*
+    ONE SOURCE HERE TOO, so the demo shows the control the real screen has.
+    It opens on Jobicy -- the live, free feed -- and picking any other board
+    swaps the rail to that board's INVENTED rows. Nothing is fetched and
+    nothing is charged.
+  */
+  const [source, setSource] = React.useState<FeedSource>('jobicy')
 
   // Rebuilt per render rather than at module scope: `buildUpNext` measures
   // against the clock, and a value frozen at import would age on a long-lived
@@ -63,11 +69,15 @@ export function DemoCalendar() {
    * this morning belongs above a live Jobicy row from yesterday.
    */
   const jobs = React.useMemo(() => {
-    const picked = DEMO.boardJobs.filter((job) => boards.includes(job.source))
-    return [...(extras.feed.jobs ?? []), ...picked].sort((a, b) =>
-      b.publishedAt.localeCompare(a.publishedAt)
-    )
-  }, [extras.feed.jobs, boards])
+    // JOBICY IS THE LIVE ONE and is genuinely fetched here -- it is keyless
+    // and public, so a demo visitor gets the real thing where the real thing
+    // is free. Every other board is the fixture.
+    if (source === 'jobicy') return extras.feed.jobs ?? []
+    return DEMO.boardJobs
+      .filter((job) => job.source === source)
+      .slice()
+      .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt))
+  }, [extras.feed.jobs, source])
 
   return (
     <Calendar
@@ -79,16 +89,20 @@ export function DemoCalendar() {
         <JobFeed
           {...extras.feed}
           jobs={jobs}
-          boards={boards}
-          onBoardsChange={setBoards}
+          source={source}
+          onSourceChange={setSource}
           // Instant and free: there is nothing in flight to wait for, and
           // nothing that can fail on a per-board basis.
           boardsLoading={false}
           boardNotes={[]}
-          // THE DEFAULT LINE WOULD BE A LIE HERE. It says these boards are
-          // searched on demand and take a moment; on this page nothing is
-          // searched and nothing takes any time at all.
-          boardsHint="these roles are invented, like everything else here. the toggles filter them."
+          // THE DEFAULT LINE WOULD BE A LIE HERE. It says a board is read on
+          // demand and takes a moment; on this page nothing is read and
+          // nothing takes any time at all.
+          boardsHint={
+            source === 'jobicy'
+              ? 'jobicy is live even here — it is keyless and public, so the demo shows the real thing.'
+              : 'these roles are invented, like everything else here.'
+          }
         />
       }
       {...extras.calendar}
