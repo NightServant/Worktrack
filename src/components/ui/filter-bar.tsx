@@ -141,6 +141,15 @@ export interface FilterBarSelect {
   /** A decorative leading glyph. Two dropdowns on one screen must not share one. */
   icon?: IconName
   /**
+   * Held shut while the choice is being acted on.
+   *
+   * ONLY FOR A DROPDOWN THAT COSTS SOMETHING. Every other control here narrows
+   * a list that is already on screen and can be changed as fast as anybody
+   * likes; the rail's board picker starts a crawl that bills per posting, so
+   * changing it mid-read is a second charge for a question already asked.
+   */
+  disabled?: boolean
+  /**
    * Width from `sm` up. Below it every control is full width.
    *
    * A token rather than a class, because the point of this component is that
@@ -246,6 +255,7 @@ export function FilterBar({ search, selects = [], className }: FilterBarProps) {
                 id={select.id}
                 icon={select.icon}
                 aria-label={select.label}
+                disabled={select.disabled}
                 value={select.value}
                 onValueChange={select.onValueChange}
                 items={select.items}

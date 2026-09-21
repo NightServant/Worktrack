@@ -10,10 +10,12 @@ import {
 import { usePublicHolidays } from '@/hooks/usePublicHolidays'
 import { resolveHolidayCountry } from '@/services/holidays'
 import {
+  ALL_BOARDS,
   JOB_FEED_GEO_KEY,
   JOB_FEED_INDUSTRY_KEY,
   SCRAPED_SOURCES,
   geoSlugForCountry,
+  type FeedChoice,
   type FeedSource,
 } from '@/services/jobFeed'
 import type { JobFeedProps } from '@/components/calendar/JobFeed'
@@ -188,15 +190,31 @@ export function useCalendarExtras({ boards: allowBoards = true }: CalendarExtras
    * server first, and reading `localStorage` during render is a hydration
    * mismatch waiting to happen.
    */
-  const [source, setSource] = React.useState<FeedSource>('jobicy')
+  const [source, setSource] = React.useState<FeedChoice>('jobicy')
   React.useEffect(() => {
     const stored = readStored(JOB_FEED_BOARDS_KEY)
     // Checked against the known set: a board removed from the app must not
     // come back out of a browser that remembers it.
-    if (stored === 'jobicy' || SCRAPED_SOURCES.includes(stored as FeedSource)) {
-      setSource(stored as FeedSource)
+    if (
+      stored === 'jobicy' ||
+      stored === ALL_BOARDS ||
+      SCRAPED_SOURCES.includes(stored as FeedSource)
+    ) {
+      setSource(stored as FeedChoice)
     }
   }, [])
+
+  /**
+   * What the rail is ACTUALLY reading, which is not always what is stored.
+   *
+   * `/demo/planner` passes `boards: false` and has no session to spend with,
+   * so the paid half is pinned off there -- and it has to be pinned in ONE
+   * place rather than only on the returned prop. A browser that remembers
+   * `indeed` from the real planner would otherwise leave this hook thinking a
+   * board was selected, and the Jobicy rows the demo does show would be
+   * dropped by the merge below.
+   */
+  const active: FeedChoice = allowBoards ? source : 'jobicy'
 
   // THE FEED OPENS WHERE THE READER IS, when the feed knows that country.
   // Jobicy lists 55 locations, so most countries fall through to `anywhere` --
@@ -247,15 +265,22 @@ export function useCalendarExtras({ boards: allowBoards = true }: CalendarExtras
   }, [industries.data, industry, offered, geo, country])
 
   /*
-    ONE BOARD AT A TIME, AND `jobicy` IS NOT ONE OF THEM HERE -- it is the free
-    browser-side feed above, not something `/api/jobfeed` can be asked for.
-    Picking it means the paid query simply does not run, which is also what
-    makes it a safe default.
+    WHICH BOARDS THE ONE REQUEST ASKS FOR, and `jobicy` is never one of them --
+    it is the free browser-side feed above, not something `/api/jobfeed` can be
+    asked for. Picking it means the paid query simply does not run, which is
+    also what makes it a safe default.
+
+    `every board` IS ONE REQUEST, NOT THREE (Gabe, 2026-09-21: "implement
+    parallel fetching"). The extractor already gathers its sources
+    concurrently, so handing it all three costs one throttle tick and one wait
+    -- where three separate picks would have been three of each, in series,
+    with the reader watching a skeleton between them.
   */
-  const boardFeed = useScrapedJobs(
-    allowBoards && source !== 'jobicy' ? [source] : [],
-    boardQuery
-  )
+  const boards = React.useMemo(() => {
+    if (active === ALL_BOARDS) return SCRAPED_SOURCES
+    return active === 'jobicy' ? [] : [active]
+  }, [active])
+  const boardFeed = useScrapedJobs(boards, boardQuery)
   React.useEffect(() => {
     if (geoSettled.current || offered.length === 0 || !country) return
     const slug = geoSlugForCountry(country, offered)
@@ -273,11 +298,19 @@ export function useCalendarExtras({ boards: allowBoards = true }: CalendarExtras
    * own board -- see `JobFeed`.
    */
   const jobs = React.useMemo(() => {
-    const free = feed.data ?? []
+    /*
+      JOBICY IS IN THE RAIL WHEN IT WAS ASKED FOR, and not otherwise. It used
+      to be merged in unconditionally, which made picking `Indeed` produce a
+      rail of a hundred Jobicy roles with a few Indeed ones sorted into it --
+      the dropdown said one board and the rail showed two, and `/demo/planner`
+      already behaved the other way. `every board` is the one choice that
+      genuinely means all of them, free feed included.
+    */
+    const free = active === 'jobicy' || active === ALL_BOARDS ? (feed.data ?? []) : []
     const paid = boardFeed.data?.jobs ?? []
     if (paid.length === 0) return free
     return [...free, ...paid].sort((a, b) => b.publishedAt.localeCompare(a.publishedAt))
-  }, [feed.data, boardFeed.data])
+  }, [feed.data, boardFeed.data, active])
 
   return {
     calendar: {
@@ -288,10 +321,10 @@ export function useCalendarExtras({ boards: allowBoards = true }: CalendarExtras
       jobs,
       loading: feed.isLoading,
       error: !!feed.error,
-      // ONE SOURCE, AND JOBICY IS ONE OF THE OPTIONS. `allowBoards` is false
+      // ONE CHOICE, AND JOBICY IS ONE OF THE OPTIONS. `allowBoards` is false
       // on /demo/planner, which pins the rail to the free feed it can reach
-      // without a session.
-      source: allowBoards ? source : 'jobicy',
+      // without a session -- see `active`.
+      source: active,
       boardsLoading: boardFeed.isFetching,
       /**
        * A FAILED REQUEST IS A NOTE TOO, so the line never goes quiet. The
@@ -301,10 +334,10 @@ export function useCalendarExtras({ boards: allowBoards = true }: CalendarExtras
        */
       boardNotes:
         boardFeed.data?.notes ??
-        (boardFeed.error && source !== 'jobicy'
+        (boardFeed.error && active !== 'jobicy'
           ? [
               {
-                source,
+                source: active,
                 message:
                   boardFeed.error instanceof Error
                     ? boardFeed.error.message
@@ -313,7 +346,7 @@ export function useCalendarExtras({ boards: allowBoards = true }: CalendarExtras
             ]
           : []),
       onSourceChange: allowBoards
-        ? (next: FeedSource) => {
+        ? (next: FeedChoice) => {
             setSource(next)
             writeStored(JOB_FEED_BOARDS_KEY, next)
           }

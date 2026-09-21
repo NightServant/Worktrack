@@ -22,7 +22,6 @@ import {
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { FilterBar } from '@/components/ui/filter-bar'
-import { Select } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { CheckIcon, ExternalIcon, PlusIcon } from '@/components/icons'
 import { ICON_MOTION_GROUP, iconMotion } from '@/components/icons/motion'
@@ -31,12 +30,13 @@ import { parseDayKey } from '@/lib/calendar'
 import { useAppHref } from '@/components/shell/routeBase'
 import { matchesTerms, searchTerms } from '@/lib/search'
 import {
+  ALL_BOARDS,
   SCRAPED_SOURCES,
   SOURCE_LABELS,
+  type FeedChoice,
   type FeedFacet,
   type FeedJob,
   type FeedNote,
-  type FeedSource,
 } from '@/services/jobFeed'
 
 /**
@@ -102,10 +102,16 @@ export interface JobFeedProps {
    * crawl -- the "Too many requests" defect. With one source, picking it IS
    * asking for it, so there is nothing left waiting to be paid for.
    *
+   * ONE CHOICE STILL, AND `all` IS ONE OF THEM (Gabe, 2026-09-21: "implement
+   * parallel fetching"). It is not a return to the multi-select: there is
+   * nothing to assemble and nothing to press afterwards, and the three boards
+   * go out as a single request that the extractor gathers concurrently -- so
+   * every board costs one wait rather than three.
+   *
    * ABSENT MEANS NO PICKER IS DRAWN, which is what `/demo/planner` wants.
    */
-  source?: FeedSource
-  onSourceChange?: (next: FeedSource) => void
+  source?: FeedChoice
+  onSourceChange?: (next: FeedChoice) => void
   /** Whether a board read is in flight. The rail stays; the line says so. */
   boardsLoading?: boolean
   /** Per-board failures, from the extractor. See `FeedNote`. */
@@ -249,11 +255,16 @@ export function JobFeed({
             </CardDescription>
           </CardHeader>
 
-          {/* SEARCH, THEN WHERE, THEN WHAT -- the order `FilterBar` sets for
-              every narrowing row in the app, applied to a rail that until
-              2026-09-15 had the two dropdowns and no search at all.
+          {/* SEARCH, THEN WHICH BOARD, THEN WHERE, THEN WHAT -- the order
+              `FilterBar` sets for every narrowing row in the app, applied to a
+              rail that until 2026-09-15 had two dropdowns and no search at all.
 
-              WHERE BEFORE WHAT among the dropdowns, and that ordering is older
+              THE BOARD COMES FIRST AMONG THE DROPDOWNS (Gabe, 2026-09-21).
+              Region and field are sent TO whichever board is reading, so they
+              narrow it rather than sit beside it -- and the picker was in a
+              block of its own underneath them until that ordering was fixed.
+
+              WHERE BEFORE WHAT among the other two, and that ordering is older
               than this row: region is the filter that decides whether the rail
               is usable at all, because unfiltered this feed is overwhelmingly
               US-eligible and somebody outside the US was reading a list of
@@ -281,6 +292,45 @@ export function JobFeed({
                 : undefined
             }
             selects={[
+              /* THE BOARD PICKER LEADS THE ROW (Gabe, 2026-09-21: "move the
+                 dropdown filter before the country dropdown"). It sat in its
+                 own block below this row, which put the panel's FIRST question
+                 -- which site am I reading? -- underneath the two controls that
+                 only make sense once it is answered. Region and field are sent
+                 to whichever board is picked, so they are narrowings OF it.
+
+                 IT KEEPS ITS OWN GLYPH. `Globe` belongs to the region dropdown
+                 beside it, and this component's own rule is that two dropdowns
+                 on one screen must not share one.
+
+                 SHUT WHILE A BOARD IS BEING READ. This is the one control in
+                 the app whose change costs money; the other two narrow a list
+                 that has already arrived. */
+              ...(onSourceChange
+                ? [
+                    {
+                      id: 'job-feed-source',
+                      label: 'Which job board to read',
+                      icon: 'Briefcase' as const,
+                      disabled: boardsLoading,
+                      value: source,
+                      onValueChange: (next: string) => onSourceChange(next as FeedChoice),
+                      items: [
+                        { value: 'jobicy', label: SOURCE_LABELS.jobicy },
+                        ...SCRAPED_SOURCES.map((entry) => ({
+                          value: entry,
+                          label: SOURCE_LABELS[entry],
+                        })),
+                        /* EVERY BOARD AT ONCE, AND LAST IN THE LIST. One of
+                           the three is a paid actor, so the broadest option
+                           does not sit where a mis-click off the free default
+                           lands. They are fetched in parallel -- one request,
+                           one wait. */
+                        { value: ALL_BOARDS, label: SOURCE_LABELS[ALL_BOARDS] },
+                      ],
+                    },
+                  ]
+                : []),
               ...(locations.length > 0
                 ? [
                     {
@@ -320,65 +370,39 @@ export function JobFeed({
             ]}
           />
 
-          {/* THE BOARDS, AND WHY THEY ARE NOT A THIRD DROPDOWN.
+          {/* WHAT THE BOARD PICK COSTS, AND WHAT IT GAVE.
               (Gabe, 2026-09-21: add LinkedIn, JobStreet, Indeed and Glassdoor;
               Glassdoor removed the same day, its Apify actor being in
               maintenance.)
 
-              Jobicy is always on and is not in this row. It is keyless and
-              CORS-open, so the browser fetches it directly and it costs
-              nothing -- switching it off would save nobody anything. Each of
-              these four is an Apify actor that crawls a result page: it costs
-              money per posting and takes tens of seconds. Putting them behind
-              the same instant-looking dropdown as `every field` would promise
-              a speed they cannot deliver and spend a balance nobody chose to
-              spend.
+              THE DROPDOWN ITSELF IS IN THE ROW ABOVE now. What is left here is
+              the pair of things that follow FROM a pick and would be noise in a
+              row of controls: a sentence saying what is happening, and a line
+              per board that gave nothing.
 
-              SO THEY ARE OFF UNTIL ASKED FOR, one press each, and the row says
-              what pressing one does. Multi-select rather than single: the
-              whole point is a rail with more than one board in it, and the
-              runs happen concurrently. */}
+              THE SENTENCE IS NOT DECORATION. Jobicy is keyless, CORS-open and
+              instant; the others crawl a results page, and one of them bills
+              per posting. A dropdown that looks exactly like `every field`
+              beside it would otherwise promise a speed and a price it does not
+              have -- so the line under it says which of the two was picked. */}
           {onSourceChange && (
             <div className="flex flex-col gap-2" data-feed-boards>
-              {/* ONE DROPDOWN, AND JOBICY IS AN OPTION IN IT (Gabe,
-                  2026-09-21: "use a dropdown only with a default setting of
-                  jobicy").
-
-                  JOBICY LEADS AND IS THE DEFAULT because it is the only source
-                  that costs nothing and answers instantly -- so the rail is
-                  full the moment the page opens, and every other option is a
-                  deliberate step away from that. It used to be an invisible
-                  always-on source with the others as toggles beside it, which
-                  made the panel's one real question -- which board is this? --
-                  the one thing it did not answer.
-
-                  IT IS THIS APP'S `Select`, so it reads as the third control
-                  in the filter row above rather than a fourth vocabulary. */}
-              <div className="sm:w-64">
-                <Select
-                  id="job-feed-source"
-                  aria-label="Which job board to read"
-                  icon="Globe"
-                  disabled={boardsLoading}
-                  value={source}
-                  onValueChange={(next) => onSourceChange(next as FeedSource)}
-                  items={[
-                    { value: 'jobicy', label: SOURCE_LABELS.jobicy },
-                    ...SCRAPED_SOURCES.map((entry) => ({
-                      value: entry,
-                      label: SOURCE_LABELS[entry],
-                    })),
-                  ]}
-                />
-              </div>
-
+              {/* WHAT THE PICK ABOVE COSTS, in one line. The dropdown itself
+                  moved into the filter row on 2026-09-21; what stayed here is
+                  the sentence under it, because it changes with the choice and
+                  a row of controls is not the place to put a paragraph that
+                  changes. */}
               <p className="text-caption text-text-muted">
                 {boardsLoading
-                  ? `reading ${SOURCE_LABELS[source]} — it works through a results page, so this takes a moment.`
+                  ? source === ALL_BOARDS
+                    ? 'reading every board — they run at the same time, so this is one wait rather than three.'
+                    : `reading ${SOURCE_LABELS[source]} — it works through a results page, so this takes a moment.`
                   : (boardsHint ??
                     (source === 'jobicy'
                       ? 'jobicy is keyless and free, which is why it opens here. pick another board to read that one instead.'
-                      : `${SOURCE_LABELS[source]} is read on demand, so it takes a moment.`))}
+                      : source === ALL_BOARDS
+                        ? 'every board at once, fetched in parallel — one wait rather than three, and jobicy comes along free.'
+                        : `${SOURCE_LABELS[source]} is read on demand, so it takes a moment.`))}
               </p>
 
               {/* A BOARD THAT GAVE NOTHING SAYS SO. Silence would be

@@ -99,7 +99,7 @@ The dates move with the clock. A fixture pinned to literal dates would say "appl
 - Setting an application's status to *interviewing* takes a date and time, which writes the interview to the calendar
 - Applications you sent are plotted on the day you sent them
 - Public holidays for your country, from [Nager.Date](https://github.com/nager/nager.date) — keyless, and settled by a picker. It opens on the machine's time zone rather than its language, and a bare `en` yields nothing rather than being maximised to `US`: a language tag says what somebody reads, not where they are
-- A rail of newly posted remote roles from [Jobicy](https://jobicy.com), below your own commitments rather than above them; *track it* hands the URL to the add flow, which reads the employer's own page
+- A rail of newly posted remote roles, below your own commitments rather than above them; *track it* hands the URL to the add flow, which reads the employer's own page. One dropdown picks the board — [Jobicy](https://jobicy.com) by default, because it is keyless, free and instant — and *every board* reads LinkedIn, JobStreet and Indeed at once rather than in turn, which is one wait and one request rather than three. A role you have already applied to is marked *tracked* and links to your own record instead of offering to add it twice
 
 ### Analytics
 - Conversion and offer rates, applications over time, status distribution

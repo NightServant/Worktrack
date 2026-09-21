@@ -63,12 +63,35 @@ export type FeedSource = 'jobicy' | 'linkedin' | 'jobstreet' | 'indeed'
  */
 export const SCRAPED_SOURCES: readonly FeedSource[] = ['linkedin', 'jobstreet', 'indeed']
 
-/** What to call each source in the interface. */
-export const SOURCE_LABELS: Record<FeedSource, string> = {
+/**
+ * The picker's fifth value: every board at once, read in parallel.
+ *
+ * IT IS NOT A `FeedSource` AND NEVER LANDS ON A ROW -- a posting comes from
+ * exactly one board. This is the rail's own choice, which is why `FeedChoice`
+ * is a separate type from the one `job.source` carries: widening `FeedSource`
+ * would have put a value on every card that no board can ever be.
+ *
+ * ONE REQUEST, NOT THREE. `/jobs` already gathers its sources concurrently --
+ * see `jobs_endpoint` -- so asking for all of them costs one throttle tick and
+ * one wait rather than three of each. That is the entire reason this is an
+ * option rather than three separate presses.
+ *
+ * IT IS LAST IN THE LIST, not next to Jobicy at the top. One of the three is a
+ * paid actor, so the broadest and most expensive choice should not sit where a
+ * mis-click off the free default lands.
+ */
+export const ALL_BOARDS = 'all'
+
+/** What the source dropdown may be set to. See `ALL_BOARDS`. */
+export type FeedChoice = FeedSource | typeof ALL_BOARDS
+
+/** What to call each choice in the interface. */
+export const SOURCE_LABELS: Record<FeedChoice, string> = {
   jobicy: 'Jobicy',
   linkedin: 'LinkedIn',
   jobstreet: 'JobStreet',
   indeed: 'Indeed',
+  all: 'every board',
 }
 
 export interface FeedJob {
@@ -431,7 +454,14 @@ export function trackedFeedRoles(
 
 /** One board that had nothing to give, and why. */
 export interface FeedNote {
-  source: FeedSource
+  /**
+   * Which choice the note is about.
+   *
+   * `FeedChoice`, NOT `FeedSource`: the extractor only ever reports a real
+   * board, but a request that never landed at all is reported against what the
+   * reader picked -- and that can be `all`.
+   */
+  source: FeedChoice
   message: string
 }
 
@@ -515,10 +545,13 @@ export async function fetchScrapedJobs(
 
   const rawNotes = Array.isArray(payload?.notes) ? payload.notes : []
   const notes = rawNotes
-    .map((raw) => {
+    .map((raw): FeedNote | null => {
       const note = (raw ?? {}) as Record<string, unknown>
       const source = note.source as FeedSource
       const message = decode(note.message)
+      // A NOTE NAMES A REAL BOARD, never `all`. The extractor reports per
+      // source; `all` only ever appears on the note this app writes itself
+      // when the whole request failed to land.
       return SCRAPED_SOURCES.includes(source) && message ? { source, message } : null
     })
     .filter((note): note is FeedNote => note !== null)

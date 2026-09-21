@@ -7,7 +7,7 @@ import { useCalendarExtras } from '@/hooks/useCalendarExtras'
 import { sentApplicationsByDay } from '@/lib/calendar'
 import { buildUpNext } from '@/lib/upNext'
 import { DEMO } from '@/lib/demoFixture'
-import type { FeedSource } from '@/services/jobFeed'
+import { ALL_BOARDS, type FeedChoice } from '@/services/jobFeed'
 
 /**
  * The demo's calendar, with the same two live panels the real one has.
@@ -31,11 +31,12 @@ import type { FeedSource } from '@/services/jobFeed'
  * here would answer 401 on every press -- and a public URL anyone can open
  * must not carry a button that spends money.
  *
- * So the rows come from `DEMO.boardJobs` and the toggles filter them in
- * memory. Every board is ON when the page opens, because the point of the
- * panel is that it reads more than one site and a visitor should not have to
- * find that out. Nothing is fetched, nothing is charged, and the screen is the
- * real one rather than a reduced copy of it.
+ * So the rows come from `DEMO.boardJobs` and the picker filters them in
+ * memory -- including `every board`, which on the real planner is three
+ * concurrent reads and here is simply the whole fixture. The panel's point is
+ * that it reads more than one site and a visitor should not have to take that
+ * on trust. Nothing is fetched, nothing is charged, and the screen is the real
+ * one rather than a reduced copy of it.
  */
 const companyByJobId = Object.fromEntries(DEMO.jobs.map((job) => [job.id, job.company]))
 
@@ -53,7 +54,7 @@ export function DemoCalendar() {
     swaps the rail to that board's INVENTED rows. Nothing is fetched and
     nothing is charged.
   */
-  const [source, setSource] = React.useState<FeedSource>('jobicy')
+  const [source, setSource] = React.useState<FeedChoice>('jobicy')
 
   // Rebuilt per render rather than at module scope: `buildUpNext` measures
   // against the clock, and a value frozen at import would age on a long-lived
@@ -73,10 +74,15 @@ export function DemoCalendar() {
     // and public, so a demo visitor gets the real thing where the real thing
     // is free. Every other board is the fixture.
     if (source === 'jobicy') return extras.feed.jobs ?? []
-    return DEMO.boardJobs
-      .filter((job) => job.source === source)
-      .slice()
-      .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt))
+    // `every board` MEANS EVERY BOARD HERE TOO, Jobicy included, which is what
+    // it means on the real planner. Nothing extra is fetched -- the live rail
+    // is already in hand and the rest is the fixture.
+    const free = source === ALL_BOARDS ? (extras.feed.jobs ?? []) : []
+    const invented =
+      source === ALL_BOARDS
+        ? DEMO.boardJobs
+        : DEMO.boardJobs.filter((job) => job.source === source)
+    return [...free, ...invented].sort((a, b) => b.publishedAt.localeCompare(a.publishedAt))
   }, [extras.feed.jobs, source])
 
   return (
@@ -101,7 +107,9 @@ export function DemoCalendar() {
           boardsHint={
             source === 'jobicy'
               ? 'jobicy is live even here — it is keyless and public, so the demo shows the real thing.'
-              : 'these roles are invented, like everything else here.'
+              : source === ALL_BOARDS
+                ? 'jobicy is live even here; the rest are invented, like everything else on this page.'
+                : 'these roles are invented, like everything else here.'
           }
         />
       }

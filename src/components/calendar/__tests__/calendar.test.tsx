@@ -503,9 +503,31 @@ describe('JobFeed — the source dropdown', () => {
 
   it('draws no picker at all without a handler', () => {
     // This is what keeps the paid path off any surface that cannot reach it --
-    // a control that cannot work is worse than no control.
+    // a control that cannot work is worse than no control. Both halves are
+    // checked since 2026-09-21: the dropdown moved into the filter row and the
+    // line under it stayed behind, so either could have been left drawn.
     render(<JobFeed jobs={[paid()]} />)
     expect(document.querySelector('[data-feed-boards]')).toBeNull()
+    expect(document.getElementById('job-feed-source')).toBeNull()
+  })
+
+  it('puts the board picker before the region dropdown', () => {
+    /*
+      Gabe, 2026-09-21: "move the dropdown filter before the country dropdown".
+      Region and field are sent TO whichever board is reading, so they narrow
+      it -- and the picker sat in a block of its own UNDERNEATH them, which put
+      the panel's first question below the two that depend on its answer.
+    */
+    render(
+      <JobFeed
+        jobs={[]}
+        onSourceChange={() => {}}
+        locations={[{ slug: 'philippines', name: 'Philippines' }]}
+      />
+    )
+    const board = document.getElementById('job-feed-source')!
+    const region = document.getElementById('job-feed-geo')!
+    expect(board.compareDocumentPosition(region) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it('opens on Jobicy, which is the one that is free and instant', () => {
@@ -514,19 +536,48 @@ describe('JobFeed — the source dropdown', () => {
     expect(trigger.textContent).toContain('Jobicy')
   })
 
-  it('offers Jobicy and every paid board, in that order', async () => {
+  it('offers Jobicy, every paid board, and then all of them at once', async () => {
     /*
       ONE DROPDOWN SINCE 2026-09-21 (Gabe: "use a dropdown only with a default
       setting of jobicy"). Jobicy used to be an invisible always-on source with
       the others as toggles beside it, which left the panel's one real question
       -- which board is this? -- the one thing it did not answer.
+
+      `every board` IS LAST, not second (Gabe, same day: "implement parallel
+      fetching"). One of the three is a paid actor, so the broadest and most
+      expensive option does not sit where a mis-click off the free default
+      lands.
     */
     const user = userEvent.setup()
     render(<JobFeed jobs={[]} onSourceChange={() => {}} />)
     await user.click(document.getElementById('job-feed-source') as HTMLElement)
 
     const options = (await screen.findAllByRole('option')).map((node) => node.textContent)
-    expect(options).toEqual(['Jobicy', 'LinkedIn', 'JobStreet', 'Indeed'])
+    expect(options).toEqual(['Jobicy', 'LinkedIn', 'JobStreet', 'Indeed', 'every board'])
+  })
+
+  it('reports every board as one choice rather than three', async () => {
+    // It is a single request that the extractor gathers concurrently -- see
+    // `useCalendarExtras`. This end only has to hand back the one value.
+    const user = userEvent.setup()
+    const onSourceChange = vi.fn()
+    render(<JobFeed jobs={[]} onSourceChange={onSourceChange} />)
+
+    await user.click(document.getElementById('job-feed-source') as HTMLElement)
+    await user.click(await screen.findByRole('option', { name: 'every board' }))
+    expect(onSourceChange).toHaveBeenCalledWith('all')
+  })
+
+  it('says the boards are read at the same time, not one after another', () => {
+    render(<JobFeed jobs={[]} source="all" onSourceChange={() => {}} />)
+    expect(document.querySelector('[data-feed-boards]')?.textContent).toContain('in parallel')
+  })
+
+  it('holds the picker shut while a board is being read', () => {
+    // The one control in the app whose change costs money. The other two
+    // narrow a list that has already arrived.
+    render(<JobFeed jobs={[]} source="indeed" onSourceChange={() => {}} boardsLoading />)
+    expect(document.getElementById('job-feed-source')).toHaveProperty('disabled', true)
   })
 
   it('reports the board that was picked', async () => {
