@@ -1498,11 +1498,41 @@ MAX_FEED_ITEMS = 25
 #: its own postings has no invoice attached, so the number is set by what the
 #: board will actually give rather than by what it is worth paying for.
 #:
-#: A HUNDRED IS THE PRACTICAL CEILING, NOT A ROUND NUMBER. LinkedIn's guest
-#: endpoint returns ten cards a page and rate-limits an unauthenticated caller
-#: at around the tenth page from one address -- so a hundred is the last page
-#: that reliably answers, and asking for more buys 429s rather than roles.
+#: IT IS NOT THE THING THAT KEPT LINKEDIN WORKING, which is why it survived the
+#: fix for that unchanged. A cap on POSTINGS is shared by every free board --
+#: Indeed through JobSpy reads a hundred here quite happily -- and the limiter
+#: that broke LinkedIn counts PAGES from one address. Lowering this would have
+#: taken seventy roles off Indeed to fix a fault Indeed does not have; see
+#: `PUBLIC_PAGES_PER_SEARCH`.
 MAX_PUBLIC_FEED_ITEMS = 100
+
+#: How many pages ONE public-endpoint search may ask a board for.
+#:
+#: THE NUMBER THAT DECIDES WHETHER THE SECOND SEARCH WORKS (Gabe, 2026-09-21:
+#: "LinkedIn cannot be loaded at all when the dropdown filter is set to every
+#: field"). Nothing was wrong with an empty `keywords` -- measured the same
+#: day, the guest endpoint answers that perfectly well, with or without a
+#: location. What was wrong was the page budget: a hundred postings is ten
+#: pages, and LinkedIn's limiter counts pages per address ACROSS searches. So
+#: the first search worked and the second was refused from its first page,
+#: which is what an empty rail looks like -- and the reader reaches the second
+#: search by doing the most ordinary thing on the panel, changing the field or
+#: the region dropdown.
+#:
+#: MEASURED OVER FOUR CONSECUTIVE SEARCHES from one address:
+#:
+#:   10 pages each -> 39 roles, 39, then 10, then 10
+#:    3 pages each -> 30, 30, 30, 30, and faster with it: 0.6s against 2.0s,
+#:                    because nothing is waiting on a refusal
+#:
+#: Re-measured at three over six consecutive searches, including the exact
+#: sequence that was reported -- pick LinkedIn, then change the field to every
+#: field -- and every one returned thirty.
+#:
+#: THIRTY ROLES IS NOT A POORER RAIL. Jobicy already supplies a hundred free
+#: roles beside these, and thirty that arrive every time beat a hundred that
+#: arrive once.
+PUBLIC_PAGES_PER_SEARCH = 3
 
 #: How long one board run may take before it is abandoned.
 #:
@@ -1736,19 +1766,27 @@ async def _public_jobs(source: str, body: JobFeedRequest) -> tuple[list[dict[str
     is borrowed because that is the line this service does not cross.
 
     PAGED UNTIL THE ASK IS MET OR THE BOARD STOPS GIVING. Ten cards a page, so
-    twenty-five postings is three requests; the loop stops early on a short
-    page, which is how the endpoint says there is no more.
+    thirty postings is three requests; the loop stops early on a short page,
+    which is how the endpoint says there is no more.
+
+    THE NUMBER OF PAGES IS THE WHOLE BALLGAME, which is why it is capped by
+    `PUBLIC_PAGES_PER_SEARCH` rather than by whatever the caller asks for. The
+    limiter here counts pages per address across SEARCHES, not within one, so
+    a generous budget does not cost the reader a slow search -- it costs them
+    the next one. See that constant for the measurement.
 
     ONE FAILED PAGE KEEPS WHAT THE EARLIER ONES GAVE. LinkedIn rate-limits an
-    unauthenticated caller after a handful of pages, and the honest answer to
-    that is the roles already in hand rather than nothing.
+    unauthenticated caller eventually whatever the cap, and the honest answer
+    to that is the roles already in hand rather than nothing.
     """
     # THE FREE CAP, not the paid one: nothing here is billed per posting.
     count = max(1, min(body.limit or MAX_PUBLIC_FEED_ITEMS, MAX_PUBLIC_FEED_ITEMS))
     jobs: list[dict[str, Any]] = []
     reason = "ok"
 
-    pages = (count + LI_PAGE_SIZE - 1) // LI_PAGE_SIZE
+    # CAPPED PER SEARCH, NOT PER POSTING -- the limiter counts pages from one
+    # address across searches, so the budget belongs here. See the constant.
+    pages = min((count + LI_PAGE_SIZE - 1) // LI_PAGE_SIZE, PUBLIC_PAGES_PER_SEARCH)
 
     async with httpx.AsyncClient(timeout=PUBLIC_FEED_TIMEOUT_S, follow_redirects=True) as client:
 

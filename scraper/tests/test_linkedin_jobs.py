@@ -131,3 +131,38 @@ def test_this_service_writes_no_borrowed_credential_of_its_own() -> None:
             assert needle not in source, (
                 f"{path} looks like it sends a borrowed credential: {needle}"
             )
+
+
+def test_one_search_never_asks_for_more_pages_than_the_limiter_tolerates() -> None:
+    """The cap that decides whether the SECOND search works.
+
+    Gabe, 2026-09-21: "LinkedIn cannot be loaded at all when the dropdown
+    filter is set to every field". Nothing was wrong with an empty `keywords`
+    -- the endpoint answers that perfectly well. What was wrong was the page
+    budget: the ask was a hundred postings, which is ten pages, and LinkedIn's
+    guest limiter counts pages per address ACROSS searches. So the first search
+    worked, and changing a dropdown -- which re-runs the board -- was refused
+    from its first page and drew an empty rail.
+
+    Measured over four consecutive searches from one address:
+
+      10 pages each -> 39 roles, 39, 10, 10
+       3 pages each -> 30, 30, 30, 30, and faster with it
+
+    THIS IS AN ARITHMETIC CHECK, NOT A NETWORK ONE. The measurement cannot be
+    re-run in a test suite -- it needs a real address and a real limiter, and
+    it would fail offline and in CI. What CAN be pinned is the number that
+    caused it, so raising the cap back is a red test rather than a rail that
+    empties on the second dropdown press.
+    """
+    from app import MAX_PUBLIC_FEED_ITEMS, PUBLIC_PAGES_PER_SEARCH
+
+    assert PUBLIC_PAGES_PER_SEARCH <= 3, (
+        f"one LinkedIn search would ask for {PUBLIC_PAGES_PER_SEARCH} pages; "
+        "measured, anything past three refuses the NEXT search rather than this one"
+    )
+    # AND THE BUDGET IS PER-BOARD, NOT PER-POSTING. The first attempt at this
+    # fix lowered the shared free-board cap instead, which would have taken
+    # seventy roles off Indeed -- a board with no such limiter -- to fix a
+    # fault that is LinkedIn's alone.
+    assert MAX_PUBLIC_FEED_ITEMS == 100
