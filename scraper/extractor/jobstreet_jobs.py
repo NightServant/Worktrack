@@ -5,12 +5,9 @@ was tried first (Gabe, 2026-09-21: "use graphql for Jobstreet"). The operation
 is `JobSearchV7` and it was recovered in full from the site's own bundle --
 `query JobSearchV7($params: JobSearchV7QueryInput!, $locale: Locale!, $zone:
 Zone!, $country: JobSearchV7Country!, $timezone: Timezone!, $tagsSubType:
-[JobSearchV7TagsSubType!])`. Sent with valid params, valid variables and the
-five context headers the page sends, it passes VALIDATION and then the resolver
-answers 200 with `{"errors":[{"message":"An error occurred"}]}` -- for every
-selection, down to `{ id title }`. The single-posting operation this service
-already uses (`seek_api`) has no such problem, so something guards the search
-operation specifically. An allowlist of persisted operations would explain it.
+[JobSearchV7TagsSubType!])`. It cannot be called by a client at all -- see the
+paragraph below, which is the measured answer rather than the guess this note
+first recorded.
 
 SO THE PAYLOAD IS READ WHERE IT IS ALREADY GIVEN AWAY. Every search page ships
 the complete `jobSearchV7` response server-rendered into `window.
@@ -19,10 +16,30 @@ it, in the HTML. Nothing is re-asked for, nothing is re-authorised; this reads
 the answer the page was already handed.
 
 THE PAGE ITSELF IS CLOUDFLARE-CHALLENGED, which is the known shape of this
-board: a plain server-side GET answers 403, measured again on 2026-09-21. The
-service's own browser gets 200 -- as it does for the other challenged boards --
-so this rides the fetch chain `app.py` already owns rather than inventing one.
-That is a real browser asking for a public page, not a forged header.
+board: a plain server-side GET answers 403, measured again on 2026-09-21. A
+real browser gets 200 -- so this rides `_fetch_rendered`, the chain `app.py`
+already owns. That is a real browser asking for a public page, not a forged
+header.
+
+SO THIS BOARD IS LOCAL-ONLY, AND THAT IS NOT A CONFIGURATION PROBLEM. The
+chain tries Firecrawl first and then the local Chromium, and Firecrawl CANNOT
+read JobStreet: measured 2026-09-19 as `http-500: All scraping engines failed`
+after it tried its own stealth Chrome twice, which is the entire reason
+`seek_api` exists. A deployment has no local browser, so the rail reports this
+board as unreadable there however `FIRECRAWL_API_KEY` is set -- and the
+message it prints says that rather than pointing at a setting that would not
+help.
+
+WHY NOT JUST CALL THE ENDPOINT, asked and answered thoroughly on 2026-09-21.
+`jobSearchV7` is a SERVER-ONLY operation. Hooking `fetch` on a live search page
+and paginating it captures `FeatureFlags`, `GetSavedSearches` and `GetBanner`
+and never a search: the browser does not call it, every result page is rendered
+on SEEK's own infrastructure, and the operation is in the client bundle for
+hydration rather than for calling. Sent from a client -- byte-exact document
+from their own bundle, their exact variables, their five context headers, from
+their own origin with their own cookies -- the resolver answers 200 and
+`{"errors":[{"message":"An error occurred"}]}`. There is no client-callable
+search on this board.
 
 WHAT THE PAYLOAD CARRIES that no other board on this rail does: a STRUCTURED
 salary -- `{period, min, max, currency}` -- rather than a band printed as prose

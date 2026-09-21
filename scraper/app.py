@@ -1660,9 +1660,17 @@ def _job_feed_message(source: str, reason: str) -> str:
     """
     label = JOB_LABELS[source]
     if reason == "no-renderer":
+        # THE OLD WORDING SENT PEOPLE TO A SETTING THAT WOULD NOT HELP (Gabe,
+        # 2026-09-21, with FIRECRAWL_API_KEY already set in production). It
+        # said "Set FIRECRAWL_API_KEY", and Firecrawl cannot read this board:
+        # measured 2026-09-19 as `All scraping engines failed` after it tried
+        # its own stealth Chrome twice, which is the whole reason `seek_api`
+        # exists. Naming a remedy that does not work is worse than naming none.
         return (
-            f"{label} needs a browser this deployment does not have. "
-            "Set FIRECRAWL_API_KEY, or run it locally."
+            f"{label} can only be read by a real browser, and this deployment "
+            "has none — its search page refuses a plain request and the hosted "
+            "fetcher cannot get past that either. It works when the extractor "
+            "runs locally."
         )
     if reason == "not-installed":
         return f"{label} needs the JobSpy library, which this deployment has not installed."
