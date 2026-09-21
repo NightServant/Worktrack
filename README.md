@@ -19,7 +19,7 @@ A job search tracker with analytics and a CV builder, built with Next.js 15 (App
 
 Worktrack is a full-stack application with an account behind it, which is the main thing separating it from a spreadsheet: the pipeline, the analytics and the CV history are all views over the same rows, and a status change recorded once shows up in the board, the timeline and the funnel without being entered three times.
 
-Behind authentication sit `/overview`, `/applications`, `/applications/[id]`, `/planner`, `/documents`, `/documents/templates`, `/cv`, `/analytics` and `/settings`. In front of it are the landing page at `/`, `/login` and `/signup`, the read-only demo at `/demo/*`, and `/privacy`.
+Behind authentication sit `/overview`, `/applications`, `/applications/[id]`, `/planner`, `/documents`, `/documents/templates`, `/cv`, `/analytics` and `/settings`. In front of it are the landing page at `/`, `/login`, `/signup` and `/forgot-password`, the read-only demo at `/demo/*`, `/privacy`, and `/bookmarklet` — the page that hands over the two capture links, one for a posting and one for a profile.
 
 **Data belongs to one person and the database enforces it.** Row-level security is enabled on every table and every policy scopes rows to `auth.uid()`, so a request for someone else's row returns nothing rather than being filtered out afterwards by the interface. That holds even when the application asks for the wrong thing, which is the point of putting it there rather than in a service layer.
 
@@ -47,14 +47,26 @@ Worktrack is Swiss typography with a single orange accent, and it renders in bot
 | Token | Light | Dark | Used for |
 |---|---|---|---|
 | `--color-accent-default` | `#c2410c` | `#fb923c` | The one accent: primary buttons, active nav, links, the mark's active cell |
-| `--color-bg-canvas` | `#ffffff` | `#09090b` | The page ground |
-| `--color-bg-surface` | `#fafafa` | `#18181b` | Alternating section grounds, the auth brand panel |
-| `--color-text-primary` | `#18181b` | `#fafafa` | Headings and body text |
-| `--color-text-secondary` | `#3f3f46` | `#d4d4d8` | Supporting copy |
-| `--color-border-subtle` | `#e4e4e7` | `#27272a` | Hairline rules between rows and sections |
-| `--color-border-default` | `#d4d4d8` | `#3f3f46` | Field borders |
+| `--color-bg-canvas` | `#ffffff` | `#0d1522` | The page ground |
+| `--color-bg-surface` | `#fafafa` | `#16202f` | Alternating section grounds, the auth brand panel |
+| `--color-text-primary` | `#18181b` | `#f5f7fa` | Headings and body text |
+| `--color-text-secondary` | `#3f3f46` | `#c3cddb` | Supporting copy |
+| `--color-border-subtle` | `#e4e4e7` | `#1e2a3d` | Hairline rules between rows and sections |
+| `--color-border-default` | `#d4d4d8` | `#2f3c52` | Field borders |
 
-Two rules are load-bearing rather than stylistic. **Orange-500 is absent from the codebase**: it fails AA against both of its foregrounds, so the accent resolves to orange-700 in light and orange-400 in dark, each of which clears it. And **the radius is capped at 4px everywhere** — this system separates things with hairline rules rather than rounded, shadowed cards, so a softer corner on one control reads as a different design system. A test fails any component that exceeds either.
+**The dark ground is navy, and it is navy on purpose.** The two scales are not
+one palette at two lightnesses: light resolves through a neutral grey ramp and
+dark through an `ink` ramp held at about 218°. It was near-black first, then
+turned a few degrees warm so the ground would belong to the orange — which is
+defensible colour theory and was the wrong call, because near-black plus
+saturated orange is one of the most strongly branded pairings on the web and
+the theme stopped reading as this product. Navy sits opposite orange, so the
+accent is a complement against the ground rather than an analogous neighbour of
+it. The lightness steps did not move, so nothing that depended on the ramp's
+contrast had to: `ink-50` on `ink-950` is 17.2:1 and `accent-400` is 8.2:1 on
+canvas.
+
+Two more rules are load-bearing rather than stylistic. **Orange-500 is absent from the codebase**: it fails AA against both of its foregrounds, so the accent resolves to orange-700 in light and orange-400 in dark, each of which clears it. And **the radius is capped at 4px everywhere** — this system separates things with hairline rules rather than rounded, shadowed cards, so a softer corner on one control reads as a different design system. A test fails any component that exceeds either.
 
 ## 3. Screens
 
@@ -98,7 +110,7 @@ The dates move with the clock. A fixture pinned to literal dates would say "appl
 - Interviews, deadlines, take-homes and follow-ups on a month grid, with a week strip and an agenda on a phone
 - Setting an application's status to *interviewing* takes a date and time, which writes the interview to the calendar
 - Applications you sent are plotted on the day you sent them
-- Public holidays for your country, from [Nager.Date](https://github.com/nager/nager.date) — keyless, and settled by a picker. It opens on the machine's time zone rather than its language, and a bare `en` yields nothing rather than being maximised to `US`: a language tag says what somebody reads, not where they are
+- Public holidays for your country, from [Nager.Date](https://github.com/nager/nager.date) — keyless, and **settled by the clock rather than by a picker**. The dropdown was removed once the time zone could answer the same question: a control that only restates what the machine already knows is one nobody should have to find. The language tag is the fallback, and a bare `en` yields nothing rather than being maximised to `US` — a language says what somebody reads, not where they are. The trade, stated: a VPN or a laptop carried abroad shows the holidays of wherever the clock says it is, with nothing on screen to override it
 - A rail of newly posted remote roles, below your own commitments rather than above them; *track it* hands the URL to the add flow, which reads the employer's own page. One dropdown picks the board — [Jobicy](https://jobicy.com) by default, because it is keyless, free and instant — and *every board* reads LinkedIn, JobStreet and Indeed at once rather than in turn, which is one wait and one request rather than three. A role you have already applied to is marked *tracked* and links to your own record instead of offering to add it twice
 
 ### Analytics
@@ -112,10 +124,11 @@ The dates move with the clock. A fixture pinned to literal dates would say "appl
 - Word-style rich text editor (Tiptap). **There is no Save button**: the document writes itself 1200ms after you stop typing, the header says where the work stands, and ⌘S says so too rather than letting the browser offer to save the page
 - LaTeX source editor with live side-by-side preview
 - Template presets for both modes, browsable on their own screen
+- **A template opens already filled in.** The first ten minutes with somebody else's template are spent deleting "Your Name" and retyping four contact fields the app already stores, so the substitution happens at *create* time rather than being offered as a button. Two mechanisms, because one is not enough: `{{name|Your Name}}` tokens are replaced in place — name, headline, location, the account's email, phone, birthday, and the LinkedIn and GitHub addresses you gave at registration — while Experience, Education, Skills, Projects and Certifications are whole sections, regenerated from the profile's entries. Every token carries its own fallback, so a reader who has connected nothing gets the document the template always produced; a token with no value and no fallback takes its separator with it rather than leaving a stranded `|`. It runs on the way in and never over a saved draft, which is the user's own work
 - Grammar, spelling and style checks over the open document, from LanguageTool's keyless public endpoint. The browser calls it directly rather than through this server, because the free tier is rate limited per IP and a proxy would put every user behind one address
-- Version history — snapshots capped at 10 per CV
+- Version history — autosave snapshots, capped at 60 per CV and written no more often than once every five minutes. It was ten, sized for one job, and ten snapshots five minutes apart cover under an hour of editing: a fine crash-recovery window and useless as a record of what was sent where, which the same table also holds. The cap is soft — a pinned snapshot is exempt, so it governs churn rather than evidence
 - Export to `.tex`, `.docx` or PDF — three Next.js routes, with no headless browser between you and the file
-- An ATS check that reads the document rather than guessing at it, and names both the matched and the missing keywords
+- An ATS check that reads the document rather than guessing at it, and names both the matched and the missing keywords. Its synonyms come from **ESCO**, the European Commission's skills taxonomy — keyless, and used narrowly: it is an occupational index rather than a technology one, so it is asked about skills and not about frameworks
 - Tailoring against a job description, through your own OpenAI-compatible endpoint rather than a credit meter. Unset the `TAILORING_*` variables and every model feature switches off and says why, rather than failing at the point of use
 
 ### Profile
@@ -123,6 +136,8 @@ The dates move with the clock. A fixture pinned to literal dates would say "appl
 - The order of the rows is authority rather than arrival. The first non-empty value wins each field, lists are unioned, and the same role from two sources is matched and then filled in field by field. Nothing is overwritten with emptiness, which is what makes adding a source safe
 - GitHub is read from its own JSON API rather than scraped — keyless, structured and free, where the other sources need a paid hosted browser to see anything at all. Its profile README is read too: the opening paragraph, and the stack named on its badges
 - What each source withholds is said on that source's own row, after the read. Two of the five do not publish a candidate profile to a signed-out visitor at all. A warning states the limit and prescribes nothing — every remedy this app has ever named on one of those rows has outlived its own sentence
+- **The addresses are asked for at registration and edited in settings.** Sign-up's fourth step wants at least one of them, because an account that starts with no profile behind it cannot tailor a CV or score one against a posting, and the import is the step people skip and then never return to. Settings holds the same form behind `update sources`
+- **A phone number and a date of birth are yours alone, and no import will ever fill them.** No public profile publishes a number, and none publishes a birth date with a year — LinkedIn shows a stranger "Mar 7" precisely because the year identifies you. So they are collected at registration, optional there, and edited afterwards from the details card. Nothing else on that card is editable, because everything else was imported
 - A bookmarklet hands over your own LinkedIn page from the session already looking at it, along with the `/details/` subpages, because the profile page itself renders only the first two or three of a long section. **Chrome will not run it on LinkedIn**: the site's content security policy names script hashes and hosts with no `unsafe-inline`, so the browser lands on `about:blank#blocked` instead. Firefox exempts bookmarklets from CSP and does run it. The posting bookmarklet is unaffected
 
 ### How Worktrack compares
@@ -141,7 +156,7 @@ Worktrack is not trying to out-feature the commercial trackers. It is trying to 
 | Job-description keyword matching | every keyword, matched and missing, against the CV you linked | top 5 keywords | basic |
 | AI generations | your own API key, unmetered by us | 10 bullet credits, 2 summary, 2 cover letter | limited credits, then paid |
 | Tailored CVs | limited only by your own API key | unlimited résumés, top-5 matching | 2 |
-| Document uploads | your Supabase storage quota | not listed | up to 100 |
+| Document uploads | no file is stored at all: a `.docx` is converted in your browser and its CONTENT becomes a CV row, so the ceiling is the same Postgres quota as everything else | not listed | up to 100 |
 
 #### What each one charges to lift those limits
 
@@ -167,8 +182,9 @@ xychart-beta
 | Vercel Hobby + Supabase free tier | $0 on the free tiers this project is built to fit |
 | CV tailoring | your own OpenAI-compatible endpoint, at your provider's rate — or a local model, at nothing |
 | Job-posting fetch fallback ([Firecrawl](https://firecrawl.dev)) | optional; the app works without a key and says so |
-| LinkedIn profile import ([Apify](https://apify.com)) | **~$0.51 per profile**, measured — see [`scraper/extractor/apify_profile.py`](scraper/extractor/apify_profile.py) |
-| Public holidays, remote-job feed | $0 — both are keyless public APIs |
+| Profile import ([Apify](https://apify.com)) | **~$0.51 per profile**, measured — see [`scraper/extractor/apify_profile.py`](scraper/extractor/apify_profile.py). Optional: without a token the import says so, and GitHub is read from its own free JSON API either way |
+| The roles rail | $0 for three of the four boards — Jobicy is a keyless public API, LinkedIn is its own public guest search, and Indeed goes through JobSpy. **JobStreet is the one that bills**, at about $0.35 per thousand results through an Apify actor, and only when you pick it |
+| Public holidays | $0 — a keyless public API |
 
 #### What Worktrack does that neither page lists
 
@@ -206,7 +222,11 @@ The figures above are quoted with the date they were read, because somebody else
 This is the same rule the landing page follows and `src/lib/__tests__/attribution.test.ts` enforces: a claim nothing recomputes is a claim that rots, and this README shipped a stale test count once already.
 
 ### Accounts
-[Sign in](/login) or [create an account](/signup). Registration is three steps — credentials, a six-digit code sent to the address, then the overview — with the password rules shown on the form and checked as you type.
+[Sign in](/login) or [create an account](/signup). Registration is **four steps** — *your details* (an email and a password, with the rules shown on the form and checked as you type), *verify* (a six-digit code sent to the address), *personalise* (at least one profile address to read, plus an optional phone number and birthday), then *done*.
+
+**The profile step is after the code and not before it**, which is the only order that works rather than a preference. Reading a profile WRITES one, and `user_profiles` is scoped to `auth.uid()` — there is no `auth.uid()` until the code is accepted, so a sources form any earlier would have had nowhere to put what it found. It also means nobody re-types four links when a code fails to arrive. It can be skipped, by a quiet link rather than a second button.
+
+**Getting back in is [`/forgot-password`](/forgot-password), and it is three steps over the same shell**: address, code, new password. It sends a **code rather than a link**, which only works because [`supabase/templates/recovery.html`](supabase/templates/recovery.html) exists — Supabase's stock recovery template carries `{{ .ConfirmationURL }}` and no token, so a project on the default never issues a recovery code and step two can never pass. Step two signs the person in, which is how Supabase recovery works and is what lets step three set a password without asking for the old one — they do not have it, or they would not be there.
 
 The same rules are enforced by the database and not only by the browser: `minimum_password_length` and `password_requirements` in [`supabase/config.toml`](supabase/config.toml) mirror `src/lib/credentials.ts`, because a rule the browser enforces and the server does not is a rule anyone can skip with `curl`.
 
@@ -214,7 +234,7 @@ Email addresses are normalised — trimmed and lowercased — before anything le
 
 ## 6. Localhost Installation
 
-Worktrack requires **Node.js 18+**, a Supabase project, and the [Supabase CLI](https://supabase.com/docs/guides/local-development).
+Worktrack requires **Node.js 18.18 or later** — Next 15's own floor, and there is no `engines` field pinning it tighter — plus a Supabase project and the [Supabase CLI](https://supabase.com/docs/guides/local-development). Auto-fill and the roles rail additionally need Python; see below.
 
 ```bash
 git clone <repository-url> worktrack
@@ -230,12 +250,13 @@ The dev server starts at <http://localhost:3000>.
 `npm run dev` starts Next and nothing else. Auto-fill reads job postings through a separate Python service, so it stays unavailable until that is running too — and the symptom, before the app learned to say so, was auto-fill blaming perfectly good posting URLs:
 
 ```bash
-python3 -m venv scraper/.venv
-scraper/.venv/bin/pip install -e './scraper[dev]'
+npm run setup:scraper      # python3.13 -m venv, then pip install -e 'scraper[dev,browser]'
 npm run dev:scraper        # http://127.0.0.1:8000, reloads on edit
 ```
 
-Add `[dev,browser]` instead of `[dev]` to install the local browser as well. It is what reads boards that publish nothing structured, and it is a developer's convenience rather than part of a deployment: the Python builder installs `playwright` and never its Chromium, so a deployment uses `FIRECRAWL_API_KEY` for the same job.
+The extractor requires **Python 3.12 or later** and the repository pins 3.13 in [`scraper/.python-version`](scraper/.python-version), which is the version `setup:scraper` builds the virtualenv with.
+
+`[dev,browser]` installs the local browser as well. It is what reads boards that publish nothing structured, and it is a developer's convenience rather than part of a deployment: the Python builder installs `playwright` and never its Chromium, so a deployment uses `FIRECRAWL_API_KEY` for the same job. Drop to `[dev]` if you do not want the ~300MB.
 
 Apply the schema before first use:
 
@@ -277,12 +298,11 @@ are covered by their own definitions and by review, not by an executable check.
 
 `tsc` covers `src/**/__tests__/**` deliberately. The exclusion that used to hide type errors in test files is gone, and a guard test fails if it comes back.
 
-Two things about the local setup look decorative and are not, each of which cost a debugging round:
+One thing about the local setup looks decorative and is not: **stop the dev server before `npm run build`.** They share `.next`, and running both at once fails the build with `Cannot find module for page: /settings` — an error that names a route and has nothing to do with that route.
 
-- **Stop the dev server before `npm run build`.** They share `.next`, and running both at once fails the build with `Cannot find module for page: /settings` — an error that names a route and has nothing to do with that route.
-- **`npm run lint` walks into `venv/`.** It is `eslint .`, and the Python analysis virtualenv in the working tree is not excluded, so it reports thousands of problems from bundled matplotlib JavaScript. Lint the files you changed until the flat config ignores it.
+A second one used to sit beside it and is now fixed, which is worth a sentence because the advice outlived the fault. `npm run lint` is `eslint .`, and its ignore list held Vite's `dist/` long after the Next migration while holding neither Python virtualenv — so it walked the build output, the deploy artefacts and two virtualenvs full of vendored JavaScript, and reported tens of thousands of problems in files nobody here wrote. A check that noisy is not a check. The list now tracks `.gitignore` rather than taste, and it ignores `scraper/.venv/**` rather than `scraper/**`, so a JavaScript file added to the extractor is still linted.
 
-No test count is quoted anywhere in this file, on purpose: the previous README claimed one that was wrong within a day and stayed wrong for a milestone. `src/lib/__tests__/attribution.test.ts` now fails any attempt to put a figure back.
+**No number that grows with the codebase is quoted in this file**, on purpose: the previous README claimed a test total that was wrong within a day and stayed wrong for a milestone. `src/lib/__tests__/attribution.test.ts` fails any attempt to put one back. The fixed sizes above — the integration suite's twenty, and the eleven tables it walks — are a different kind of number: they change only when somebody edits those two files, and they are the point of the paragraph rather than a boast.
 
 ## 7. Configuration
 
@@ -293,9 +313,13 @@ No test count is quoted anywhere in this file, on purpose: the previous README c
 | `SUPABASE_AUTH_SITE_URL` | Only read by `supabase config push`. It has **no default on purpose**: an unset value fails the push loudly rather than pointing production auth emails at `localhost`. |
 | `EXTRACTOR_URL` | Auto-fill answers 503 and says so. It is a Vercel service binding in [`vercel.json`](vercel.json); locally it is `http://127.0.0.1:8000` and `npm run dev` does **not** start that service — `npm run dev:scraper` does. |
 | `FIRECRAWL_API_KEY` | The hosted fetcher is skipped. Read by the extractor, not by the app. Boards that refuse an ordinary request fall through to a local browser, which exists on a developer's machine and not in a deployment — so without this, Indeed is unreadable in production. The skip is logged rather than reported as the board blocking us. |
+| `APIFY_TOKEN` | Read by the extractor, not by the app, and it buys two separate things. **Profile import** says "not configured for this deployment" without it, and **the roles rail's JobStreet board** reports the same — every other board on that rail is free and unaffected. It is the only variable here that spends money; the ceiling on that spend is the Apify account's own balance and nothing in this repository. |
+| `GITHUB_TOKEN` | Optional, and only the rate limit changes. The GitHub half of profile import reads the public JSON API, which allows 60 requests an hour to an anonymous caller and 5,000 to a token. One person importing their own profile will never see the lower number; a deployment reading several will. |
+| `JOB_ACTOR_<BOARD>` | Repoints one board's Apify actor — `JOB_ACTOR_JOBSTREET=owner~actor` — without a deploy. Actors get deprecated, renamed and rate limited on somebody else's schedule, which is the whole reason this exists. |
 | `TAILORING_BASE_URL`, `TAILORING_API_KEY`, `TAILORING_MODEL` | Every model feature switches off and says why. Any OpenAI-compatible chat endpoint: OpenRouter, Groq, Together, a local Ollama. |
 | `MODEL_EXTRACT`, `MODEL_CV`, `MODEL_TAILOR` | Each falls back to `TAILORING_MODEL`. They are three different jobs — reading a posting against a schema, writing prose, and judging what may honestly be claimed — and they want different models. |
 | `TAILORING_ENABLED` | Absent means on. `false` is how a Preview deployment is told not to spend the shared key on a branch. |
+| `ESCO_ENABLED`, `ESCO_BASE_URL` | Absent means on, and there is no key to set — the European Commission's skills taxonomy answers an unauthenticated `GET`. It is the ATS check's synonym source, so a posting asking for "JavaScript" and a CV written in "ECMAScript" stop scoring zero overlap on a term both documents are about. `false` switches it off; matching falls back to raw tokens. |
 
 **One provider difference worth knowing before you swap endpoints.** OpenRouter documents two spellings for reasoning effort and they are not interchangeable: Groq answers the nested `reasoning: { effort }` with `400 property 'reasoning' is unsupported`, which costs the whole call. Everything here sends the flat OpenAI-style `reasoning_effort`, and the tests assert the nested form is absent.
 
@@ -317,7 +341,7 @@ The signup OTP will not work on a stock Supabase project. The default "Confirm s
 
 Vercel. Import the repository, set the two `NEXT_PUBLIC_SUPABASE_*` variables, and deploy. The landing page, `/privacy` and the 404 are statically prerendered; the authenticated routes render on demand.
 
-[`vercel.json`](vercel.json) declares **two services**, not one: the Next app and the Python extractor, with a service binding that injects `EXTRACTOR_URL` into the app. That is why `EXTRACTOR_URL` does not appear in the project's environment variables and should not be added there. The model and Firecrawl keys are ordinary environment variables and do have to be set.
+[`vercel.json`](vercel.json) declares **two services**, not one: the Next app and the Python extractor, with a service binding that injects `EXTRACTOR_URL` into the app. That is why `EXTRACTOR_URL` does not appear in the project's environment variables and should not be added there. The model, Firecrawl and Apify keys are ordinary environment variables and do have to be set — on the **extractor** service for the two the extractor reads, not on the app.
 
 ## 8. Engineering
 
@@ -347,7 +371,7 @@ Export your applications as CSV and place the file in `scripts/`. Without one, t
 src/
 ├── app/            Next.js App Router
 │   ├── (app)/      authenticated routes and their shell
-│   ├── (auth)/     /login and /signup
+│   ├── (auth)/     /login, /signup and /forgot-password
 │   ├── demo/       the public read-only route space
 │   ├── privacy/    the privacy page
 │   └── not-found.tsx
@@ -364,12 +388,16 @@ src/
 ├── hooks/          data hooks over TanStack Query
 ├── lib/            Supabase client, credentials, rate limiting, helpers
 └── services/       data access, validation, templates, analytics
+scraper/            the Python extractor, deployed as its own Vercel service
+├── app.py          FastAPI: /extract, /profile and /jobs
+└── extractor/      one module per source, all of them pure
 supabase/
 ├── migrations/     ordered SQL migrations
 ├── templates/      auth email templates
 └── config.toml     auth configuration, applied with `supabase config push`
 scripts/            demo seeding and the Python analysis
-docs/               SECURITY.md and the milestone plans
+docs/               SECURITY.md, INTEGRATIONS.md, and the milestone plans
+                    under docs/superpowers/
 ```
 
 ## 11. Stack
@@ -387,7 +415,8 @@ docs/               SECURITY.md and the milestone plans
 | Database | PostgreSQL (Supabase) |
 | Auth | Supabase Auth |
 | Server-side | Next.js route handlers (`src/app/api`) |
-| Posting extraction | Python (FastAPI) in [`scraper/`](scraper), run as its own service |
+| Carousel | Swiper.js, through the vendored Skiper UI source |
+| Posting extraction, job feed | Python (FastAPI) in [`scraper/`](scraper), run as its own service |
 | Testing | Vitest, React Testing Library |
 | Analysis | Python (pandas, matplotlib, seaborn) |
 
@@ -405,6 +434,7 @@ Twelve tables, RLS enabled on all of them:
 | `resume_snapshots` | Immutable version history |
 | `application_documents` | Which CV snapshot was sent to which application |
 | `contacts` / `application_contacts` | Recruiters and referrals, linked many-to-many |
+| `user_profiles` | One row per person: the profile merged from their public addresses, plus the phone number and birthday no source can supply |
 | `user_preferences` | Per-user settings; default currency for new applications |
 | `demo_accounts` | Read-only demo users, enforced by RLS |
 
@@ -435,12 +465,12 @@ The work they were meant to do runs where it can be tested from a laptop:
 - **Leaked-password protection is a Pro feature, and is therefore off.** Supabase checks new passwords against HaveIBeenPwned only on paid plans; the toggle renders and refuses to save. The length and character rules are enforced server-side, so what is missing is specifically the "this password is already on a list" check — which no client-side rule can honestly provide, so none is pretended. The same gate keeps server-side session expiry off; see [`docs/SECURITY.md`](docs/SECURITY.md).
 - **There is no third-party sign-in.** Email and password only. Google and Microsoft buttons existed and were deleted once it was established that neither provider had ever been enabled on the project — a control that cannot work reads as a broken app rather than a feature that is not set up.
 - **Client-side rate limiting is an affordance, not a boundary.** `src/lib/authRateLimit.ts` throttles repeated attempts from one browser and anyone with a console walks past it. The real boundary is server-side, and `docs/SECURITY.md` tables the dashboard controls that have to be switched on.
-- **`/` still paints for a frame when a session appears mid-visit.** The frame this list used to describe is gone: sessions have been cookie-backed via `@supabase/ssr` since 2026-09-11, so [`src/middleware.ts`](src/middleware.ts) reads the cookie and redirects a signed-in visitor before the landing page is generated. What remains is the case middleware structurally cannot see — a session that comes into existence *while* the page is open, where there was nothing to redirect at request time. `SignedInRedirect` catches that one after hydration, which is why the component is still mounted on `/`, `/login` and `/signup`.
+- **`/` still paints for a frame when a session appears mid-visit.** The frame this list used to describe is gone: sessions have been cookie-backed via `@supabase/ssr` since 2026-09-11, so [`src/middleware.ts`](src/middleware.ts) reads the cookie and redirects a signed-in visitor before the landing page is generated. What remains is the case middleware structurally cannot see — a session that comes into existence *while* the page is open, where there was nothing to redirect at request time. `SignedInRedirect` catches that one after hydration, which is why the component is still mounted on `/` and on the whole `(auth)` group — `/login`, `/signup` and `/forgot-password`.
 - **`resumes.sections` is never written**, so the ATS column reads "not checked" for CVs created through the editors.
 - **No accessibility audit has been done.** Keyboard navigation and `aria-current` are handled on the primary surfaces, `prefers-reduced-motion` is honoured throughout, and colour is never the only carrier of state — but a full screen-reader pass has not happened.
 - **Some job boards cannot be read from a server, and no amount of code changes that.** Indeed answers an anonymous request with a Cloudflare 401; JobStreet and SEEK answer 403. Where a board publishes its postings through its own API, that is used — the [posting extractor](scraper/extractor/seek_api.py) reads SEEK's own `/graphql` and the roles rail reads [LinkedIn's public guest search](scraper/extractor/linkedin_jobs.py), both unauthenticated and both asked plainly. Where a board publishes the answer into its own page instead, that is read where it is already given away — [JobStreet's search](scraper/extractor/jobstreet_jobs.py) ships its whole `jobSearchV7` response server-rendered into the HTML, so nothing is re-asked for. That reader still exists and is local-only, because the page needs a real browser a deployment has not got — so the rail's JobStreet half runs through a paid Apify actor instead, which puts both the crawling and the choice with the operator who runs it. JobStreet's `robots.txt` disallows the search paths, which is the better reason of the two. Where one does not, the hosted fetcher is tried, and where that fails too the app says which board refused and points at the employer's own careers page — which parses at 0.90–0.95 confidence a field, against 0.40–0.70 for an aggregator mirror even when the mirror *can* be read.
 - **One route on the roles rail does wear a disguise, and this line used to deny it.** Until 2026-09-21 the sentence above ended "Nothing here wears a disguise: no challenge is solved, no session borrowed, no residential proxy bought." That was true of everything then in the tree and is no longer true of all of it. The rail's **Indeed** half now runs through [JobSpy](https://github.com/speedyapply/JobSpy) (MIT), whose Indeed module sends `indeed-api-key`, a credential extracted from Indeed's iOS app, behind that app's own user-agent with TLS verification disabled — `apis.indeed.com/graphql` is Indeed's *partner* API and officially wants a bearer token and a signed agreement. That was a deliberate choice, made knowing the alternative was a paid actor or nothing, and it is recorded here rather than left for somebody to find in `node_modules`. The licence covers JobSpy's code; it does not cover Indeed's key. Everything else on the rail — Jobicy, LinkedIn — is still read plainly, and [`scraper/extractor/jobspy_board.py`](scraper/extractor/jobspy_board.py) says which is which.
-- **The pinned landing sequence is desktop-only.** Below `lg` nothing pins; the page scrolls normally, which is deliberate rather than unfinished.
+- **The pinned landing sequence needs width, and reduced motion turns it off entirely.** Below **`md` (768px)** nothing pins and the page scrolls normally, which is deliberate rather than unfinished: a hold costs a full viewport on a 375×812 screen and reads as jank under touch, and it removes the scroll-versus-gesture conflict outright — on a phone the carousel is simply conventional and touchable. 768 is not a landing-page number; it is the same `md` that hides the sidebar, imported from `lib/breakpoints` so one page cannot invent a second vocabulary for "mobile".
 
 ## Licence
 
@@ -459,7 +489,7 @@ git shortlog -sne --all
 
 No commit counts in that table on purpose — they change with every push, and this README already shipped one stale figure. The command above is the live answer, and it is what the two-name copyright line rests on: a grant signed by one author over another author's work would not be worth the file it is written in.
 
-**What this licence does not cover** is the third-party material vendored into the repository — shadcn/ui, AnimateIcons, Arimo, the Pexels video and the Unsplash photograph all arrive under their own terms, which are listed in [Attribution](#attribution) and are unaffected by the MIT grant above. The services the app talks to (Nager.Date, Jobicy, Firecrawl, Apify, Supabase, Vercel) are nobody's to relicense either; see [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md).
+**What this licence does not cover** is the third-party material vendored into the repository — shadcn/ui, AnimateIcons, Arimo, the Pexels video and the Unsplash photograph all arrive under their own terms, which are listed in [Attribution](#attribution) and are unaffected by the MIT grant above. The services the app talks to are nobody's to relicense either — Supabase and Vercel underneath it, and above it Nager.Date, Jobicy, ESCO, LanguageTool, GitHub's API and LinkedIn's public guest search (all keyless), plus Firecrawl and Apify (keyed); see [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md).
 
 ## Attribution
 
