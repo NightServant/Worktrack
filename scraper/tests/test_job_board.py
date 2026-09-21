@@ -23,10 +23,17 @@ def test_every_source_is_routed_and_labelled() -> None:
         assert ROUTES[source] in {"public", "render", "jobspy", "apify"}
         assert LABELS[source]
 
-    # NOTHING IS ON A PAID ACTOR ANY MORE. Every board reads either its own
-    # endpoint, its own page, or a free library -- which is the whole point of
-    # the work on 2026-09-21. An actor creeping back in is a bill nobody chose.
-    assert "apify" not in set(ROUTES.values())
+    # EXACTLY ONE BOARD IS PAID, AND IT IS JOBSTREET, chosen rather than
+    # drifted into. This assertion used to read "nothing is on a paid actor",
+    # which held for a few hours on 2026-09-21 while JobStreet was read from
+    # its own rendered page. That route works only where a real browser exists,
+    # so it was local-only -- and JobStreet's robots.txt disallows the search
+    # paths a deployment would have had to crawl to keep it. An actor puts both
+    # the crawling and that decision with the operator who runs it.
+    #
+    # The guard is kept in the narrow form rather than dropped: a SECOND board
+    # quietly becoming billable is still a bill nobody chose.
+    assert [source for source, route in ROUTES.items() if route == "apify"] == ["jobstreet"]
 
     # LINKEDIN IS FREE AND PLAIN and must stay that way: it reads its own
     # public guest endpoint, so neither an actor entry nor a JobSpy route
@@ -167,3 +174,63 @@ def test_a_headcount_is_not_a_salary() -> None:
 def test_unparseable_dates_return_none_rather_than_now() -> None:
     assert _iso("sometime soon") is None
     assert _iso(None) is None
+
+
+SCRAPYX_ROW = {
+    "recordType": "JOB",
+    "jobId": "94761372",
+    "jobUrl": "https://ph.jobstreet.com/job/94761372",
+    "title": "UI/UX Developer (with Frontend Exp)",
+    "companyName": "Creathink Solutions.Inc",
+    "salaryLabel": "₱70,000 - ₱85,000 per month",
+    "workTypes": ["Full time"],
+    "workArrangements": ["Remote"],
+    "listingDate": "2026-09-21T02:31:14.000Z",
+    "locations": ["Metro Manila"],
+    "classifications": ["Information & Communication Technology"],
+    "teaser": "Design and build the front of a fintech product.",
+}
+
+
+def test_scrapyx_row_maps_onto_the_rail() -> None:
+    """The actor JobStreet moved to on 2026-09-21, against its own row shape.
+
+    IT REPLACED `easyapi`, which is the most USED JobStreet actor on Apify and
+    the worst on the number that matters: a 62.4% run success rate at $2.99 per
+    thousand, against this one's $0.35.
+    """
+    job = to_feed_job(SCRAPYX_ROW, "jobstreet")
+    assert job is not None
+    assert job["id"] == "jobstreet:94761372"
+    assert job["company"] == "Creathink Solutions.Inc"
+    # `locations` and `classifications` are PLURAL here; the first entry is the
+    # one the card has room for.
+    assert job["geo"] == "Metro Manila"
+    assert job["industry"] == "Information & Communication Technology"
+    # The arrangement beats the work type on a card beside a location.
+    assert job["level"] == "Remote"
+    assert job["excerpt"] == "Design and build the front of a fintech product."
+    assert job["publishedAt"].startswith("2026-09-21")
+
+
+def test_the_band_is_read_out_of_scrapyx_prose() -> None:
+    # It prints the salary under `salaryLabel` as a sentence, unlike JobStreet's
+    # own page payload, which hands over the numbers.
+    job = to_feed_job(SCRAPYX_ROW, "jobstreet")
+    assert (job["salaryMin"], job["salaryMax"], job["salaryCurrency"]) == (70_000, 85_000, "PHP")
+
+
+def test_a_summary_or_error_record_is_not_a_job() -> None:
+    """The one that would have put junk cards on the rail.
+
+    scrapyx tags every row with `recordType` and emits `SEARCH_SUMMARY` and
+    `ERROR` rows alongside the jobs. Untagged rows are every other actor, which
+    only ever emits jobs -- so the check is "not something else" rather than
+    "is a job", and a new actor is not broken by default.
+    """
+    assert to_feed_job({"recordType": "SEARCH_SUMMARY", "totalCount": 907}, "jobstreet") is None
+    assert to_feed_job({"recordType": "ERROR", "_error": "bad input"}, "jobstreet") is None
+    assert len(to_feed_jobs([SCRAPYX_ROW, {"recordType": "SEARCH_SUMMARY"}], "jobstreet")) == 1
+    # An untagged row from any other actor still maps.
+    untagged = {k: v for k, v in SCRAPYX_ROW.items() if k != "recordType"}
+    assert to_feed_job(untagged, "jobstreet") is not None

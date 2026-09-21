@@ -458,7 +458,7 @@ export interface ScrapedFeed {
  */
 export async function fetchScrapedJobs(
   sources: readonly FeedSource[],
-  options: { query?: string; location?: string; limit?: number } = {},
+  options: { query?: string; location?: string; country?: string; limit?: number } = {},
   signal?: AbortSignal
 ): Promise<ScrapedFeed> {
   const wanted = sources.filter((source) => SCRAPED_SOURCES.includes(source))

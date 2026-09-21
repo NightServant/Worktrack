@@ -62,7 +62,17 @@ from typing import Any, Iterable
 #: README section 12 states it rather than claiming this service never does it.
 ACTORS: dict[str, dict[str, Any]] = {
     "jobstreet": {
-        "actor": "easyapi~jobstreet-job-scraper",
+        # `scrapyx`, NOT `easyapi`, SINCE 2026-09-21 (Gabe compared the store
+        # and picked it). The one it replaces is the most USED JobStreet actor
+        # on Apify -- 306 users -- and the worst on the number that matters: a
+        # 62.4% run success rate, so better than a third of runs fail. It is
+        # also $2.99 per thousand against this one's $0.35, and takes only
+        # prepared search URLs where this takes a keyword and a place.
+        #
+        # THE TRADE IS THAT IT IS UNPROVEN: two users and no ratings, so its
+        # 100% success rate is a handful of runs rather than evidence. The
+        # override below is how to move again without a deploy.
+        "actor": "scrapyx~jobstreet-jobs-scraper",
         "label": "JobStreet",
     },
     "indeed": {
@@ -96,7 +106,7 @@ ACTORS: dict[str, dict[str, Any]] = {
 #: proved for JobStreet's single postings.
 ROUTES: dict[str, str] = {
     "linkedin": "public",
-    "jobstreet": "render",
+    "jobstreet": "apify",
     "indeed": "jobspy",
 }
 
@@ -357,7 +367,16 @@ def _excerpt(row: dict[str, Any]) -> str | None:
     -- keeping it would put untrusted markup one careless render away from the
     DOM -- and the same rule applies to a row that cost money to fetch.
     """
-    text = _text(row, "descriptionText", "jobDescription", "description", "snippet", "summary")
+    text = _text(
+        row,
+        "descriptionText",
+        "jobDescription",
+        "description",
+        # scrapyx's one-line summary, which is what the rail wants anyway.
+        "teaser",
+        "snippet",
+        "summary",
+    )
     if not text:
         return None
     return text[:280].rstrip() + ("…" if len(text) > 280 else "")
@@ -374,6 +393,15 @@ def to_feed_job(raw: Any, source: str) -> dict[str, Any] | None:
     if not isinstance(raw, dict):
         return None
 
+    # A DATASET IS NOT ALL JOBS. scrapyx tags every row with `recordType` and
+    # emits `SEARCH_SUMMARY` (totals, resolved location) and `ERROR` rows
+    # alongside the `JOB` ones. Untagged rows are every other actor, which only
+    # ever emits jobs -- so the check is "not something else" rather than
+    # "is a job", and a new actor is not broken by default.
+    record_type = raw.get("recordType")
+    if isinstance(record_type, str) and record_type.upper() != "JOB":
+        return None
+
     title = _text(raw, "title", "jobTitle", "positionName", "position", "name")
     url = _url(raw, "jobUrl", "url", "link", "jobLink", "applyUrl", "detailsUrl", "externalUrl")
     published = _iso(
@@ -383,6 +411,7 @@ def to_feed_job(raw: Any, source: str) -> dict[str, Any] | None:
             "postedAt",
             "postedDate",
             "listingDate",
+            "listedAt",
             "postingDateParsed",
             "datePosted",
             "date",
@@ -393,7 +422,16 @@ def to_feed_job(raw: Any, source: str) -> dict[str, Any] | None:
         return None
 
     salary_min, salary_max, currency = _salary(
-        _pick(raw, "salary", "salaryEstimate", "salarySnippet", "salaryRange", "compensation")
+        _pick(
+            raw,
+            "salary",
+            # scrapyx prints the band as prose under `salaryLabel`.
+            "salaryLabel",
+            "salaryEstimate",
+            "salarySnippet",
+            "salaryRange",
+            "compensation",
+        )
     )
 
     return {
@@ -407,9 +445,26 @@ def to_feed_job(raw: Any, source: str) -> dict[str, Any] | None:
         )
         or "unnamed company",
         "url": url,
-        "geo": _text(raw, "location", "jobLocation", "formattedLocation", "place", "city"),
-        "level": _text(raw, "experienceLevel", "seniority", "jobLevel", "workType", "jobType"),
-        "industry": _text(raw, "sector", "industry", "classification", "category"),
+        # `locations` IS PLURAL ON scrapyx and `_text` takes the first entry,
+        # which is the one the rail has room for.
+        "geo": _text(
+            raw, "location", "locations", "jobLocation", "formattedLocation", "place", "city"
+        ),
+        "level": _text(
+            raw,
+            "experienceLevel",
+            "seniority",
+            "jobLevel",
+            # scrapyx: both plural, and the arrangement is the more useful of
+            # the two on a card beside a location.
+            "workArrangements",
+            "workTypes",
+            "workType",
+            "jobType",
+        ),
+        "industry": _text(
+            raw, "sector", "industry", "classifications", "classification", "category"
+        ),
         "publishedAt": published,
         "excerpt": _excerpt(raw),
         "salaryMin": salary_min,

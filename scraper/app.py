@@ -1572,6 +1572,12 @@ class JobFeedRequest(BaseModel):
     #: What to search for. Optional -- most of these actors return their own
     #: idea of recent when given nothing.
     query: str | None = None
+    #: An ISO 3166 country code, e.g. `PH`.
+    #:
+    #: SEPARATE FROM `location`, which is free text like "Philippines". Some
+    #: actors want a code and some want a name, and guessing which from one
+    #: field is how scrapyx's `ID` default quietly returns Indonesian jobs.
+    country: str | None = None
     #: Where, as the board's own free text ("Philippines", "Remote").
     location: str | None = None
     limit: int | None = None
@@ -1601,17 +1607,44 @@ async def _apify_jobs(source: str, body: JobFeedRequest) -> tuple[list[dict[str,
     location = (body.location or "").strip()
 
     payload: dict[str, Any] = {
+        # EVERY SPELLING OF "HOW MANY", because these actors disagree and none
+        # of them sets `additionalProperties: false`, so the ones an actor does
+        # not know are ignored rather than rejected.
         "maxItems": count,
+        "maxItemsPerQuery": count,
         "maxResults": count,
         "rows": count,
         "limit": count,
+        # FRESHEST FIRST. The rail's heading is "what went up recently", and
+        # scrapyx defaults to `KeywordRelevance`, which is a different question.
+        "sortBy": "ListedDate",
+        # OFF, AND IT IS THE EXPENSIVE ONE. `includeJobDetails` fetches the
+        # full HTML description for every row -- kilobytes the rail shows two
+        # lines of, and a second request per posting. The teaser is enough.
+        "includeJobDetails": False,
     }
     if query:
-        payload.update({"query": query, "keyword": query, "title": query, "position": query,
-                        "searchTerm": query, "search": query})
+        payload.update({
+            # AN ARRAY FOR scrapyx, a string for everyone else. Sending only
+            # the string would have run its default empty search.
+            "keywords": [query],
+            "query": query,
+            "keyword": query,
+            "title": query,
+            "position": query,
+            "searchTerm": query,
+            "search": query,
+        })
     if location:
-        payload.update({"location": location, "country": location, "city": location,
-                        "geoLocation": location})
+        payload.update({"location": location, "city": location, "geoLocation": location})
+    if body.country:
+        # `country` IS AN ISO CODE TO scrapyx AND A NAME TO JobSpy, and its
+        # scrapyx default is `ID` -- so a Philippine reader who sent no code
+        # would have been served Indonesian jobs. The code goes in the field
+        # that wants a code; the NAME still goes in `location` above.
+        payload["country"] = body.country
+    elif location:
+        payload["country"] = location
 
     try:
         async with httpx.AsyncClient(timeout=JOB_FEED_TIMEOUT_S) as client:

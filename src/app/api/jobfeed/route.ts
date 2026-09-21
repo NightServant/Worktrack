@@ -139,7 +139,13 @@ export async function POST(request: Request) {
     )
   }
 
-  let body: { sources?: unknown; query?: unknown; location?: unknown; limit?: unknown }
+  let body: {
+    sources?: unknown
+    query?: unknown
+    location?: unknown
+    country?: unknown
+    limit?: unknown
+  }
   try {
     body = await request.json()
   } catch {
@@ -182,6 +188,12 @@ export async function POST(request: Request) {
         sources: [...new Set(sources)],
         query: text(body?.query, MAX_QUERY_CHARS),
         location: text(body?.location, MAX_QUERY_CHARS),
+        /*
+          THE CODE AS WELL AS THE NAME, because the actors disagree about which
+          they want and one of them defaults to Indonesia. Two characters, so
+          the cap is its own sanity check rather than a length limit.
+        */
+        country: text(body?.country, 2)?.toUpperCase(),
         limit: Number.isFinite(count) ? Math.max(1, Math.min(count, MAX_LIMIT)) : MAX_LIMIT,
       }),
     })

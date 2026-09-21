@@ -238,6 +238,11 @@ export function useCalendarExtras({ boards: allowBoards = true }: CalendarExtras
     return {
       query: field?.name,
       location: place?.name ?? countryName(country),
+      // THE CODE TRAVELS WITH THE NAME. `resolveUserCountry` already produced
+      // it -- see `country` above -- and an actor that wants `PH` rather than
+      // "Philippines" would otherwise fall back to its own default, which for
+      // the JobStreet one is Indonesia.
+      country: country ?? undefined,
     }
   }, [industries.data, industry, offered, geo, country])
 

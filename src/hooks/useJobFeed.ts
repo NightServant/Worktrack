@@ -89,11 +89,17 @@ export function useJobFeedLocations(enabled = true) {
  */
 export function useScrapedJobs(
   sources: readonly FeedSource[],
-  options: { query?: string; location?: string } = {}
+  options: { query?: string; location?: string; country?: string } = {}
 ) {
-  const { query, location } = options
+  const { query, location, country } = options
   return useQuery<ScrapedFeed>({
-    queryKey: ['job-feed-boards', [...sources].sort().join(','), query ?? '', location ?? ''],
+    queryKey: [
+      'job-feed-boards',
+      [...sources].sort().join(','),
+      query ?? '',
+      location ?? '',
+      country ?? '',
+    ],
     /*
       NO `limit` SENT, DELIBERATELY. The extractor caps per route -- a hundred
       from a board that publishes its own postings, twenty-five from one behind
@@ -101,7 +107,7 @@ export function useScrapedJobs(
       A number chosen here would either hold the free boards down to the paid
       budget or raise the paid ones to the free one.
     */
-    queryFn: ({ signal }) => fetchScrapedJobs(sources, { query, location }, signal),
+    queryFn: ({ signal }) => fetchScrapedJobs(sources, { query, location, country }, signal),
     enabled: sources.length > 0,
     staleTime: 60 * 60_000,
     gcTime: 2 * 60 * 60_000,
