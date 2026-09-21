@@ -29,9 +29,20 @@ import type { ResumeContent } from '@/services/resumeService'
  * profile got specimen text anyway, and had to retype what the app already
  * knew.
  *
- * THE FALLBACKS ARE THE OLD TEXT, EXACTLY. A token without a profile renders
- * its fallback, so a user with nothing connected gets character-for-character
- * the document this constant has always produced.
+ * THE FALLBACKS ARE THE OLD TEXT, near enough. A token without a profile
+ * renders its fallback, so a user with nothing connected gets the document
+ * this constant has always produced -- except on the contact line, where
+ * `[portfolio or GitHub]` became `[LinkedIn] · [GitHub]` (Gabe, 2026-09-21:
+ * "profile links for various sources such as linkedin and github ... are not
+ * rendered in the CV itself"). One slot could not hold two links, and those
+ * two are the ones registration actually asks for.
+ *
+ * `{{birthday}}` HAS NO FALLBACK, WHICH IS THE POINT. A date of birth belongs
+ * on a CV in some markets and on no CV at all in others, so a bracketed prompt
+ * for one would be this app suggesting it. With no fallback it prints the date
+ * for somebody who entered one at registration and prints NOTHING for
+ * everybody else -- and `tidySeparators` takes the stranded `·` with it, so
+ * the line is byte-identical to the old one for anybody who gave no birthday.
  *
  * ANYTHING THAT SHOWS THIS TO A PERSON MUST PERSONALISE IT FIRST -- with
  * `EMPTY_PROFILE` if it has no profile to hand. `{{` must never reach a
@@ -46,7 +57,7 @@ export const DEFAULT_WORD_CONTENT: JSONContent = {
   type: 'doc',
   content: [
     { type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text: '{{name|Your name}}' }] },
-    { type: 'paragraph', content: [{ type: 'text', text: '{{email|[email]}} · {{phone|[phone]}} · {{location|[city]}} · {{website|[portfolio or GitHub]}}' }] },
+    { type: 'paragraph', content: [{ type: 'text', text: '{{email|[email]}} · {{phone|[phone]}} · {{location|[city]}} · {{linkedin|[LinkedIn]}} · {{github|[GitHub]}} · {{birthday}}' }] },
     { type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: 'Summary' }] },
     { type: 'paragraph', content: [{ type: 'text', text: '{{summary|[Two sentences: what you do, and the thing you are best at. Write it last.]}}' }] },
     { type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: 'Experience' }] },

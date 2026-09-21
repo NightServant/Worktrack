@@ -87,14 +87,94 @@ function clean(value: string | null | undefined): string | null {
 }
 
 /**
+ * The address the profile was read from, for one site. See `ProfileSource`.
+ *
+ * MATCHED ON THE LABEL THE EXTRACTOR SET -- `LinkedIn`, `GitHub`, `JobStreet`,
+ * `Glassdoor`, `Indeed` -- which is a fixed vocabulary from `_profile_site`,
+ * not a host parsed twice.
+ *
+ * ONLY A SOURCE THAT READ. A link that answered with a challenge is still in
+ * the list, because the panel has to say which one failed; putting it on a CV
+ * would print an address nobody has checked leads anywhere.
+ */
+function sourceUrl(profile: UserProfile, site: string): string | null {
+  const found = profile.sources.find(
+    (source) => source.ok && source.site.toLowerCase() === site.toLowerCase()
+  )
+  return displayUrl(clean(found?.url))
+}
+
+/**
+ * `https://www.linkedin.com/in/gabe-0252b4340/` -> `linkedin.com/in/gabe-0252b4340`.
+ *
+ * THE TEMPLATES THEMSELVES SAY THIS IS THE FORM. Every fallback beside these
+ * tokens is written bare -- `linkedin.com/in/yourprofile`, `github.com/profile`,
+ * `yoursite.dev` -- so a real address printed with its scheme did not look
+ * like the thing it replaced. It is also what a CV prints: nobody writes
+ * `https://` on paper, and two full URLs on one contact line is most of the
+ * line.
+ *
+ * THE ADDRESS IS NOT CHANGED, ONLY HOW IT READS. This is a document for a
+ * human; the stored source keeps the scheme, and the settings panel still
+ * links the real thing.
+ */
+function displayUrl(value: string | null): string | null {
+  if (!value) return null
+  return (
+    clean(
+      value
+        .replace(/^[a-z]+:\/\//i, '')
+        .replace(/^www\./i, '')
+        .replace(/\/+$/, '')
+    ) ?? value
+  )
+}
+
+/**
+ * A date of birth as a CV would print it, or null.
+ *
+ * SPLIT BY HAND RATHER THAN PARSED. `new Date('1999-03-07')` is UTC midnight,
+ * so west of Greenwich it prints the 6th -- the same defect `todayValue` in
+ * the details dialog exists to avoid, on a field where being a day out is a
+ * wrong fact on a document somebody sends to an employer.
+ *
+ * `birthDate` IS THE FALLBACK AND IS NOT THE SAME FACT. LinkedIn publishes
+ * "Mar 7" with no year because a year identifies you; it is printed as written
+ * rather than padded with a guess.
+ */
+function birthdayValue(profile: UserProfile): string | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(clean(profile.birthday) ?? '')
+  if (!match) return clean(profile.birthDate)
+  const [, year, month, day] = match.map(Number)
+  return new Date(year, month - 1, day).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  })
+}
+
+/**
  * The scalar values a template can ask for.
  *
- * `phone` IS HERE AND IS ALWAYS NULL. `UserProfile` has no phone field --
- * LinkedIn's export does not carry one, so there is nothing to read. The token
- * is supported anyway because the CV templates' contact lines need a phone
- * slot and its fallback is the only sane thing to show; when a profile source
- * that has the number is added, this is the one line that changes. Dropping
- * the token instead would mean editing every template back later.
+ * `phone` WAS HARDCODED TO NULL AND IS NOT ANY MORE (Gabe, 2026-09-21:
+ * "contact number ... not rendered in the CV itself"). The old note here said
+ * `UserProfile` has no phone field, which was true while the only way in was
+ * LinkedIn's export -- no public profile publishes a number. Registration now
+ * asks for one and the details dialog edits it, so the field the token was
+ * waiting for exists, and this is the one line that had to change, exactly as
+ * that note said it would.
+ *
+ * `email` IS THE ACCOUNT'S, NOT A SOURCE'S (Gabe, 2026-09-21: "email used from
+ * the account registration must be used"). That is settled one layer down, in
+ * `userProfileService.get`, so the profile CARD and the CV agree -- see the
+ * note there for why it belongs at the read rather than here.
+ *
+ * EVERY SOURCE THE PERSON GAVE IS A TOKEN. `linkedin` used to be `profile.url`
+ * alone, which is whatever a parser happened to write; the address the reader
+ * actually typed is in `sources`, and the rest of them -- GitHub above all --
+ * had nowhere to go at all. `website` still prefers a real personal site and
+ * falls back to GitHub, because that is what the templates' own fallback text
+ * (`github.com/profile`) has always been standing in for.
  *
  * `today` is the exception that is never absent: a letter needs a date, the
  * clock always has one, and 'en-US' is pinned for the same reason `date.ts`
@@ -102,14 +182,20 @@ function clean(value: string | null | undefined): string | null {
  * format per machine, including in tests.
  */
 function tokenValues(profile: UserProfile, prose: CvWriting): Record<string, string | null> {
+  const github = sourceUrl(profile, 'GitHub')
   return {
     name: clean(profile.name),
     headline: clean(profile.headline),
     email: clean(profile.email),
-    phone: null,
+    phone: clean(profile.phone),
+    birthday: birthdayValue(profile),
     location: clean(profile.location),
-    website: clean(profile.websites[0]),
-    linkedin: clean(profile.url),
+    website: displayUrl(clean(profile.websites[0])) ?? github,
+    linkedin: sourceUrl(profile, 'LinkedIn') ?? displayUrl(clean(profile.url)),
+    github,
+    jobstreet: sourceUrl(profile, 'JobStreet'),
+    indeed: sourceUrl(profile, 'Indeed'),
+    glassdoor: sourceUrl(profile, 'Glassdoor'),
     industry: clean(profile.industry),
     /*
      * THE COMPOSED SUMMARY, NOT THE RAW FIELD (Gabe, 2026-09-19). `summary` is
@@ -129,6 +215,39 @@ function tokenValues(profile: UserProfile, prose: CvWriting): Record<string, str
 }
 
 /**
+ * A token with a separator on one side of it, which is a CONTACT LINE.
+ *
+ * The test is deliberately narrow, because `tidySeparators` below re-spaces
+ * what it touches and somebody's About paragraph is allowed to contain a pipe.
+ * A separator immediately beside `{{` or `}}` is a template author building a
+ * row of fields; a pipe in the middle of a sentence is a sentence.
+ */
+const SEPARATED_TOKEN = /[|·]\s*\{\{|\}\}\s*[|·]/
+
+/**
+ * `a |  | b` -> `a | b`, and `| a` -> `a`.
+ *
+ * WHY A TOKEN IS ALLOWED TO RESOLVE TO NOTHING AT ALL. Every token in the
+ * shipped templates carries a fallback, which is what stops a blank line where
+ * a name should be -- but a fallback is the wrong answer for a field most
+ * people do not have. `{{birthday}}` with no fallback prints the date for
+ * somebody who gave one and nothing at all for everybody else; without this it
+ * would print a stranded ` | ` instead, which looks like the document broke.
+ *
+ * It is the same rule `joined` already applies when this file BUILDS a line --
+ * the missing halves are dropped rather than leaving a bare pipe. This is that
+ * rule applied to a line somebody else wrote.
+ */
+function tidySeparators(value: string): string {
+  const separator = value.includes('·') ? '·' : '|'
+  const parts = value
+    .split(separator)
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0)
+  return parts.join(` ${separator} `)
+}
+
+/**
  * Replaces every token in every text node, in place, on an already-cloned tree.
  *
  * A text node whose text substitutes down to nothing is REMOVED, not left
@@ -144,9 +263,11 @@ function substituteTokens(node: JSONContent, values: Record<string, string | nul
   const kept: JSONContent[] = []
   for (const child of node.content) {
     if (child.type === 'text' && typeof child.text === 'string') {
-      const text = child.text.replace(TOKEN, (_match, name: string, fallback?: string) => {
+      const separated = SEPARATED_TOKEN.test(child.text)
+      const substituted = child.text.replace(TOKEN, (_match, name: string, fallback?: string) => {
         return values[name.toLowerCase()] ?? fallback ?? ''
       })
+      const text = separated ? tidySeparators(substituted) : substituted
       if (text.length === 0) continue
       child.text = text
       kept.push(child)

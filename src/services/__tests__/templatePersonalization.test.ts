@@ -314,3 +314,159 @@ describe('every shipped template', () => {
     }
   })
 })
+
+/**
+ * The contact line, which is the part of a CV that is entirely facts the app
+ * already holds -- and which was printing somebody else's specimen values
+ * (Gabe, 2026-09-21, with a screenshot: "profile links for various sources
+ * such as linkedin and github, contact number, birth date, and email are not
+ * rendered in the CV itself").
+ *
+ * FOUR SEPARATE CAUSES WEARING ONE SYMPTOM, which is why this block exists
+ * rather than one more assertion above:
+ *
+ *   `phone` was hardcoded to null, from when no source could supply one.
+ *   `email` was only ever written by a parser, and no public profile
+ *     publishes an address -- settled in `userProfileService`, tested there.
+ *   `github` had no token at all, so the address the person typed at
+ *     registration could not reach a document.
+ *   `birthday` had no token either.
+ */
+const CONNECTED: UserProfile = {
+  ...EMPTY_PROFILE,
+  name: 'Elijah Gabe Cervantes',
+  location: 'Bamban, Central Luzon, Philippines',
+  email: 'gabe@example.com',
+  phone: '+63 928 284 4172',
+  phoneType: 'mobile',
+  birthday: '1999-03-07',
+  url: 'linkedin.com/in/parsed-by-a-scraper',
+  sources: [
+    {
+      url: 'https://www.linkedin.com/in/elijah-gabe-cervantes-0252b4340/',
+      site: 'LinkedIn',
+      ok: true,
+      note: null,
+      warnings: [],
+      via: 'apify',
+    },
+    {
+      url: 'https://github.com/TeckyGabby',
+      site: 'GitHub',
+      ok: true,
+      note: null,
+      warnings: [],
+      via: 'github',
+    },
+  ],
+}
+
+/** The screenshot's own template line, verbatim. */
+const CONTACT_LINE =
+  '{{location|Location}} | {{phone|+1 (555) 123-4567}} | {{email|email@example.com}} | {{linkedin|linkedin.com/in/profile}} | {{website|github.com/profile}} | {{birthday}}'
+
+describe('the contact line', () => {
+  it('prints every detail the app holds instead of the specimen values', () => {
+    const out = allText(personalizeTemplate(doc(para(CONTACT_LINE)), CONNECTED))
+    expect(out).toBe(
+      'Bamban, Central Luzon, Philippines | +63 928 284 4172 | gabe@example.com | ' +
+        'linkedin.com/in/elijah-gabe-cervantes-0252b4340 | ' +
+        'github.com/TeckyGabby | March 7, 1999'
+    )
+    // The three that were on the screenshot, named so a regression says which.
+    expect(out).not.toContain('(555) 123-4567')
+    expect(out).not.toContain('email@example.com')
+    expect(out).not.toContain('github.com/profile')
+  })
+
+  it('prefers the address the person typed over the one a parser wrote', () => {
+    // `profile.url` is whatever a scraper put there; `sources` is what was
+    // entered at registration, and it is the one a reader can vouch for.
+    const out = allText(personalizeTemplate(doc(para('{{linkedin|none}}')), CONNECTED))
+    expect(out).toBe('linkedin.com/in/elijah-gabe-cervantes-0252b4340')
+  })
+
+  it('still falls back to a parsed LinkedIn URL when no source was entered', () => {
+    const parsedOnly = { ...CONNECTED, sources: [] }
+    expect(allText(personalizeTemplate(doc(para('{{linkedin|none}}')), parsedOnly))).toBe(
+      'linkedin.com/in/parsed-by-a-scraper'
+    )
+  })
+
+  it('does not print an address that could not be read', () => {
+    // A failed link stays in `sources` because the settings panel has to say
+    // which one failed. Printing it on a CV would publish an address nobody
+    // has checked leads anywhere.
+    const failed: UserProfile = {
+      ...CONNECTED,
+      sources: [{ ...CONNECTED.sources[1], ok: false, note: 'that page refused' }],
+    }
+    expect(allText(personalizeTemplate(doc(para('{{github}}')), failed))).toBe('')
+  })
+
+  it('uses a real personal site over GitHub, and GitHub when there is none', () => {
+    const withSite = { ...CONNECTED, websites: ['cervantes.dev'] }
+    expect(allText(personalizeTemplate(doc(para('{{website|x}}')), withSite))).toBe('cervantes.dev')
+    expect(allText(personalizeTemplate(doc(para('{{website|x}}')), CONNECTED))).toBe(
+      'github.com/TeckyGabby'
+    )
+  })
+
+  it('takes the stranded separator with an empty birthday', () => {
+    /*
+      THE REASON `{{birthday}}` CARRIES NO FALLBACK. A date of birth belongs on
+      a CV in some markets and on no CV at all in others, so a bracketed prompt
+      would be this app suggesting one. Empty it has to leave no trace -- a
+      line ending in a bare `|` looks like the document broke.
+    */
+    const out = allText(personalizeTemplate(doc(para(CONTACT_LINE)), EMPTY_PROFILE))
+    expect(out).toBe(
+      'Location | +1 (555) 123-4567 | email@example.com | linkedin.com/in/profile | github.com/profile'
+    )
+    expect(out).not.toContain('||')
+    expect(out.trim().endsWith('|')).toBe(false)
+  })
+
+  it('reads a birthday as a local date, not a UTC instant', () => {
+    // `new Date('1999-03-07')` is UTC midnight and prints the 6th west of
+    // Greenwich -- a wrong fact on a document somebody sends to an employer.
+    expect(allText(personalizeTemplate(doc(para('{{birthday}}')), CONNECTED))).toBe('March 7, 1999')
+  })
+
+  it('prints what LinkedIn published when there is no entered date', () => {
+    const noYear = { ...CONNECTED, birthday: null, birthDate: 'Mar 7' }
+    expect(allText(personalizeTemplate(doc(para('{{birthday}}')), noYear))).toBe('Mar 7')
+  })
+
+  it('leaves a pipe inside somebody’s own prose alone', () => {
+    // `tidySeparators` re-spaces what it touches, so it must only touch a line
+    // the TEMPLATE built out of separators -- not a summary that has one in it.
+    const prose = { ...EMPTY_PROFILE, summary: 'Ships fast | writes tests' }
+    // The full stop is `professionalSummary` ending a sentence, which is its
+    // job. What matters here is that the pipe and the spaces around it are
+    // exactly where the person put them.
+    expect(allText(personalizeTemplate(doc(para('{{summary|x}}')), prose))).toBe(
+      'Ships fast | writes tests.'
+    )
+  })
+})
+
+describe('every shipped template carries the details the app holds', () => {
+  it('puts the phone, the links and the birthday on every CV and letter', () => {
+    /*
+      ASSERTED ACROSS THE SHIPPED SET rather than a fixture, for the same
+      reason the `{{` check above is: a template added later with a sender
+      block that forgets these is exactly how this regresses, and a fixture
+      would not notice.
+    */
+    for (const template of [...WORD_TEMPLATES, ...COVER_LETTER_TEMPLATES]) {
+      const text = allText(personalizeTemplate(template.content, CONNECTED))
+      expect.soft(text, `${template.name}: phone`).toContain('+63 928 284 4172')
+      expect.soft(text, `${template.name}: email`).toContain('gabe@example.com')
+      expect.soft(text, `${template.name}: birthday`).toContain('March 7, 1999')
+      expect
+        .soft(text, `${template.name}: a profile link`)
+        .toMatch(/linkedin\.com\/in\/elijah-gabe|github\.com\/TeckyGabby/)
+    }
+  })
+})

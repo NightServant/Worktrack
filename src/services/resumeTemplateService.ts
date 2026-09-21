@@ -152,7 +152,7 @@ export const WORD_TEMPLATES: ResumeTemplate[] = [
           content: [
             {
               type: 'text',
-              text: '{{email|email@example.com}} | {{phone|(555) 123-4567}} | {{linkedin|linkedin.com/in/yourprofile}}',
+              text: '{{email|email@example.com}} | {{phone|(555) 123-4567}} | {{linkedin|linkedin.com/in/yourprofile}} | {{github}} | {{birthday}}',
             },
           ],
         },
@@ -280,7 +280,7 @@ export const WORD_TEMPLATES: ResumeTemplate[] = [
           content: [
             {
               type: 'text',
-              text: '{{location|City, State}} | {{email|email@example.com}} | {{phone|(555) 123-4567}} | {{website|portfolio.com}}',
+              text: '{{location|City, State}} | {{email|email@example.com}} | {{phone|(555) 123-4567}} | {{linkedin}} | {{website|portfolio.com}} | {{birthday}}',
               marks: [{ type: 'italic' }],
             },
           ],
@@ -402,7 +402,7 @@ export const WORD_TEMPLATES: ResumeTemplate[] = [
           content: [
             {
               type: 'text',
-              text: '{{location|Location}} | {{phone|+1 (555) 123-4567}} | {{email|email@example.com}} | {{linkedin|linkedin.com/in/profile}} | {{website|github.com/profile}}',
+              text: '{{location|Location}} | {{phone|+1 (555) 123-4567}} | {{email|email@example.com}} | {{linkedin|linkedin.com/in/profile}} | {{website|github.com/profile}} | {{birthday}}',
             },
           ],
         },
@@ -567,7 +567,7 @@ export const WORD_TEMPLATES: ResumeTemplate[] = [
         },
         {
           type: 'paragraph',
-          content: [{ type: 'text', text: '{{location|City, Country}} | {{email|email@example.com}} | {{phone|+63 900 000 0000}} | {{linkedin|linkedin.com/in/you}}' }],
+          content: [{ type: 'text', text: '{{location|City, Country}} | {{email|email@example.com}} | {{phone|+63 900 000 0000}} | {{linkedin|linkedin.com/in/you}} | {{github}} | {{birthday}}' }],
         },
         {
           type: 'heading',
@@ -669,7 +669,7 @@ export const WORD_TEMPLATES: ResumeTemplate[] = [
         {
           type: 'paragraph',
           attrs: { textAlign: 'center' },
-          content: [{ type: 'text', text: '{{email|email@example.com}} | {{phone|+63 900 000 0000}} | {{website|github.com/you}}' }],
+          content: [{ type: 'text', text: '{{email|email@example.com}} | {{phone|+63 900 000 0000}} | {{linkedin}} | {{website|github.com/you}} | {{birthday}}' }],
         },
         {
           type: 'heading',
@@ -770,7 +770,7 @@ export const WORD_TEMPLATES: ResumeTemplate[] = [
         },
         {
           type: 'paragraph',
-          content: [{ type: 'text', text: '{{headline|Software Engineer}} | {{email|email@example.com}} | {{website|github.com/you}} | {{linkedin|linkedin.com/in/you}}' }],
+          content: [{ type: 'text', text: '{{headline|Software Engineer}} | {{email|email@example.com}} | {{phone|+63 900 000 0000}} | {{website|github.com/you}} | {{linkedin|linkedin.com/in/you}} | {{birthday}}' }],
         },
         {
           type: 'heading',
@@ -902,7 +902,7 @@ export const COVER_LETTER_TEMPLATES: ResumeTemplate[] = [
             { type: 'hardBreak' },
             { type: 'text', text: '{{location|City, Country}}' },
             { type: 'hardBreak' },
-            { type: 'text', text: '{{email|email@example.com}} | {{phone|+63 900 000 0000}}' },
+            { type: 'text', text: '{{email|email@example.com}} | {{phone|+63 900 000 0000}} | {{linkedin}} | {{github}} | {{birthday}}' },
             { type: 'hardBreak' },
             { type: 'text', text: '{{linkedin|linkedin.com/in/you}}' },
           ],
@@ -998,7 +998,7 @@ export const COVER_LETTER_TEMPLATES: ResumeTemplate[] = [
             { type: 'hardBreak' },
             {
               type: 'text',
-              text: '{{email|email@example.com}} | {{phone|+63 900 000 0000}} | {{linkedin|linkedin.com/in/you}}',
+              text: '{{email|email@example.com}} | {{phone|+63 900 000 0000}} | {{linkedin|linkedin.com/in/you}} | {{github}} | {{birthday}}',
             },
           ],
         },
@@ -1074,7 +1074,7 @@ export const COVER_LETTER_TEMPLATES: ResumeTemplate[] = [
             { type: 'hardBreak' },
             { type: 'text', text: '{{location|City, Country}}' },
             { type: 'hardBreak' },
-            { type: 'text', text: '{{email|email@example.com}} | {{phone|+63 900 000 0000}}' },
+            { type: 'text', text: '{{email|email@example.com}} | {{phone|+63 900 000 0000}} | {{linkedin}} | {{github}} | {{birthday}}' },
           ],
         },
         {
@@ -1168,7 +1168,7 @@ export const COVER_LETTER_TEMPLATES: ResumeTemplate[] = [
           content: [
             { type: 'text', text: '{{name|Your Name}}', marks: [{ type: 'bold' }] },
             { type: 'hardBreak' },
-            { type: 'text', text: '{{email|email@example.com}} | {{phone|+63 900 000 0000}}' },
+            { type: 'text', text: '{{email|email@example.com}} | {{phone|+63 900 000 0000}} | {{linkedin}} | {{github}} | {{birthday}}' },
           ],
         },
         { type: 'paragraph', content: [{ type: 'text', text: '{{today}}' }] },
@@ -1254,7 +1254,7 @@ export const COVER_LETTER_TEMPLATES: ResumeTemplate[] = [
             { type: 'hardBreak' },
             {
               type: 'text',
-              text: '{{email|email@example.com}} | {{website|yoursite.dev}} | {{linkedin|linkedin.com/in/you}}',
+              text: '{{email|email@example.com}} | {{phone|+63 900 000 0000}} | {{website|yoursite.dev}} | {{linkedin|linkedin.com/in/you}} | {{birthday}}',
             },
           ],
         },

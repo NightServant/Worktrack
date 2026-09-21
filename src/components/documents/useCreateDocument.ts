@@ -87,7 +87,7 @@ export const BLANK_LETTER: ResumeContent = {
         { type: 'hardBreak' },
         {
           type: 'text',
-          text: '{{email|email@example.com}} | {{phone|+63 900 000 0000}} | {{linkedin|linkedin.com/in/you}}',
+          text: '{{email|email@example.com}} | {{phone|+63 900 000 0000}} | {{linkedin|linkedin.com/in/you}} | {{github}} | {{birthday}}',
         },
       ],
     },
