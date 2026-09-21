@@ -77,12 +77,14 @@ beforeEach(() => window.localStorage.clear())
 afterEach(() => window.localStorage.clear())
 
 describe('the registration progress bar', () => {
-  it('names the three steps and marks the first as current', () => {
+  it('names the four steps and marks the first as current', () => {
     setup()
     const bar = document.querySelector('[data-registration-progress]')!
     expect(bar).toBeInTheDocument()
     const steps = [...bar.querySelectorAll('[data-step]')].map((s) => s.getAttribute('data-step'))
-    expect(steps).toEqual(['your details', 'verify', 'done'])
+    // `personalise` joined on 2026-09-21: the sources form sits after the
+    // code, because reading a profile writes one and writing needs a session.
+    expect(steps).toEqual(['your details', 'verify', 'personalise', 'done'])
     expect(
       bar.querySelector('[data-step][data-state="current"]')?.getAttribute('data-step')
     ).toBe('your details')
@@ -98,7 +100,7 @@ describe('the registration progress bar', () => {
     setup()
     const bar = document.querySelector('[data-registration-progress]')!
     const steps = [...bar.querySelectorAll('[data-step]')]
-    expect(steps).toHaveLength(3)
+    expect(steps).toHaveLength(4)
     expect(steps.every((step) => step.querySelector('svg') !== null)).toBe(true)
     // The descriptions are the reason this moved to the shared tracker: the
     // way IN was the only progress bar in the app without them.

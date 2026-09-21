@@ -48,6 +48,17 @@ function setSignedIn(value: boolean) {
   store.listeners.forEach((notify) => notify())
 }
 
+/*
+  THE PROFILE MUTATIONS, STUBBED. `/signup` gained a fourth step on 2026-09-21
+  that reads the addresses somebody gives it, and these two hooks are how it
+  does that -- neither is what any test in this file is about, and both need a
+  QueryClientProvider these tests have no reason to stand up.
+*/
+vi.mock('@/hooks/useUserProfile', () => ({
+  useImportProfileFromUrl: () => ({ mutateAsync: vi.fn(async () => {}), isPending: false }),
+  useSaveProfileDetails: () => ({ mutateAsync: vi.fn(async () => {}), isPending: false }),
+}))
+
 vi.mock('@/contexts/AuthContext', async () => {
   const React = await import('react')
   return {
@@ -101,12 +112,26 @@ async function reachTheCodeStep() {
 }
 
 describe('signing up inside the real auth layout', () => {
+/**
+ * Verify the code and skip the sources form, landing on the thank-you.
+ *
+ * THE FOURTH STEP SITS BETWEEN THEM SINCE 2026-09-21 and is not what any test
+ * in this file is about -- these are all about the auth layout's guards not
+ * unmounting the subtree the moment a session appears, which is a thing that
+ * happens on verification whichever screen follows it.
+ */
+const passThePersonaliseStep = async () => {
+  await screen.findByText(/where should we read you from/i)
+  await userEvent.click(document.querySelector('[data-personalise-skip]') as HTMLElement)
+}
+
   it('shows the thank-you after the code verifies, instead of vanishing', async () => {
     renderRoute()
     const field = await reachTheCodeStep()
     await userEvent.type(field, '123456')
 
     await waitFor(() => expect(verifySignUpOtp).toHaveBeenCalled())
+    await passThePersonaliseStep()
     // THE ASSERTION. Against the old code this is absent: SignedOutOnly has
     // already returned null for the whole subtree.
     expect(await screen.findByText('you are all set')).toBeInTheDocument()
@@ -117,6 +142,7 @@ describe('signing up inside the real auth layout', () => {
     const field = await reachTheCodeStep()
     await userEvent.type(field, '123456')
 
+    await passThePersonaliseStep()
     await screen.findByText('you are all set')
     // The flow owns the navigation now, on its own delay. A replace() here
     // would mean the guard fired anyway and the screen is about to be lost.
@@ -128,6 +154,7 @@ describe('signing up inside the real auth layout', () => {
     const field = await reachTheCodeStep()
     await userEvent.type(field, '123456')
 
+    await passThePersonaliseStep()
     await screen.findByText('you are all set')
     expect(screen.getByRole('link', { name: /go to the overview now/i })).toHaveAttribute(
       'href',

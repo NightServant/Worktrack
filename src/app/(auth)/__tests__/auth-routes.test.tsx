@@ -24,6 +24,17 @@ vi.mock('next/navigation', () => ({
 function atUrl(search: string) {
   window.history.replaceState({}, '', `/login${search}`)
 }
+/*
+  THE PROFILE MUTATIONS, STUBBED. `/signup` gained a fourth step on 2026-09-21
+  that reads the addresses somebody gives it, and these two hooks are how it
+  does that -- neither is what any test in this file is about, and both need a
+  QueryClientProvider these tests have no reason to stand up.
+*/
+vi.mock('@/hooks/useUserProfile', () => ({
+  useImportProfileFromUrl: () => ({ mutateAsync: vi.fn(async () => {}), isPending: false }),
+  useSaveProfileDetails: () => ({ mutateAsync: vi.fn(async () => {}), isPending: false }),
+}))
+
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({
     user: null,
@@ -156,8 +167,37 @@ describe('the /signup route', () => {
     await userEvent.type(await screen.findByLabelText(/^Verification code/), '123456')
 
     expect(verifySignUpOtp).toHaveBeenCalledWith('a@b.test', '123456')
+
+    // THE SOURCES FORM COMES FIRST NOW (2026-09-21). Skipping it is still
+    // finishing: the account exists and is verified, and what is skipped is
+    // the import rather than the sign-up.
+    const personalise = await screen.findByText(/where should we read you from/i)
+    expect(personalise).toBeInTheDocument()
+    await userEvent.click(document.querySelector('[data-personalise-skip]') as HTMLElement)
+
     expect(await screen.findByText('you are all set')).toBeInTheDocument()
     await waitFor(() => expect(push).toHaveBeenCalledWith('/overview'), { timeout: 4000 })
+  })
+
+  it('will not build a profile until at least one address is given', async () => {
+    // A tracker with no profile behind it cannot tailor a CV or score one, and
+    // an account that starts empty tends to stay empty -- so one address is
+    // the floor rather than a suggestion.
+    signUp.mockResolvedValue(undefined)
+    verifySignUpOtp.mockResolvedValue(undefined)
+    render(<SignupRoute />)
+    await fillDetails()
+    await userEvent.type(await screen.findByLabelText(/^Verification code/), '123456')
+    await screen.findByText(/where should we read you from/i)
+
+    const build = screen.getByRole('button', { name: /build my profile/i })
+    expect(build).toBeDisabled()
+
+    await userEvent.type(
+      screen.getByLabelText(/LinkedIn profile/i),
+      'https://www.linkedin.com/in/example'
+    )
+    expect(build).toBeEnabled()
   })
 
   it('does not advance when the signup is refused', async () => {

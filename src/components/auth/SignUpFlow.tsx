@@ -20,6 +20,7 @@ import { AuthBrandPanel } from './AuthBrandPanel'
 import { useHoldAuthGuards } from './authHold'
 import { isExistingAccountError } from '@/lib/existingAccount'
 import { OtpStep } from './OtpStep'
+import { PersonaliseStep, type PersonaliseDetails } from './PersonaliseStep'
 import { PasswordRequirements } from './PasswordRequirements'
 import { ProgressTrack } from '@/components/ui/progress-track'
 import { StatusState } from '@/components/ui/status-state'
@@ -48,6 +49,14 @@ export interface SignUpFlowProps {
   onSignUp: (email: string, password: string) => Promise<void>
   onVerify: (email: string, code: string) => Promise<void>
   onResend: (email: string) => Promise<void>
+  /**
+   * Reads the addresses given at the last step and stores the details.
+   *
+   * OPTIONAL, so a caller that has no profile story -- every test of the two
+   * earlier steps -- gets the three-step flow it always had rather than a step
+   * with nothing behind it.
+   */
+  onPersonalise?: (details: PersonaliseDetails) => Promise<void>
   /** Called after the thank-you has been shown. */
   onDone: () => void
   /** How long the thank-you holds before leaving. Injectable for tests. */
@@ -73,14 +82,27 @@ export interface SignUpFlowProps {
 const STEPS = [
   { id: 'your details', label: 'your details', description: 'an email and a password', icon: 'UserRound' as const },
   { id: 'verify', label: 'verify', description: 'a six-digit code', icon: 'ShieldCheck' as const },
+  /*
+    THE FOURTH STEP (Gabe, 2026-09-21) and it is deliberately after the code
+    rather than before it. Reading a profile WRITES one, and `user_profiles` is
+    scoped to `auth.uid()` -- there is no `auth.uid()` until the code is
+    accepted, so a sources form earlier would have nowhere to put what it
+    found. It also means nobody re-types four links when a code fails to
+    arrive. See `PersonaliseStep`.
+  */
+  { id: 'personalise', label: 'personalise', description: 'a profile to read', icon: 'Link' as const },
   { id: 'done', label: 'done', description: 'you are in', icon: 'CircleCheck' as const },
 ]
-type Step = 0 | 1 | 2
+type Step = 0 | 1 | 2 | 3
+
+/** The thank-you. Derived, so adding a step cannot leave it behind. */
+const DONE_STEP = (STEPS.length - 1) as Step
 
 export function SignUpFlow({
   onSignUp,
   onVerify,
   onResend,
+  onPersonalise,
   onDone,
   doneDelayMs = 2500,
 }: SignUpFlowProps) {
@@ -113,7 +135,10 @@ export function SignUpFlow({
   const [busy, setBusy] = React.useState(false)
 
   React.useEffect(() => {
-    if (step !== 2) return
+    // THE LAST STEP, WHICH IS NOW 3 (2026-09-21). A literal that tracked the
+    // end of the flow and did not move with it would leave the thank-you on
+    // screen forever.
+    if (step !== DONE_STEP) return
     const id = setTimeout(onDone, doneDelayMs)
     // Cleared on unmount so a navigation away cannot fire a redirect into a
     // page the person has already left.
@@ -341,7 +366,11 @@ export function SignUpFlow({
               onVerify={async (code) => {
                 await onVerify(email, code)
                 resetAuthAttempts('signup')
-                setStep(2)
+                // STRAIGHT TO THE THANK-YOU WHEN NOBODY IS LISTENING for a
+                // profile -- a step whose submit handler does not exist is a
+                // dead end, and every test of the first two steps passes no
+                // `onPersonalise`.
+                setStep(onPersonalise ? 2 : DONE_STEP)
               }}
               onResend={() => onResend(email)}
               onBack={() => {
@@ -351,7 +380,19 @@ export function SignUpFlow({
             />
           )}
 
-          {step === 2 && (
+          {step === 2 && onPersonalise && (
+            <PersonaliseStep
+              onSubmit={async (details) => {
+                await onPersonalise(details)
+                setStep(DONE_STEP)
+              }}
+              // SKIPPING IS STILL FINISHING. The account exists and is
+              // verified; what is skipped is the import, not the sign-up.
+              onSkip={() => setStep(DONE_STEP)}
+            />
+          )}
+
+          {step === DONE_STEP && (
             /*
               `StatusState kind="success"` since 2026-09-15, replacing a
               hand-rolled block that drew its own 48px circle badge, its own
