@@ -29,6 +29,47 @@ with no network in the suite.
 """
 
 from __future__ import annotations
+#: WHAT IS KNOWN ABOUT JOBSTREET'S *SEARCH* ENDPOINT, AND WHAT IS NOT.
+#:
+#: This file reads ONE posting. The rail wants a SEARCH, and on 2026-09-21 that
+#: was investigated and left unfinished -- written down here so the next attempt
+#: starts from what was learned rather than from nothing.
+#:
+#: FOUND, by reading the search page's own Apollo cache (`SEEK_APOLLO_DATA`)
+#: and hooking its `fetch`:
+#:
+#:   operation   jobSearchV7(params: JobSearchV7QueryInput!)
+#:   endpoint    the same https://<host>/graphql this file already uses
+#:   params      { sessionId, responseConfig { page, pageSize, representations:
+#:               ["uiV1"], results: ["jobs"], enrichment {...} },
+#:               searchContext { brand: "jobstreet", channel: "web",
+#:               intent: "SEARCH", source: "FE_SERP", solVisitorId },
+#:               searchIntent { country, locale, sort, text, distanceKms } }
+#:   headers     X-Seek-EC-SessionId, X-Seek-EC-VisitorId, X-Seek-Site:
+#:               "chalice", seek-request-brand, seek-request-country
+#:   response    results { jobs { id title abstract url listedAt { dateTimeUtc }
+#:               advertiser { name } location { displayName { text } }
+#:               salary { min max currency period } } pagination { resultCount } }
+#:
+#: The salary is STRUCTURED there -- `{min, max, currency, period}` -- which is
+#: better than every other board on the rail, all of which print a band as prose
+#: that `job_board._salary` has to read back.
+#:
+#: NOT FOUND: why a replay fails. With those params and those headers, and with
+#: freshly generated UUIDs rather than the page's, the endpoint answers 200 and
+#: `{"errors":[{"message":"An error occurred"}]}` -- a resolver throwing, with
+#: nothing said about what. Every field selection fails the same way, including
+#: `{ id title }`, so it is not the selection. Something the page has and a bare
+#: request does not is still missing.
+#:
+#: THE UUIDS ARE NOT THE PROBLEM TO SOLVE BY COPYING THEM. `sessionId` and
+#: `solVisitorId` are minted by the page for itself; generating our own is what
+#: any first-time visitor does, and reusing a captured one would be borrowing
+#: somebody's session, which is the line this service does not cross.
+#:
+#: SO JOBSTREET STAYS ON ITS PAID ACTOR for the rail. The single-posting route
+#: below is unaffected and still free.
+
 
 import re
 from typing import Any
