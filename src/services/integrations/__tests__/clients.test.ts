@@ -124,9 +124,18 @@ describe('one task on its own provider', () => {
     and one key served all three calls, and the other two models do not exist
     on Groq.
 
-    So the provider became per-task, exactly as the MODEL is. `TAILOR_BASE_URL`
-    and `TAILOR_API_KEY` override the shared pair for one task and nothing
-    else; a deployment that sets neither behaves precisely as it did.
+    So the provider became per-task, exactly as the MODEL is.
+    `PROVIDER_REWRITE_BASE_URL` and `PROVIDER_REWRITE_API_KEY` override the
+    shared pair for one task and nothing else; a deployment that sets neither
+    behaves precisely as it did.
+
+    THE NAMES WENT THROUGH THREE SPELLINGS IN AN HOUR AND THAT IS THE LESSON.
+    `TAILOR_*` sat three letters from the SHARED `TAILORING_API_KEY` while
+    meaning the opposite, which was long enough for the wrong key to be pasted
+    into the wrong variable. Then the shared pair became `PROVIDER_*`, because
+    once this override existed the variable with "tailoring" in its name was
+    the one tailoring never used. `REWRITE` is the task's own word, and it is
+    not a prefix of anything else here.
   */
   const shared = {
     tailoring: {
@@ -254,7 +263,11 @@ describe('one task on its own provider', () => {
         providers: { tailor: { baseUrl: 'openai/gpt-oss-120b', apiKey: 'groq-key' } },
       },
     })
-    expect(configProblems(config).join(' ')).toMatch(/TAILOR_BASE_URL/)
+    const said = configProblems(config).join(' ')
+    expect(said).toMatch(/PROVIDER_REWRITE_BASE_URL/)
+    // The name a person types must not contain the word that caused the
+    // confusion -- see the docblock at the top of this describe.
+    expect(said).not.toMatch(/TAILOR/)
   })
 })
 

@@ -188,9 +188,9 @@ export async function tailorCv(
       ok: false,
       reason: 'unconfigured',
       message:
-        'AI tailoring is not configured. Set TAILORING_BASE_URL, TAILORING_API_KEY and ' +
-        'TAILORING_MODEL — or TAILOR_BASE_URL, TAILOR_API_KEY and MODEL_TAILOR to give this ' +
-        'one task its own provider.',
+        'AI tailoring is not configured. Set PROVIDER_BASE_URL, PROVIDER_API_KEY and ' +
+        'MODEL_DEFAULT — or PROVIDER_REWRITE_BASE_URL, PROVIDER_REWRITE_API_KEY and ' +
+        'MODEL_REWRITE to give this one task its own provider.',
     }
   }
   if (!input.cvText.trim() || !input.jobDescription.trim()) {

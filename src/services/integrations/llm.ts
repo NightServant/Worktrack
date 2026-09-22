@@ -116,8 +116,8 @@ export async function askForJson<T>(
       ok: false,
       reason: 'disabled',
       message:
-        'No model is configured for this deployment. Set TAILORING_BASE_URL, ' +
-        'TAILORING_API_KEY and a model id.',
+        'No model is configured for this deployment. Set PROVIDER_BASE_URL, ' +
+        'PROVIDER_API_KEY and a model id.',
     }
   }
 

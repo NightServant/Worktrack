@@ -67,10 +67,12 @@ export async function POST(request: Request) {
         // set three variables they have already set is the same mistake the
         // comment above this one was written about, so it is checked first.
         message: config.tailoring.enabled === false
-          ? 'AI tailoring is switched off on this deployment (TAILORING_ENABLED=false).'
+          ? 'AI tailoring is switched off on this deployment (PROVIDER_ENABLED=false).'
           : problems.length
             ? 'AI tailoring is misconfigured on the server. The deployment logs name the problem.'
-            : 'AI tailoring is not configured. Set TAILORING_BASE_URL, TAILORING_API_KEY and TAILORING_MODEL.',
+            : 'AI tailoring is not configured. Set PROVIDER_BASE_URL, PROVIDER_API_KEY and ' +
+              'MODEL_DEFAULT — or PROVIDER_REWRITE_BASE_URL, PROVIDER_REWRITE_API_KEY and ' +
+              'MODEL_REWRITE to give tailoring a provider of its own.',
       },
       { status: 501 }
     )

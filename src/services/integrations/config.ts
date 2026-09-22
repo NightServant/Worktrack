@@ -120,27 +120,80 @@ export interface IntegrationConfig {
 export function readIntegrationConfig(): IntegrationConfig {
   return {
     tailoring: {
-      baseUrl: trimmed('TAILORING_BASE_URL'),
-      apiKey: trimmed('TAILORING_API_KEY'),
+      /*
+        THE SHARED PROVIDER, AND IT IS NO LONGER CALLED `TAILORING_` (Gabe,
+        2026-09-22: "change the variable name ... not tailor").
+        
+        THE OLD NAME HAD COME TO MEAN THE OPPOSITE OF WHAT IT SAID. Once
+        tailoring got a provider of its own, `TAILORING_API_KEY` was the key
+        that served the application wizard and CV generation and did NOT serve
+        tailoring -- so the one variable with "tailoring" in its name was the
+        one tailoring never touched. `PROVIDER_*` is what it actually is: the
+        default every task uses unless `PROVIDER_<TASK>_*` overrides it.
+
+        THE OLD NAMES STILL READ, and that is not politeness. A rename of a
+        production secret is an outage with a deploy in the middle of it --
+        this file has said so since `model` was kept under its old spelling for
+        exactly that reason -- and Preview is still configured entirely under
+        `TAILORING_*`. New name first, old name second, neither required.
+      */
+      baseUrl: trimmed('PROVIDER_BASE_URL') ?? trimmed('TAILORING_BASE_URL'),
+      apiKey: trimmed('PROVIDER_API_KEY') ?? trimmed('TAILORING_API_KEY'),
       // No default that names a vendor. A model id is meaningless without the
       // base URL it belongs to, so the two are set together or not at all.
-      model: trimmed('TAILORING_MODEL') ?? '',
+      //
+      // `MODEL_DEFAULT` PAIRS WITH `MODEL_<TASK>`: the fallback of the same
+      // family, rather than a fourth spelling of the same idea.
+      model: trimmed('MODEL_DEFAULT') ?? trimmed('TAILORING_MODEL') ?? '',
+      /*
+        THE ENV NAME IS `REWRITE`, THE INTERNAL KEY IS `tailor` (Gabe,
+        2026-09-22: "do not use tailor, use another term"). The word had been
+        spent: `TAILORING_*` was the SHARED provider, `TAILOR_*` was one task's
+        override, and three letters told them apart while they meant opposite
+        things. `REWRITE` is what the call literally does -- the system prompt
+        opens "You rewrite CV text so it matches a job posting more closely" --
+        and it collides with nothing.
+
+        THE INTERNAL `LlmTask` KEEPS ITS KEY because nobody types it. Renaming
+        a union member touches every call site for no change to what anybody
+        reads; the translation lives here, on one line, where it can be seen.
+
+        `MODEL_TAILOR` STILL READS, so production is not broken by the rename
+        landing before the variable does.
+      */
       models: {
         extract: trimmed('MODEL_EXTRACT'),
         cv: trimmed('MODEL_CV'),
-        tailor: trimmed('MODEL_TAILOR'),
+        tailor: trimmed('MODEL_REWRITE') ?? trimmed('MODEL_TAILOR'),
       },
       /*
-        NAMED TO MIRROR `MODEL_<TASK>`, which is the convention this file
-        already set: `TAILOR_BASE_URL` and `TAILOR_API_KEY` sit beside
-        `MODEL_TAILOR` and override the shared pair for that one task. Unset is
-        the normal case and means "use the shared provider" -- see
-        `providerFor`, which also refuses a half override.
+        `PROVIDER_<TASK>_*`, PAIRING WITH `MODEL_<TASK>`: the model says WHICH
+        machine, the provider says WHERE it lives. Unset is the normal case and
+        means "use the shared pair" -- see `providerFor`, which also refuses a
+        half override.
+
+        THE PREFIX IS NOT DECORATION (Gabe, 2026-09-22: "change the variable
+        name"). These were `TAILOR_BASE_URL` and `TAILOR_API_KEY` for about an
+        hour, which differ from the SHARED `TAILORING_API_KEY` by three letters
+        while meaning something entirely different -- one serves tailoring
+        only, the other serves the wizard and CV generation. An hour was long
+        enough for the wrong key to be pasted into the wrong one and for the
+        result to surface as "the tailoring provider rejected the API key".
+        A name that has to be read carefully is a name that will be misread.
       */
       providers: {
-        extract: { baseUrl: trimmed('EXTRACT_BASE_URL'), apiKey: trimmed('EXTRACT_API_KEY') },
-        cv: { baseUrl: trimmed('CV_BASE_URL'), apiKey: trimmed('CV_API_KEY') },
-        tailor: { baseUrl: trimmed('TAILOR_BASE_URL'), apiKey: trimmed('TAILOR_API_KEY') },
+        extract: {
+          baseUrl: trimmed('PROVIDER_EXTRACT_BASE_URL'),
+          apiKey: trimmed('PROVIDER_EXTRACT_API_KEY'),
+        },
+        cv: {
+          baseUrl: trimmed('PROVIDER_CV_BASE_URL'),
+          apiKey: trimmed('PROVIDER_CV_API_KEY'),
+        },
+        tailor: {
+          baseUrl: trimmed('PROVIDER_REWRITE_BASE_URL'),
+          apiKey: trimmed('PROVIDER_REWRITE_API_KEY'),
+        },
       },
       // OFF WITHOUT UNSETTING THE KEY (2026-09-17).
       //
@@ -156,7 +209,7 @@ export function readIntegrationConfig(): IntegrationConfig {
       // provider's dashboard, while this is one variable anybody can flip to
       // test a branch against a real model. The honest fix is a second key;
       // this is what holds until there is one.
-      enabled: trimmed('TAILORING_ENABLED') !== 'false',
+      enabled: (trimmed('PROVIDER_ENABLED') ?? trimmed('TAILORING_ENABLED')) !== 'false',
     },
     esco: {
       baseUrl: trimmed('ESCO_BASE_URL') ?? 'https://ec.europa.eu/esco/api',
@@ -216,12 +269,14 @@ export function configProblems(config: IntegrationConfig): string[] {
     shared pair catches these too -- and a host that is really a model id fails
     at the request rather than at startup unless it is named here.
   */
+  // `tailor` is the internal key; `REWRITE` is what somebody actually types.
+  const ENV_NAME: Record<LlmTask, string> = { extract: 'EXTRACT', cv: 'CV', tailor: 'REWRITE' }
   for (const task of ['extract', 'cv', 'tailor'] as const) {
     const own = config.tailoring.providers?.[task]
-    const name = task.toUpperCase()
+    const name = ENV_NAME[task]
     if (own?.baseUrl && !/^https?:\/\//i.test(own.baseUrl)) {
       problems.push(
-        `${name}_BASE_URL should be a URL but is "${own.baseUrl}". ` +
+        `PROVIDER_${name}_BASE_URL should be a URL but is "${own.baseUrl}". ` +
           `Check it has not been swapped with MODEL_${name}.`
       )
     }
@@ -229,7 +284,7 @@ export function configProblems(config: IntegrationConfig): string[] {
     // silently ignoring what somebody deliberately set is worth a sentence.
     if (!!own?.baseUrl !== !!own?.apiKey && (own?.baseUrl || own?.apiKey)) {
       problems.push(
-        `${name}_BASE_URL and ${name}_API_KEY must be set together. ` +
+        `PROVIDER_${name}_BASE_URL and PROVIDER_${name}_API_KEY must be set together. ` +
           'Only one is set, so both are ignored and the shared provider is used.'
       )
     }
