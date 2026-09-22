@@ -83,6 +83,29 @@ export interface IntegrationConfig {
      */
     models?: Partial<Record<LlmTask, string>>
     /**
+     * One PROVIDER per job, for the deployment where one task cannot live
+     * where the others do (Gabe, 2026-09-22).
+     *
+     * WHY THIS HAD TO EXIST. Tailoring was timing out on an OpenRouter `:free`
+     * endpoint -- a 550B model on shared capacity, against a 30s budget --
+     * while the wizard and CV generation were perfectly happy on the same
+     * account. Moving the deployment to Groq fixed tailoring and was refused
+     * for a good reason: "do not change the models for application wizard and
+     * generating CVs". There was no way to honour both, because ONE base URL
+     * and ONE key served all three calls and the other two model ids do not
+     * exist on Groq. A model override without a provider override only gets
+     * you a model-not-found.
+     *
+     * BOTH HALVES OR NEITHER, enforced in `providerFor`. A host from one
+     * vendor with a key from another authenticates against nothing -- which is
+     * precisely the 401 that cost an afternoon on the way here, so the shape
+     * that produced it is not reachable through this field.
+     *
+     * ABSENT IS THE NORMAL CASE. A deployment that sets none of these behaves
+     * exactly as it did before this field existed.
+     */
+    providers?: Partial<Record<LlmTask, { baseUrl?: string; apiKey?: string }>>
+    /**
      * A kill switch that does not require deleting the key.
      *
      * ABSENT MEANS ON, exactly as `ESCO_ENABLED` reads next door, so no
@@ -106,6 +129,18 @@ export function readIntegrationConfig(): IntegrationConfig {
         extract: trimmed('MODEL_EXTRACT'),
         cv: trimmed('MODEL_CV'),
         tailor: trimmed('MODEL_TAILOR'),
+      },
+      /*
+        NAMED TO MIRROR `MODEL_<TASK>`, which is the convention this file
+        already set: `TAILOR_BASE_URL` and `TAILOR_API_KEY` sit beside
+        `MODEL_TAILOR` and override the shared pair for that one task. Unset is
+        the normal case and means "use the shared provider" -- see
+        `providerFor`, which also refuses a half override.
+      */
+      providers: {
+        extract: { baseUrl: trimmed('EXTRACT_BASE_URL'), apiKey: trimmed('EXTRACT_API_KEY') },
+        cv: { baseUrl: trimmed('CV_BASE_URL'), apiKey: trimmed('CV_API_KEY') },
+        tailor: { baseUrl: trimmed('TAILOR_BASE_URL'), apiKey: trimmed('TAILOR_API_KEY') },
       },
       // OFF WITHOUT UNSETTING THE KEY (2026-09-17).
       //
@@ -175,6 +210,31 @@ export function configProblems(config: IntegrationConfig): string[] {
       'TAILORING_MODEL looks like a URL. Check it has not been swapped with TAILORING_BASE_URL.'
     )
   }
+  /*
+    THE SAME SHAPE CHECK, PER TASK. An override is two variables a person types
+    by hand beside three they already typed, so the swap that catches the
+    shared pair catches these too -- and a host that is really a model id fails
+    at the request rather than at startup unless it is named here.
+  */
+  for (const task of ['extract', 'cv', 'tailor'] as const) {
+    const own = config.tailoring.providers?.[task]
+    const name = task.toUpperCase()
+    if (own?.baseUrl && !/^https?:\/\//i.test(own.baseUrl)) {
+      problems.push(
+        `${name}_BASE_URL should be a URL but is "${own.baseUrl}". ` +
+          `Check it has not been swapped with MODEL_${name}.`
+      )
+    }
+    // HALF AN OVERRIDE IS IGNORED RATHER THAN MERGED (see `providerFor`), and
+    // silently ignoring what somebody deliberately set is worth a sentence.
+    if (!!own?.baseUrl !== !!own?.apiKey && (own?.baseUrl || own?.apiKey)) {
+      problems.push(
+        `${name}_BASE_URL and ${name}_API_KEY must be set together. ` +
+          'Only one is set, so both are ignored and the shared provider is used.'
+      )
+    }
+  }
+
   // Two of three is a half-configured integration, which fails at the request
   // rather than at startup unless someone says so here.
   const present = [baseUrl, model, apiKey].filter(Boolean).length
@@ -202,11 +262,36 @@ export function modelFor(config: IntegrationConfig, task: LlmTask): string {
   return config.tailoring.models?.[task]?.trim() || config.tailoring.model
 }
 
-function canRun(config: IntegrationConfig, model: string): boolean {
+/**
+ * Where one task's request is sent, and what signs it.
+ *
+ * THE PAIR MOVES TOGETHER OR NOT AT ALL. A half override -- a Groq host still
+ * carrying the OpenRouter key -- authenticates against nothing and reports as
+ * "the tailoring provider rejected the API key", which is a long way from the
+ * variable that caused it. So an override with only one half is ignored
+ * entirely rather than merged into the shared pair.
+ */
+export function providerFor(
+  config: IntegrationConfig,
+  task: LlmTask
+): { baseUrl?: string; apiKey?: string } {
+  const own = config.tailoring.providers?.[task]
+  const baseUrl = own?.baseUrl?.trim()
+  const apiKey = own?.apiKey?.trim()
+  if (baseUrl && apiKey) return { baseUrl, apiKey }
+  return { baseUrl: config.tailoring.baseUrl, apiKey: config.tailoring.apiKey }
+}
+
+function canRun(config: IntegrationConfig, task: LlmTask): boolean {
+  // RESOLVED PER TASK, not read off the shared pair: since 2026-09-22 one task
+  // can be configured while the others are not, so a single answer for all
+  // three would claim a capability the request cannot make.
+  const { baseUrl, apiKey } = providerFor(config, task)
+  const model = modelFor(config, task)
   return (
     config.tailoring.enabled !== false &&
-    !!config.tailoring.apiKey &&
-    /^https?:\/\//i.test(config.tailoring.baseUrl ?? '') &&
+    !!apiKey &&
+    /^https?:\/\//i.test(baseUrl ?? '') &&
     !!model &&
     !/^https?:\/\//i.test(model)
   )
@@ -220,9 +305,9 @@ export function capabilitiesOf(config: IntegrationConfig): IntegrationCapabiliti
     // wrong order passed the old test and failed at the request.
     // The switch is read FIRST: a deployment told not to spend the key cannot
     // claim the capability, however complete its config is.
-    tailorCv: canRun(config, modelFor(config, 'tailor')),
-    writeCv: canRun(config, modelFor(config, 'cv')),
-    fillPosting: canRun(config, modelFor(config, 'extract')),
+    tailorCv: canRun(config, 'tailor'),
+    writeCv: canRun(config, 'cv'),
+    fillPosting: canRun(config, 'extract'),
     expandSkills: config.esco.enabled,
   }
 }

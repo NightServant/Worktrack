@@ -1,4 +1,4 @@
-import { modelFor, type IntegrationConfig, type LlmTask } from './config'
+import { modelFor, providerFor, type IntegrationConfig, type LlmTask } from './config'
 
 /**
  * One call to an OpenAI-compatible chat endpoint, answering with JSON.
@@ -105,7 +105,11 @@ export async function askForJson<T>(
   request: LlmRequest,
   options: LlmOptions
 ): Promise<LlmResult<T>> {
-  const { baseUrl, apiKey, enabled } = options.config.tailoring
+  // The provider is resolved for THIS task -- `cv` and `extract` may each sit
+  // somewhere other than the shared pair. `enabled` is deployment-wide and
+  // stays where it is: it is a spend switch, not a route.
+  const { enabled } = options.config.tailoring
+  const { baseUrl, apiKey } = providerFor(options.config, request.task)
   const model = modelFor(options.config, request.task)
   if (enabled === false || !apiKey || !baseUrl || !model) {
     return {

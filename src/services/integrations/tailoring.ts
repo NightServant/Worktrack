@@ -1,4 +1,4 @@
-import { modelFor, type IntegrationConfig } from './config'
+import { modelFor, providerFor, type IntegrationConfig } from './config'
 
 /**
  * CV tailoring over any OpenAI-compatible chat endpoint.
@@ -173,7 +173,11 @@ export async function tailorCv(
   input: TailoringInput,
   options: TailoringClientOptions
 ): Promise<TailoringResult> {
-  const { apiKey, baseUrl } = options.config.tailoring
+  // PER TASK, NOT OFF THE SHARED PAIR (2026-09-22). This destructured
+  // `config.tailoring` directly, which is why tailoring could not be moved to
+  // a second provider without dragging the wizard and CV generation with it.
+  // See `providerFor`, and the test that posts to the override host.
+  const { apiKey, baseUrl } = providerFor(options.config, 'tailor')
   // ITS OWN MODEL SINCE 2026-09-19. Tailoring is the judgement task of the
   // three -- what to emphasise, and what would be a lie -- so it gets the
   // largest model the deployment configures. Falls back to `TAILORING_MODEL`,
@@ -184,7 +188,9 @@ export async function tailorCv(
       ok: false,
       reason: 'unconfigured',
       message:
-        'AI tailoring is not configured. Set TAILORING_BASE_URL, TAILORING_API_KEY and TAILORING_MODEL.',
+        'AI tailoring is not configured. Set TAILORING_BASE_URL, TAILORING_API_KEY and ' +
+        'TAILORING_MODEL — or TAILOR_BASE_URL, TAILOR_API_KEY and MODEL_TAILOR to give this ' +
+        'one task its own provider.',
     }
   }
   if (!input.cvText.trim() || !input.jobDescription.trim()) {

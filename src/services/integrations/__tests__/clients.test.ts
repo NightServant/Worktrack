@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import {
   capabilitiesOf,
   configProblems,
+  providerFor,
   readIntegrationConfig,
   type IntegrationConfig,
 } from '../config'
@@ -110,6 +111,150 @@ describe('what this deployment can do', () => {
     expect(configProblems(half).join(' ')).toMatch(/needs all three/)
     // Nothing set at all is not a problem -- it is the normal unconfigured state.
     expect(configProblems(configWith())).toEqual([])
+  })
+})
+
+describe('one task on its own provider', () => {
+  /*
+    WHY THIS EXISTS (Gabe, 2026-09-22). Tailoring was timing out on an
+    OpenRouter `:free` endpoint while the wizard and CV generation were fine on
+    the same account. The obvious fix -- move the deployment to Groq -- was
+    refused for a good reason: "do not change the models for application wizard
+    and generating CVs". There was no way to honour both, because one base URL
+    and one key served all three calls, and the other two models do not exist
+    on Groq.
+
+    So the provider became per-task, exactly as the MODEL is. `TAILOR_BASE_URL`
+    and `TAILOR_API_KEY` override the shared pair for one task and nothing
+    else; a deployment that sets neither behaves precisely as it did.
+  */
+  const shared = {
+    tailoring: {
+      baseUrl: 'https://openrouter.test/api/v1',
+      apiKey: 'shared-key',
+      model: 'shared/model',
+    },
+  }
+
+  it('falls back to the shared provider when nothing overrides it', () => {
+    const config = configWith(shared)
+    for (const task of ['extract', 'cv', 'tailor'] as const) {
+      expect(providerFor(config, task)).toEqual({
+        baseUrl: 'https://openrouter.test/api/v1',
+        apiKey: 'shared-key',
+      })
+    }
+  })
+
+  it('sends one task to its own host and key, and leaves the others alone', () => {
+    const config = configWith({
+      tailoring: {
+        ...shared.tailoring,
+        providers: { tailor: { baseUrl: 'https://groq.test/openai/v1', apiKey: 'groq-key' } },
+      },
+    })
+    expect(providerFor(config, 'tailor')).toEqual({
+      baseUrl: 'https://groq.test/openai/v1',
+      apiKey: 'groq-key',
+    })
+    // THE POINT OF THE WHOLE CHANGE: the other two must not move.
+    expect(providerFor(config, 'cv').baseUrl).toBe('https://openrouter.test/api/v1')
+    expect(providerFor(config, 'extract').apiKey).toBe('shared-key')
+  })
+
+  it('takes the override host and key together, never half of each', () => {
+    /*
+      A HALF OVERRIDE IS THE DANGEROUS SHAPE: a Groq host with an OpenRouter
+      key authenticates against nothing, which is exactly the 401 that cost an
+      afternoon. Both or neither.
+    */
+    const hostOnly = configWith({
+      tailoring: {
+        ...shared.tailoring,
+        providers: { tailor: { baseUrl: 'https://groq.test/openai/v1' } },
+      },
+    })
+    expect(providerFor(hostOnly, 'tailor')).toEqual({
+      baseUrl: 'https://openrouter.test/api/v1',
+      apiKey: 'shared-key',
+    })
+  })
+
+  it('reports a capability against the provider that task will actually use', () => {
+    // Shared config is unusable -- no key at all -- and only tailoring has one.
+    const config = configWith({
+      tailoring: {
+        model: 'shared/model',
+        providers: { tailor: { baseUrl: 'https://groq.test/openai/v1', apiKey: 'groq-key' } },
+      },
+    })
+    const caps = capabilitiesOf(config)
+    expect(caps.tailorCv).toBe(true)
+    expect(caps.writeCv).toBe(false)
+    expect(caps.fillPosting).toBe(false)
+  })
+
+  it('SENDS the tailoring request to the override host, with the override key', async () => {
+    /*
+      THE ONE THAT MATTERS, and the one a config-only test cannot give. Every
+      assertion above is about `providerFor`; none of them proves the CALL SITE
+      reads it. `tailorCv` destructured `config.tailoring` directly for months,
+      so the whole feature could resolve the right provider and still post to
+      the old one -- the same shape of gap that let every cover letter open as
+      a CV with all the letter tests green.
+    */
+    const seen: { url?: string; auth?: string } = {}
+    const fetchImpl = vi.fn(async (url: string, init: RequestInit) => {
+      seen.url = url
+      seen.auth = (init.headers as Record<string, string>).Authorization
+      return new Response(
+        JSON.stringify({ choices: [{ message: { content: '{"summary":"s","suggestions":[]}' } }] }),
+        { status: 200 }
+      )
+    })
+
+    await tailorCv(
+      { cvText: 'a CV', jobDescription: 'a posting' },
+      {
+        config: configWith({
+          tailoring: {
+            ...shared.tailoring,
+            models: { tailor: 'openai/gpt-oss-120b' },
+            providers: { tailor: { baseUrl: 'https://groq.test/openai/v1', apiKey: 'groq-key' } },
+          },
+        }),
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+      }
+    )
+
+    expect(seen.url).toBe('https://groq.test/openai/v1/chat/completions')
+    expect(seen.auth).toBe('Bearer groq-key')
+    // And nothing leaked from the shared pair the other two tasks still use.
+    expect(seen.url).not.toContain('openrouter')
+    expect(seen.auth).not.toContain('shared-key')
+  })
+
+  it('still refuses every task when the deployment is switched off', () => {
+    // `TAILORING_ENABLED=false` is a spend switch and it outranks a per-task
+    // provider -- otherwise a Preview branch with its own key spends anyway.
+    const config = configWith({
+      tailoring: {
+        ...shared.tailoring,
+        enabled: false,
+        providers: { tailor: { baseUrl: 'https://groq.test/openai/v1', apiKey: 'groq-key' } },
+      },
+    })
+    expect(capabilitiesOf(config).tailorCv).toBe(false)
+  })
+
+  it('names a swapped override rather than failing at the request', () => {
+    const config = configWith({
+      tailoring: {
+        ...shared.tailoring,
+        providers: { tailor: { baseUrl: 'openai/gpt-oss-120b', apiKey: 'groq-key' } },
+      },
+    })
+    expect(configProblems(config).join(' ')).toMatch(/TAILOR_BASE_URL/)
   })
 })
 

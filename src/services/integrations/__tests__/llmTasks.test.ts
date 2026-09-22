@@ -96,6 +96,33 @@ describe('the shared client', () => {
     expect(result).toMatchObject({ ok: false, reason: 'disabled' })
   })
 
+  it('posts each task to its OWN provider when one is overridden', async () => {
+    /*
+      THE SIBLING OF THE TAILORING CHECK IN clients.test.ts. This client serves
+      `cv` and `extract`, and it read the shared pair directly until
+      2026-09-22 -- so the config could resolve a per-task provider correctly
+      and this function would still post to the old host. Resolving is not
+      routing, and only a test at the request proves the second one.
+    */
+    const sent: string[] = []
+    const fetchImpl = (async (url: string) => {
+      sent.push(url)
+      return new Response(JSON.stringify({ choices: [{ message: { content: '{}' } }] }), {
+        status: 200,
+      })
+    }) as unknown as typeof fetch
+    const config = CONFIG({
+      providers: { cv: { baseUrl: 'https://elsewhere.test/v1', apiKey: 'other-key' } },
+    })
+
+    await askForJson({ task: 'cv', system: 's', user: 'u' }, { config, fetchImpl })
+    await askForJson({ task: 'extract', system: 's', user: 'u' }, { config, fetchImpl })
+
+    expect(sent[0]).toBe('https://elsewhere.test/v1/chat/completions')
+    // `extract` was not overridden, so it must be exactly where it always was.
+    expect(sent[1]).not.toContain('elsewhere.test')
+  })
+
   it('tells a rate limit from a key problem from a fault', async () => {
     const reply = (status: number) =>
       askForJson(
