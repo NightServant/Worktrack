@@ -625,6 +625,38 @@ def test_firecrawl_asks_for_raw_html_in_the_v2_shape():
     assert payload["formats"] == [{"type": "rawHtml"}]
 
 
+def test_firecrawl_gets_longer_than_the_local_browser_does():
+    """The budget that decides whether a challenged board is read at all.
+
+    MEASURED IN PRODUCTION, 2026-09-22, four consecutive attempts at one Indeed
+    posting: one 200, two `http-408: The scrape operation timed out before
+    completing`, and one `http-500: All scraping engines failed ... Engines
+    tried: [index, index;documents, fire-engine;chrome-cdp;stealth,
+    fire-engine(retry);chrome-cdp;stealth, pdf, document, image]`.
+
+    THAT ENGINE LIST IS THE WHOLE ARGUMENT. Firecrawl escalates and RETRIES
+    INTERNALLY inside a single call -- seven engines in that one attempt -- so a
+    retry from this service would repeat work it already does and pay a second
+    credit for it. A 408 does not mean "try again", it means "you did not give
+    me long enough to finish the sequence I was already running".
+
+    SO THE HOSTED FETCHER GETS ITS OWN, LONGER CEILING, rather than sharing the
+    local browser's. They are different failure modes: a local render that has
+    not finished in 45s has stalled and more time buys nothing -- Indeed renders
+    locally in 7s -- while a hosted escalation legitimately takes longer,
+    because the escalation is the point.
+    """
+    from app import FIRECRAWL_RENDER_TIMEOUT_MS, FIRECRAWL_TIMEOUT_S, RENDER_TIMEOUT_MS
+
+    assert FIRECRAWL_RENDER_TIMEOUT_MS > RENDER_TIMEOUT_MS
+    payload = firecrawl_payload("https://ph.indeed.com/viewjob?jk=1")
+    assert payload["timeout"] == FIRECRAWL_RENDER_TIMEOUT_MS
+    # OUR CEILING MUST OUTLAST WHAT WE ASK FOR, or httpx hangs up mid-escalation
+    # and the 408 we were waiting for never arrives -- which reads as the board
+    # being unreachable rather than slow.
+    assert FIRECRAWL_TIMEOUT_S * 1000 > FIRECRAWL_RENDER_TIMEOUT_MS
+
+
 def test_firecrawl_reply_yields_html_and_where_it_landed():
     html, final = firecrawl_html(
         {

@@ -227,7 +227,38 @@ MAX_README_BYTES = 200_000
 MAX_REPO_READMES = 6
 
 FIRECRAWL_ENDPOINT = "https://api.firecrawl.dev/v2/scrape"
-FIRECRAWL_TIMEOUT_S = 60.0
+
+#: How long the HOSTED fetcher may spend on one page, and why it is not
+#: `RENDER_TIMEOUT_MS`.
+#:
+#: THE TWO ARE DIFFERENT FAILURE MODES. A local browser that has not finished
+#: in 45s has stalled, and more time buys nothing -- Indeed renders locally in
+#: 7.7s. A hosted fetch is doing something else entirely: Firecrawl's `auto`
+#: proxy escalates to enhanced proxies whenever the target answers 401, 403 or
+#: 429, and the escalation IS the point on a challenged board.
+#:
+#: MEASURED 2026-09-22, four consecutive attempts at one Indeed posting, with
+#: `RENDER_TIMEOUT_MS` shared: one 200, two `http-408: The scrape operation
+#: timed out before completing`, and one `http-500: All scraping engines failed
+#: ... Engines tried: [index, index;documents, fire-engine;chrome-cdp;stealth,
+#: fire-engine(retry);chrome-cdp;stealth, pdf, document, image]`.
+#:
+#: THAT ENGINE LIST IS WHY THIS IS A TIMEOUT AND NOT A RETRY. Firecrawl already
+#: retries internally inside one call -- seven engines in that one attempt -- so
+#: a second call from here would repeat work it does anyway and pay a second
+#: credit to do it. A 408 is not "try again", it is "you did not give me long
+#: enough to finish the sequence I had already started".
+#:
+#: SEVENTY-FIVE SECONDS, NOT MORE, because a reader is watching a spinner while
+#: this runs. It is a ceiling on a case that is already going badly, not a
+#: budget the ordinary page spends: an unchallenged page comes back in under
+#: two seconds and never reaches this number.
+FIRECRAWL_RENDER_TIMEOUT_MS = 75_000
+
+#: Our own ceiling, which must OUTLAST what we ask Firecrawl for -- otherwise
+#: httpx hangs up mid-escalation and the 408 never arrives, which reads as the
+#: board being unreachable rather than slow.
+FIRECRAWL_TIMEOUT_S = 90.0
 MAX_HTML_BYTES = 2_000_000
 
 #: A captured profile page is bigger than a fetched one and is allowed to be.
@@ -386,7 +417,8 @@ def firecrawl_payload(url: str) -> dict[str, Any]:
         # See FIRECRAWL_ENDPOINT: the head is not optional for this parser.
         "onlyMainContent": False,
         "waitFor": RENDER_SETTLE_MS,
-        "timeout": RENDER_TIMEOUT_MS,
+        # THE HOSTED CEILING, not the local one. See FIRECRAWL_RENDER_TIMEOUT_MS.
+        "timeout": FIRECRAWL_RENDER_TIMEOUT_MS,
     }
 
 
