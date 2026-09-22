@@ -185,17 +185,25 @@ def autofill_from_url_alone(url: str) -> Envelope:
     # So the unreadable aggregator is a prompt to go one step upstream, where
     # the answer was always better. A paid unlocker pointed at the mirror buys
     # a worse extraction than this sentence does.
+    # WHAT TO DO ABOUT IT CHANGED ON 2026-09-22, so this string did too. It
+    # used to offer the paste as a consolation -- words, tidied. A pasted page
+    # now carries its own markup to the extractor, which fills the FIELDS, so
+    # the second sentence is a route that works rather than a fallback.
     warning = (
         f"{name} blocks automated reads, so the posting could not be fetched. "
-        f"Most {name} listings are copies: if the same job is on the employer's "
-        "own careers page, paste THAT link instead -- it reads better than any "
-        "aggregator. Otherwise paste the description into the column beside the "
-        "fields and it will be tidied and summarised when you save."
+        f"Two things still work. Most {name} listings are copies: if the same "
+        "job is on the employer's own careers page, paste THAT link instead -- "
+        "it reads better than any aggregator. Otherwise open the posting, "
+        "select the whole page and copy it, then paste that into the column "
+        "beside these fields -- the copy brings the page's own markup with it, "
+        "so the fields fill in from it rather than only the words."
         if name
         else "That page could not be read automatically. If the job is also on "
-        "the employer's own careers page, that link reads best. Otherwise paste "
-        "the description into the column beside the fields and it will be tidied "
-        "and summarised when you save."
+        "the employer's own careers page, that link reads best. Otherwise open "
+        "the posting, select the whole page and copy it, then paste that into "
+        "the column beside these fields -- the copy brings the page's own "
+        "markup with it, so the fields fill in from it rather than only the "
+        "words."
     )
     return {"values": values, "confidence": confidence, "warnings": [warning]}
 

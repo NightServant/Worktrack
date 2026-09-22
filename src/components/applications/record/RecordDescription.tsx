@@ -102,7 +102,7 @@ export interface RecordDescriptionProps {
    * The wizard reads it through the model there and then. The record's own
    * view does not pass this: an existing posting has been read already.
    */
-  onPostingPasted?: (text: string) => void
+  onPostingPasted?: (text: string, html?: string) => void
   /**
    * Opens the posting's own view. PRESENT MEANS PREVIEW.
    *
@@ -675,7 +675,17 @@ export function RecordDescription({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           // SEE `onPostingPasted`: this is the last moment this node exists.
-          onPaste={(e) => onPostingPasted?.(e.clipboardData.getData('text'))}
+          // BOTH FLAVOURS. Copying a rendered page puts `text/plain` AND
+          // `text/html` on the clipboard, and this read only the first -- so a
+          // paste carrying the whole marked-up posting arrived as words, and
+          // the digest tidies prose but cannot fill a salary field. The markup
+          // goes to the extractor instead; see `readPastedPosting`.
+          onPaste={(e) =>
+            onPostingPasted?.(
+              e.clipboardData.getData('text'),
+              e.clipboardData.getData('text/html') || undefined
+            )
+          }
           autoSize
           className="min-h-64"
           placeholder="paste the posting here, or let the link fill it in."

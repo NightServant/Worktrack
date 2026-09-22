@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AddApplicationDialog } from '../record/AddApplicationDialog'
 import { ApplicationRecordView } from '../record/ApplicationRecordView'
@@ -157,6 +157,78 @@ describe('a posting the board refused to serve', () => {
     await user.click(screen.getByRole('button', { name: /fill it in/i }))
     await screen.findByRole('button', { name: /save application/i })
   }
+
+  it('reads the PAGE a reader pasted, not just the words in it', async () => {
+    /*
+      THE ROUTE THAT IS LEFT WHEN A BOARD WILL NOT BE FETCHED (Gabe,
+      2026-09-22: Indeed autofill failing, "do not offer bookmark option").
+
+      Indeed now bounces automated clients to a sign-in wall, and Firecrawl
+      loses to it more often than it wins -- measured across five production
+      attempts, one 200, three 408s and one 500 with every engine exhausted. No
+      timeout or retry fixes a wall, so the posting has to arrive from a client
+      Indeed already serves: the reader's own browser.
+
+      COPYING A RENDERED PAGE PUTS TWO FLAVOURS ON THE CLIPBOARD, `text/plain`
+      and `text/html`, and this column read only the first -- so a paste that
+      carried the whole marked-up posting was flattened to words and handed to
+      the digest, which tidies prose and cannot fill a salary field. The HTML
+      goes to the extractor instead, down the same path the caller-supplied
+      route has had since M7: no fetch leaves the server, so there is nothing
+      for a board to block.
+    */
+    const onDigest = vi.fn().mockResolvedValue(RESULT())
+    const onAutofill = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('Could not fetch page (status 401)'))
+      .mockResolvedValue({
+        values: { company: 'Northwind', role: 'Staff Engineer', description: 'read from the page' },
+        confidence: {},
+        warnings: [],
+      })
+
+    render(
+      <AddApplicationDialog
+        open
+        onOpenChange={vi.fn()}
+        defaultCurrency={CURRENCY}
+        onSubmit={vi.fn()}
+        onAutofill={onAutofill}
+        onDigest={onDigest}
+      />
+    )
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText(/job posting url/i), 'https://www.indeed.com/viewjob?jk=1')
+    await user.click(screen.getByRole('button', { name: /continue/i }))
+    await user.click(screen.getByRole('button', { name: /fill it in/i }))
+    await screen.findByRole('button', { name: /save application/i })
+    expect(onAutofill).toHaveBeenCalledTimes(1)
+
+    const page = `<html><head></head><body>${'<p>Staff Engineer at Northwind.</p>'.repeat(80)}</body></html>`
+    fireEvent.paste(screen.getByPlaceholderText(/paste the posting here/i), {
+      clipboardData: {
+        getData: (type: string) => (type === 'text/html' ? page : 'Staff Engineer at Northwind.'),
+      },
+    })
+
+    await waitFor(() => expect(onAutofill).toHaveBeenCalledTimes(2))
+    // THE SECOND CALL CARRIES THE MARKUP, which is what makes it an extraction
+    // rather than a tidy-up.
+    expect(onAutofill.mock.calls[1][1]).toBe(page)
+    // And the fields it mined are on the form.
+    await waitFor(() =>
+      expect((screen.getByLabelText(/company/i) as HTMLInputElement).value).toBe('Northwind')
+    )
+  })
+
+  it('still just digests a paste that carries no markup', async () => {
+    // Pasting from a text editor, or from a page that offers only plain text.
+    // Nothing to extract from, so the behaviour that was there before stands.
+    const onDigest = vi.fn().mockResolvedValue(RESULT())
+    const { onSubmit } = await pasteAndSave({ onDigest, pasted: 'messy   posting  text' })
+    expect(onDigest).toHaveBeenCalledTimes(1)
+    expect(onSubmit).toHaveBeenCalled()
+  })
 
   it('does not ask the reader to check fields it never filled', async () => {
     await read(CHALLENGED)

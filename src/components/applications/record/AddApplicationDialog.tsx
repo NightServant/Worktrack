@@ -252,7 +252,52 @@ export function AddApplicationDialog({
    * IT TAKES THE TEXT AS AN ARGUMENT because `draft.description` has not been
    * updated when the paste event fires.
    */
-  const readPastedPosting = async (text: string) => {
+  /**
+   * How much markup makes a paste a PAGE rather than a sentence.
+   *
+   * Every paste from a browser carries `text/html`, including a two-word
+   * selection from someone's notes -- and handing that to the extractor spends
+   * a call to learn nothing. A copied job posting runs to tens of thousands of
+   * characters; this is well under that and well over a stray fragment.
+   */
+  const PASTED_PAGE_MIN_CHARS = 2_000
+
+  const readPastedPosting = async (text: string, html?: string) => {
+    /*
+      A PASTED PAGE IS READ, NOT TIDIED (Gabe, 2026-09-22: Indeed autofill
+      failing, "do not offer bookmark option").
+
+      Indeed now redirects automated clients to a sign-in wall and Firecrawl
+      loses to it more often than it wins, so no fetch from this server will
+      reliably see the posting. What still works is the reader's own browser,
+      which Indeed serves perfectly well -- and a copy of that page carries the
+      markup alongside the words. Sent down the caller-supplied route the
+      extractor has had since M7, it fills the FIELDS: company, role, salary,
+      location. The digest below only ever tidied prose.
+
+      NO FETCH LEAVES THE SERVER on this path, so there is nothing for a board
+      to block, and nothing here pretends to be anybody.
+    */
+    if (html && html.length >= PASTED_PAGE_MIN_CHARS && onAutofill) {
+      await autofillPosting({
+        draft,
+        fillEmpty,
+        replace,
+        setStep,
+        setReadNote,
+        setReadError,
+        onAutofill,
+        onDigest: onDigest
+          ? async (body: string) => {
+              digested.current = true
+              return onDigest(body)
+            }
+          : undefined,
+        html,
+      })
+      return
+    }
+
     const pasted = text.trim()
     if (!onDigest || digested.current || !pasted) return
     setDigesting(true)
