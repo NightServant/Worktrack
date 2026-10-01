@@ -12,7 +12,7 @@ import { ApplicationPipeline } from './ApplicationPipeline'
 import { RecordAts } from './RecordAts'
 import { RecordBasics } from './RecordBasics'
 import { RecordDescription } from './RecordDescription'
-import { useRecordDraft, type UseRecordDraftResult } from './useRecordDraft'
+import { fixBeforeSaving, useRecordDraft, type UseRecordDraftResult } from './useRecordDraft'
 import { EMPTY_RECORD_DATA, type ApplicationRecordData } from './recordData'
 import type { SupportedCurrency } from '@/services/userPreferences'
 import type { Job, JobFormData } from '@/types'
@@ -380,10 +380,10 @@ export function ApplicationRecordView({
    * Coming back from the posting puts focus where the reader left it.
    *
    * FOUND IN REVIEW (2026-09-13), and it is the mirror of a fix that was
-   * already paid for in the other direction: the dialog `autoFocus`es its
-   * `back to application` control on the way IN, because the button that
-   * opened the panel has just been hidden. On the way OUT the same thing
-   * happens in reverse -- `back to application` unmounts -- but the control it
+   * already paid for in the other direction: the posting view focuses itself
+   * on the way IN, because the button that opened it has just been hidden
+   * (see RecordDescription). On the way OUT the same thing happens in
+   * reverse -- the posting view unmounts -- but the control it
    * returns to was only un-`hidden`, so React reuses that DOM node and no
    * mount-time `autoFocus` ever fires. Focus fell to `<body>` inside a
    * focus-trapped dialog: a keyboard user had to Tab from the top and a screen
@@ -567,15 +567,14 @@ export function ApplicationRecordView({
       straight to the field; "2 fields need fixing" sends them hunting. Three
       at most, because the list is a pointer rather than a report and the
       per-field messages are the report.
+
+      BY THE LABEL ON SCREEN, never the column (Gabe, 2026-10-01: "Do not
+      show the raw id of applied date"). `date_applied` is a database name;
+      the reader is looking at a field called `date applied`.
     */
     const invalid = Object.keys(errors)
     if (invalid.length > 0) {
-      const named = invalid.slice(0, 3).join(', ')
-      setFormError(
-        invalid.length > 3
-          ? `Check ${named} and ${invalid.length - 3} more before saving.`
-          : `Check ${named} before saving.`
-      )
+      setFormError(fixBeforeSaving(invalid))
       return
     }
     try {

@@ -5,6 +5,18 @@ import { Field } from '../field'
 afterEach(() => cleanup())
 
 describe('Field', () => {
+  it('shows an error in the danger hue in place of the hint', () => {
+    render(
+      <Field id="date_applied" label="date applied" hint="a grey hint" error="Add the date you applied">
+        <button id="date_applied" />
+      </Field>
+    )
+    const error = screen.getByText('Add the date you applied')
+    expect(error).toHaveClass('text-status-rejected-mark')
+    expect(error.id).toBe('date_applied-error')
+    expect(screen.queryByText('a grey hint')).toBeNull()
+  })
+
   it('labels its control by id, so the control is reachable by its label text', () => {
     render(
       <Field id="company" label="Company">

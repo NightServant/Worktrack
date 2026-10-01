@@ -36,3 +36,17 @@ const twMerge = extendTailwindMerge({
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
+
+/**
+ * Whether Escape belongs to the field being typed in rather than to the view.
+ *
+ * THE OTHER WAY THE POSTING VIEW COULD BE LEFT BY ACCIDENT (2026-10-01).
+ * Escape means `back to application` there, which is right from anywhere
+ * except a section somebody is editing: pressing Escape to get out of a text
+ * box took them out of the whole posting, mid-edit.
+ */
+export function escapeBelongsToField(): boolean {
+  const active = document.activeElement
+  if (!(active instanceof HTMLElement)) return false
+  return active.matches('textarea, input, [contenteditable="true"]')
+}

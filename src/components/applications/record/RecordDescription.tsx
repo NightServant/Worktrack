@@ -543,10 +543,37 @@ export function RecordDescription({
    */
   const previewPaste = preview && blocks.length === 0 && onPostingPasted !== undefined
 
+  /*
+   * FOCUS LANDS ON THE VIEW, NOT ON `back to application` (Gabe, 2026-10-01:
+   * "resolve the unexplained glitch" -- the posting view returned to the form
+   * with nobody pressing back). The control that opened this view has just
+   * been hidden, so focus has to go somewhere. It used to be `autoFocus` on
+   * the back button, which made the one control that LEAVES this view the
+   * one a stray Enter or Space activates. The region itself is inert, and
+   * Tab reaches `back to application` first anyway.
+   */
+  const ownView = onBack !== undefined
+  const viewRef = React.useRef<HTMLDivElement>(null)
+  React.useEffect(() => {
+    if (ownView) viewRef.current?.focus({ preventScroll: true })
+  }, [ownView])
+
   return (
     <div
-      className={cn('flex flex-col gap-4', preview && 'min-h-0 flex-1', className)}
+      ref={viewRef}
+      className={cn(
+        'flex flex-col gap-4',
+        preview && 'min-h-0 flex-1',
+        // No ring: the region is a landing spot, not a control, and the
+        // global `:focus-visible` ring drew a frame round the whole posting
+        // as soon as a key was pressed.
+        ownView && 'outline-none focus-visible:ring-0 focus-visible:ring-offset-0',
+        className
+      )}
       aria-label="Job description"
+      role={ownView ? 'region' : undefined}
+      tabIndex={ownView ? -1 : undefined}
+      data-posting-view={ownView ? '' : undefined}
     >
       {showHeading && (
         <h3 className="flex items-center gap-2 text-heading-s text-text-primary">
@@ -584,9 +611,6 @@ export function RecordDescription({
                 variant="ghost"
                 size="s"
                 className="px-0"
-                // The control that opened this view has just been hidden, so
-                // without this focus falls to the body of a trapped dialog.
-                autoFocus
                 onClick={onBack}
                 data-posting-back
               >

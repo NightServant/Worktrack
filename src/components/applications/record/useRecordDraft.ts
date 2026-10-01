@@ -226,13 +226,6 @@ export function useRecordDraft(
   for (const issue of jobValidation.validateJobFormData(payload)) {
     if (!errors[issue.field]) errors[issue.field] = issue.message
   }
-  // AN APPLIED APPLICATION HAS A DATE (Gabe, 2026-10-01: "APPLIED status must
-  // require an application date"). A rule of the DIALOGS, not of
-  // `jobValidation`: that also gates CSV import and the status-only update
-  // behind the table, where an old row without a date is still a valid row.
-  if (draft.status === 'applied' && !payload.date_applied && !errors.date_applied) {
-    errors.date_applied = 'Date applied is required for an applied application'
-  }
 
   const serialised = toBaseline(draft)
   const dirty = serialised !== baseline
@@ -291,4 +284,39 @@ export function useRecordDraft(
       setAttempted(false)
     },
   }
+}
+
+/**
+ * What each validation key is called on screen. The keys are `jobs` columns;
+ * the values are the labels RecordBasics prints above the fields.
+ */
+const FIELD_LABELS: Record<string, string> = {
+  company: 'company',
+  role: 'position',
+  status: 'status',
+  location: 'location',
+  salary_min: 'min salary',
+  salary_max: 'max salary',
+  salary_currency: 'currency',
+  work_mode: 'work mode',
+  date_applied: 'date applied',
+  source: 'source',
+  url: 'posting url',
+  tags: 'tags',
+  tech_stack: 'tech stack',
+  description: 'job description',
+}
+
+/** The form-level line under a refused save, naming fields as the form does. */
+export function fixBeforeSaving(fields: string[]): string {
+  const labels = fields.map((field) => FIELD_LABELS[field] ?? field.replace(/_/g, ' '))
+  const shown = labels.slice(0, 3)
+  const rest = labels.length - shown.length
+  const list =
+    rest > 0
+      ? `${shown.join(', ')} and ${rest} more`
+      : shown.length > 1
+        ? `${shown.slice(0, -1).join(', ')} and ${shown[shown.length - 1]}`
+        : shown[0]
+  return `Your application isn't saved yet. Fix ${list}, then save again.`
 }

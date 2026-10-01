@@ -13,7 +13,7 @@ import { Select } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { AlertCircleIcon, ArrowRightIcon } from '@/components/icons'
 import { ICON_STATE_MOTION, iconMotion } from '@/components/icons/motion'
-import { cn } from '@/lib/utils'
+import { cn, escapeBelongsToField } from '@/lib/utils'
 import { ApplicationRecordView } from './ApplicationRecordView'
 import { WizardProgress } from './wizardSteps'
 import { STEPS, type StepId } from './wizardStepModel'
@@ -475,7 +475,7 @@ export function AddApplicationDialog({
                   id="add-date"
                   label="date applied"
                   required
-                  hint={dateError || undefined}
+                  error={dateError || undefined}
                 >
                   {/* THIS APP'S CALENDAR, NOT THE BROWSER'S (Gabe,
                       2026-09-21). `<input type="date">` opens Chrome's own
@@ -490,6 +490,7 @@ export function AddApplicationDialog({
                     }}
                     max={todayValue()}
                     invalid={Boolean(dateError)}
+                    describedBy={dateError ? 'add-date-error' : undefined}
                   />
                 </Field>
                 <Field
@@ -666,7 +667,8 @@ export function AddApplicationDialog({
       onOpenChange={(next, reason) => {
         // ESCAPE MEANS BACK while the posting is open, as on the record.
         if (!next && reason === 'escape-key' && postingOpen) {
-          setPostingOpen(false)
+          // Escape in a section being edited stays in that section.
+          if (!escapeBelongsToField()) setPostingOpen(false)
           return
         }
         onOpenChange(next)
@@ -727,7 +729,7 @@ export function AddApplicationDialog({
                   // APPLIED NEEDS A DATE (Gabe, 2026-10-01). Asked here, where
                   // the field is, rather than two steps later at save.
                   if (draft.status === 'applied' && !draft.dateApplied) {
-                    setDateError('an applied application needs the day it was sent.')
+                    setDateError('Add the date you applied')
                     return
                   }
                   void goRead()

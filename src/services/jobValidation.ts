@@ -169,6 +169,22 @@ export const jobValidation = {
   },
 
   /**
+   * An `applied` application carries the date it was sent (Gabe, 2026-10-01).
+   *
+   * HERE so every writer shares it -- the dialogs, `createJob`, the CSV
+   * import's bulk insert -- and the database repeats it as the CHECK
+   * constraint `jobs_applied_requires_date`, so a client that skips this file
+   * still cannot store the row.
+   */
+  validateAppliedHasDate(
+    status: string | null | undefined,
+    dateApplied: string | null | undefined
+  ): ValidationError | null {
+    if (status !== 'applied' || (dateApplied ?? '').trim() !== '') return null
+    return { field: 'date_applied', message: 'Add the date you applied' }
+  },
+
+  /**
    * Validate date format (ISO 8601: YYYY-MM-DD)
    */
   validateDateApplied(value: string | null | undefined): ValidationError | null {
@@ -354,6 +370,9 @@ export const jobValidation = {
 
     const dateErr = this.validateDateApplied(data.date_applied)
     if (dateErr) errors.push(dateErr)
+
+    const appliedDateErr = this.validateAppliedHasDate(data.status, data.date_applied)
+    if (appliedDateErr) errors.push(appliedDateErr)
 
     const emailErr = this.validateEmail(data.contact_email)
     if (emailErr) errors.push(emailErr)

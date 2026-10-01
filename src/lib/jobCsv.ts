@@ -249,6 +249,17 @@ export function parseJobsCsvText(csvText: string): ParseJobsCsvResult {
     const dateAppliedRaw = getFirstValue(row, HEADER_ALIASES.date_applied)
     const date_applied = dateAppliedRaw ? parseDateToIso(dateAppliedRaw) : null
 
+    // AN APPLIED ROW NEEDS ITS DATE (2026-10-01), the rule jobValidation and
+    // the database both enforce. Skipped here rather than left to the bulk
+    // insert, which would refuse the whole file for one row.
+    if (status === 'applied' && !date_applied) {
+      issues.push({
+        rowNumber,
+        message: 'Status is Applied but the date applied is missing or unreadable',
+      })
+      continue
+    }
+
     const workModeRaw = getFirstValue(row, HEADER_ALIASES.work_mode)
     const work_mode = workModeRaw ? parseWorkMode(workModeRaw) : null
 

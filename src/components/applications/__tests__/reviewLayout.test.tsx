@@ -3,6 +3,7 @@ import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AddApplicationDialog } from '../record/AddApplicationDialog'
 import { ApplicationRecordView } from '../record/ApplicationRecordView'
+import { fixBeforeSaving } from '../record/useRecordDraft'
 import { resolveDefaultCurrency } from '@/services/userPreferences'
 import { chooseOption } from '@/test/select'
 
@@ -64,6 +65,20 @@ describe('the add wizard’s review step', () => {
   })
 })
 
+describe('the line under a refused save', () => {
+  it('names fields by their on-screen labels and never by column name', () => {
+    expect(fixBeforeSaving(['date_applied'])).toBe(
+      "Your application isn't saved yet. Fix date applied, then save again."
+    )
+    expect(fixBeforeSaving(['company', 'date_applied'])).toBe(
+      "Your application isn't saved yet. Fix company and date applied, then save again."
+    )
+    expect(fixBeforeSaving(['role', 'salary_min', 'date_applied', 'tech_stack'])).toBe(
+      "Your application isn't saved yet. Fix position, min salary, date applied and 1 more, then save again."
+    )
+  })
+})
+
 describe('applied requires a date', () => {
   it('stops the wizard at the status step until the date is given', async () => {
     const onAutofill = vi.fn()
@@ -83,7 +98,7 @@ describe('applied requires a date', () => {
     await user.click(screen.getByRole('button', { name: /fill it in/i }))
 
     expect(onAutofill).not.toHaveBeenCalled()
-    expect(screen.getByText(/needs the day it was sent/i)).toBeInTheDocument()
+    expect(screen.getByText('Add the date you applied')).toHaveClass('text-status-rejected-mark')
   })
 
   it('shows the date field on `applied` in the record and refuses to save without it', async () => {
@@ -99,6 +114,14 @@ describe('applied requires a date', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /save application/i }))
     expect(onSubmit).not.toHaveBeenCalled()
-    expect(screen.getByRole('alert')).toHaveTextContent(/date_applied/)
+    // By the label on screen, never the column name (Gabe, 2026-10-01).
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent("Your application isn't saved yet. Fix date applied, then save again.")
+    expect(alert.textContent).not.toMatch(/_/)
+    // And the field says why, in the danger hue rather than a grey hint.
+    const fieldError = document.getElementById('date_applied-error')!
+    expect(fieldError).toHaveTextContent('Add the date you applied')
+    expect(fieldError).toHaveClass('text-status-rejected-mark')
+    expect(document.getElementById('date_applied')).toHaveAttribute('aria-describedby', 'date_applied-error')
   })
 })

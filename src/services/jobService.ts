@@ -26,6 +26,12 @@ export const jobService = {
     try {
       // Supabase/Postgrest errors usually have a `message` property
       const anyErr = err as { message?: unknown; details?: unknown }
+      // The database's own copy of `validateAppliedHasDate`. A partial update
+      // (status alone, or a cleared date alone) cannot see the other column,
+      // so this constraint is what refuses it -- in the same words.
+      if (typeof anyErr.message === 'string' && anyErr.message.includes('jobs_applied_requires_date')) {
+        return new Error('Add the date you applied')
+      }
       if (typeof anyErr.message === 'string' && anyErr.message.length > 0) {
         return new Error(anyErr.message)
       }

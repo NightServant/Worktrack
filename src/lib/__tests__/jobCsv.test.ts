@@ -25,7 +25,7 @@ describe('jobCsv utilities', () => {
   })
   it('imports the M1 columns when the CSV carries them', () => {
     const result = parseJobsCsvText(
-      `company,title,status,currency,job_description\nAcme,Frontend Engineer,applied,sgd,Build the web app`
+      `company,title,status,date_applied,currency,job_description\nAcme,Frontend Engineer,applied,2026-01-15,sgd,Build the web app`
     )
 
     expect(result.issues).toHaveLength(0)
@@ -35,12 +35,24 @@ describe('jobCsv utilities', () => {
 
   it('drops an unrecognised currency rather than failing the row', () => {
     const result = parseJobsCsvText(
-      `company,title,status,currency\nAcme,Frontend Engineer,applied,XYZ`
+      `company,title,status,date_applied,currency\nAcme,Frontend Engineer,applied,2026-01-15,XYZ`
     )
 
     expect(result.rows).toHaveLength(1)
     expect(result.rows[0]?.data.salary_currency).toBeUndefined()
     expect(result.issues.some((i) => i.message.includes('XYZ'))).toBe(true)
+  })
+
+  it('skips an applied row with no date applied, and says which row', () => {
+    // The bulk insert would refuse the whole file for this one row, and the
+    // database refuses the row itself (`jobs_applied_requires_date`).
+    const result = parseJobsCsvText(
+      `company,title,status,date_applied\nAcme,Engineer,applied,\nInitech,Engineer,applied,2026-01-15\nUmbrella,Engineer,wishlist,`
+    )
+    expect(result.rows.map((r) => r.data.company)).toEqual(['Initech', 'Umbrella'])
+    expect(result.issues).toEqual([
+      { rowNumber: 2, message: 'Status is Applied but the date applied is missing or unreadable' },
+    ])
   })
 })
 
@@ -92,8 +104,8 @@ describe('parseStatus via parseJobsCsvText', () => {
   it('reads back the exact status strings the app stores', () => {
     // "applied" does not start with "apply". The prefix test used to be
     // 'apply', so the single most common status imported as wishlist.
-    const text = 'company,title,status\n' +
-      ['A,Eng,wishlist', 'B,Eng,applied', 'C,Eng,interviewing', 'D,Eng,offer', 'E,Eng,rejected'].join('\n')
+    const text = 'company,title,status,date_applied\n' +
+      ['A,Eng,wishlist,', 'B,Eng,applied,2026-01-15', 'C,Eng,interviewing,', 'D,Eng,offer,', 'E,Eng,rejected,'].join('\n')
     const result = parseJobsCsvText(text)
     expect(result.rows.map((r) => r.data.status)).toEqual([
       'wishlist', 'applied', 'interviewing', 'offer', 'rejected',

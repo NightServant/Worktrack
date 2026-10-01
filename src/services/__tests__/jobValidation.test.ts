@@ -360,9 +360,27 @@ describe('jobValidation', () => {
         company: 'Google',
         role: 'Software Engineer',
         status: 'applied',
+        date_applied: '2026-01-15',
       }
 
       expect(() => assertJobFormDataValid(data)).not.toThrow()
+    })
+  })
+
+  describe('an applied application has a date applied', () => {
+    // The same rule the CHECK constraint `jobs_applied_requires_date` holds.
+    it('refuses applied with no date, in words a person can act on', () => {
+      const errors = jobValidation.validateJobFormData({ company: 'A', role: 'B', status: 'applied' })
+      expect(errors).toContainEqual({ field: 'date_applied', message: 'Add the date you applied' })
+    })
+
+    it('accepts applied with a date, and any other status without one', () => {
+      expect(
+        jobValidation.validateJobFormData({ company: 'A', role: 'B', status: 'applied', date_applied: '2026-01-15' })
+      ).toEqual([])
+      for (const status of ['wishlist', 'interviewing', 'offer', 'rejected'] as const) {
+        expect(jobValidation.validateJobFormData({ company: 'A', role: 'B', status })).toEqual([])
+      }
     })
   })
 

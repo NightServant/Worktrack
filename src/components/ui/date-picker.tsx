@@ -53,6 +53,8 @@ export interface DatePickerProps {
   min?: string
   disabled?: boolean
   invalid?: boolean
+  /** The id of the message saying why it is invalid -- `Field`'s `${id}-error`. */
+  describedBy?: string
   placeholder?: string
   className?: string
 }
@@ -105,6 +107,7 @@ export function DatePicker({
   min,
   disabled,
   invalid,
+  describedBy,
   placeholder = 'pick a date',
   className,
 }: DatePickerProps) {
@@ -126,10 +129,17 @@ export function DatePicker({
             variant="secondary"
             disabled={disabled}
             aria-invalid={invalid}
+            aria-describedby={describedBy}
             data-date-picker-trigger
             // `justify-between`, not centred: this is a field wearing a
             // button's chrome, and a field's value sits at its leading edge.
-            className={cn('w-full justify-between gap-2 font-normal', className)}
+            // RED WHEN INVALID, as `Input` is -- otherwise the date was the
+            // one refused field on the record still wearing a grey border.
+            className={cn(
+              'w-full justify-between gap-2 font-normal',
+              invalid && 'border-status-rejected-mark',
+              className
+            )}
           >
             {/* NEVER WRAPS. "20 September 2026" in a half-width trigger --
                 which is what `DateTimePicker` gives it -- broke onto three

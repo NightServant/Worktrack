@@ -264,11 +264,9 @@ export function RecordBasics({
           id="date_applied"
           label="date applied"
           required={draft.status === 'applied'}
-          hint={
-            errorFor('date_applied') && !draft.dateApplied
-              ? 'an applied application needs the day it was sent.'
-              : undefined
-          }
+          // RED, AND IN WORDS (Gabe, 2026-10-01). It was a grey hint, which
+          // read as advice rather than as the reason Save refused.
+          error={errorFor('date_applied')}
         >
           <DatePicker
             id="date_applied"
@@ -276,6 +274,7 @@ export function RecordBasics({
             onChange={(next) => set('dateApplied', next)}
             max={todayValue()}
             invalid={Boolean(errorFor('date_applied'))}
+            describedBy={errorFor('date_applied') ? 'date_applied-error' : undefined}
           />
         </Field>
       )}

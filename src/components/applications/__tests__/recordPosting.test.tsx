@@ -188,6 +188,49 @@ describe('reading the whole posting', () => {
 })
 
 /**
+ * THE POSTING VIEW LEFT ITSELF ONCE, with nobody pressing back (2026-10-01).
+ * Two things could do that without a deliberate click, and these pin both
+ * shut: focus parked on the control that leaves, and Escape from a field.
+ */
+describe('staying in the posting until asked to leave', () => {
+  it('lands focus on the view itself, so a stray Enter or Space does not leave', async () => {
+    const user = userEvent.setup()
+    renderDialog()
+    await user.click(openPosting())
+
+    const view = document.querySelector<HTMLElement>('[data-posting-view]')!
+    expect(view).toHaveFocus()
+    expect(screen.getByRole('button', { name: /back to application/i })).not.toHaveFocus()
+
+    await user.keyboard('{Enter}')
+    await user.keyboard(' ')
+    expect(screen.getByRole('heading', { name: 'job description' })).toBeTruthy()
+
+    // Tab still reaches the way back first.
+    await user.tab()
+    expect(screen.getByRole('button', { name: /back to application/i })).toHaveFocus()
+  })
+
+  it('keeps Escape inside a section being edited, and only then means back', async () => {
+    const user = userEvent.setup()
+    const onOpenChange = renderDialog()
+    await user.click(openPosting())
+
+    const [first] = screen.getAllByRole('button', { name: /^edit /i })
+    await user.click(first)
+    expect(document.activeElement?.tagName).toBe('TEXTAREA')
+
+    await user.keyboard('{Escape}')
+    expect(screen.getByRole('heading', { name: 'job description' })).toBeTruthy()
+    expect(onOpenChange).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: /^done editing/i }))
+    await user.keyboard('{Escape}')
+    expect(screen.getByRole('heading', { name: 'application overview' })).toBeTruthy()
+  })
+})
+
+/**
  * NAMING A SECTION BEFORE IT EXISTS.
  *
  * The control used to append a section called `New section` and open its body

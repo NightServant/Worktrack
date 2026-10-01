@@ -20,11 +20,18 @@ export interface FieldProps {
   label: string
   required?: boolean
   hint?: string
+  /**
+   * What is wrong with the value, in the danger hue -- the same treatment
+   * `Input` gives its own `error`. For controls that cannot draw one
+   * themselves (a DatePicker, a Select). Replaces the hint while it shows:
+   * a grey sentence beside a red one splits the reader's attention.
+   */
+  error?: string
   span?: boolean
   children: React.ReactNode
 }
 
-export function Field({ id, label, required, hint, span, children }: FieldProps) {
+export function Field({ id, label, required, hint, error, span, children }: FieldProps) {
   return (
     <div className={cn('flex flex-col gap-1.5', span && 'sm:col-span-2')}>
       <label htmlFor={id} className="text-label-caps uppercase text-text-secondary">
@@ -36,7 +43,13 @@ export function Field({ id, label, required, hint, span, children }: FieldProps)
         )}
       </label>
       {children}
-      {hint && <p className="text-body-s text-text-muted">{hint}</p>}
+      {error ? (
+        <p id={`${id}-error`} className="text-body-s text-status-rejected-mark">
+          {error}
+        </p>
+      ) : (
+        hint && <p className="text-body-s text-text-muted">{hint}</p>
+      )}
     </div>
   )
 }

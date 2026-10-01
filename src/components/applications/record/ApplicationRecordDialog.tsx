@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import { AppDialog } from '@/components/ui/app-dialog'
+import { escapeBelongsToField } from '@/lib/utils'
 import { ApplicationRecordView } from './ApplicationRecordView'
 import { EMPTY_RECORD_DATA, type ApplicationRecordData } from './recordData'
 import type { SupportedCurrency } from '@/services/userPreferences'
@@ -109,7 +110,8 @@ export function ApplicationRecordDialog({
         // guard in ApplicationsPage then does what it always does with a dirty
         // record.
         if (!next && reason === 'escape-key' && view === 'description') {
-          setView('record')
+          // Escape in a section being edited stays in that section.
+          if (!escapeBelongsToField()) setView('record')
           return
         }
         onOpenChange(next)
@@ -132,10 +134,6 @@ export function ApplicationRecordDialog({
       headerSeparator={false}
       title={view === 'record' ? 'application overview' : 'job description'}
       icon={view === 'record' ? 'Briefcase' : 'Documents'}
-      // THE WAY BACK IS IN THE HEADER, opposite the title it replaced, which
-      // is where the thing it undoes happened. `autoFocus` because the control
-      // that opened this view has just been hidden: without it focus falls to
-      // the body, and a keyboard or screen reader lands nowhere.
       // NO ACTIONS IN THE HEADER (Gabe, 2026-09-13: the posting's controls
       // "must be a new row"). `back to application` and `show posting` lived
       // here, opposite the title. They belong to the POSTING rather than to
