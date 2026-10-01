@@ -127,7 +127,7 @@ describe('LinkedCv', () => {
   it('describes the linked CV', () => {
     render(
       <LinkedCv
-        links={[{ resume_id: 'resume-1', title: 'Software Engineer CV', version: 2, sent_at: '2026-07-01' }]}
+        links={[{ resume_id: 'resume-1', mode: 'word', title: 'Software Engineer CV', version: 2, sent_at: '2026-07-01' }]}
       />
     )
     expect(screen.getByText(/software engineer cv/i)).toBeTruthy()

@@ -902,9 +902,7 @@ export const COVER_LETTER_TEMPLATES: ResumeTemplate[] = [
             { type: 'hardBreak' },
             { type: 'text', text: '{{location|City, Country}}' },
             { type: 'hardBreak' },
-            { type: 'text', text: '{{email|email@example.com}} | {{phone|+63 900 000 0000}} | {{linkedin}} | {{github}} | {{birthday}}' },
-            { type: 'hardBreak' },
-            { type: 'text', text: '{{linkedin|linkedin.com/in/you}}' },
+            { type: 'text', text: '{{email|email@example.com}} | {{phone|+63 900 000 0000}} | {{linkedin|linkedin.com/in/you}} | {{github}} | {{birthday}}' },
           ],
         },
         { type: 'paragraph', content: [{ type: 'text', text: '{{today}}' }] },
@@ -933,7 +931,7 @@ export const COVER_LETTER_TEMPLATES: ResumeTemplate[] = [
           content: [
             {
               type: 'text',
-              text: 'In my current role as {{headline|[your job title]}} at [current employer], I own [the thing you are responsible for end to end]. The clearest result of that was [the outcome, with the number attached]. Before that I [the earlier work that is relevant here], which is where I learned [the skill the advert names first].',
+              text: 'In my most recent role, as {{role|[your job title]}} at {{employer|[employer]}}, I {{highlight|[the thing you were responsible for end to end]}}. The clearest result of that was [the outcome, with the number attached]. Before that I {{earlierRole|[the earlier work that is relevant here]}}, which is where I learned [the skill the advert names first].',
             },
           ],
         },
@@ -1018,7 +1016,7 @@ export const COVER_LETTER_TEMPLATES: ResumeTemplate[] = [
           content: [
             {
               type: 'text',
-              text: 'The clearest example: at [employer] I [what you built, fixed or ran], which [the result, with a number]. I am happy to walk through how it worked, and what I would do differently a second time.',
+              text: 'The clearest example: as {{role|[your job title]}} at {{employer|[employer]}}, I {{highlight|[what you built, fixed or ran]}}, and [the result, with a number]. I am happy to walk through how it worked, and what I would do differently a second time.',
             },
           ],
         },
@@ -1105,7 +1103,7 @@ export const COVER_LETTER_TEMPLATES: ResumeTemplate[] = [
           content: [
             {
               type: 'text',
-              text: 'The move is smaller than it looks. [Name the overlap concretely: the same users, the same tooling, the same regulatory constraint, the same kind of problem.] At [current employer] I [the part of your current job that is already this job], and [what it produced]. That is the half of the role I would not be learning.',
+              text: 'The move is smaller than it looks. [Name the overlap concretely: the same users, the same tooling, the same regulatory constraint, the same kind of problem.] At {{employer|[current employer]}} I [the part of your current job that is already this job], and [what it produced]. That is the half of the role I would not be learning.',
             },
           ],
         },
@@ -1187,7 +1185,7 @@ export const COVER_LETTER_TEMPLATES: ResumeTemplate[] = [
           content: [
             {
               type: 'text',
-              text: 'The short version: I am {{headline|[your job title]}} with [number] years in {{industry|[your field]}}. Most recently, at [employer], I [what you did], which [the result]. My CV has the rest of it.',
+              text: 'The short version: I am {{headline|[your job title]}} with [number] years in {{industry|[your field]}}. Most recently, as {{role|[your job title]}} at {{employer|[employer]}}, I {{highlight|[what you did]}}, and [the result]. My CV has the rest of it.',
             },
           ],
         },
@@ -1287,7 +1285,7 @@ export const COVER_LETTER_TEMPLATES: ResumeTemplate[] = [
           content: [
             {
               type: 'text',
-              text: 'One example rather than a summary: at [employer] I [what you built or fixed], and [what changed as a result]. [Where it can be seen, if any of it is public.]',
+              text: 'One example rather than a summary: as {{role|[your job title]}} at {{employer|[employer]}}, I {{highlight|[what you built or fixed]}}, and [what changed as a result]. [Where it can be seen, if any of it is public.]',
             },
           ],
         },

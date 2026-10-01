@@ -27,12 +27,12 @@ describe('the document tab sets', () => {
     expect(idsOf('word')).toEqual(['grammar', 'tailor'])
   })
 
-  it('gives a cover letter the letter check in place of tailoring', () => {
-    // A letter is not scored against a posting -- there is no keyword
-    // inventory to match and nothing a rewrite would tailor that the letter
-    // does not already say on purpose. See documentTabs' docblock.
-    expect(idsOf('cover_letter')).toEqual(['grammar', 'suggestions'])
-    expect(idsOf('cover_letter')).not.toContain('tailor')
+  it('gives a cover letter tailoring as well as its letter check', () => {
+    // REVERSED 2026-10-01 (Gabe: "Implement the same logic of CV tailoring to
+    // enhance cover letters"). The letter is tailored against a posting and
+    // scored by `letterFit`, not the ATS ring; the letter check stays.
+    expect(idsOf('cover_letter')).toEqual(['grammar', 'tailor', 'suggestions'])
+    expect(DOCUMENT_TABS.cover_letter[1].hint).not.toMatch(/score this CV/)
   })
 
   it('shares one grammar tab rather than describing it twice', () => {
@@ -50,11 +50,14 @@ describe('the document tab sets', () => {
     }
   })
 
-  it('only ever marks a tab as needing an application where one exists', () => {
-    // `needsApplication` drives the rail's "needs an application" hint. On a
-    // cover letter there is no application to pick, so the hint would be an
-    // instruction with nothing to follow it.
-    expect(DOCUMENT_TABS.cover_letter.some((tab) => tab.needsApplication)).toBe(false)
+  it('marks only the tailor tab as needing an application, on both kinds', () => {
+    // `needsApplication` drives the rail's "needs an application" hint, which
+    // is an instruction -- so only the pane with a picker may carry it.
+    for (const kind of ['word', 'cover_letter'] as const) {
+      expect(DOCUMENT_TABS[kind].filter((tab) => tab.needsApplication).map((tab) => tab.id)).toEqual([
+        'tailor',
+      ])
+    }
   })
 
   it('resolves a tab by id whichever kind it belongs to', () => {
@@ -69,8 +72,8 @@ describe('restoring a remembered tab', () => {
     expect(asDocumentTab('grammar', 'word')).toBe('grammar')
   })
 
-  it('does not strand a cover letter on the CV-only tailor pane', () => {
-    expect(asDocumentTab('tailor', 'cover_letter')).toBe(DEFAULT_DOCUMENT_TAB)
+  it('keeps a cover letter on the tailor pane, which letters have now', () => {
+    expect(asDocumentTab('tailor', 'cover_letter')).toBe('tailor')
   })
 
   it('does not strand a CV on the letter-only suggestions pane either', () => {

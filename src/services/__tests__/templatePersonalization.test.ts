@@ -470,3 +470,40 @@ describe('every shipped template carries the details the app holds', () => {
     }
   })
 })
+
+/**
+ * Gabe, 2026-10-01: "There is no mention of Previous Work Experience in the
+ * cover letter." The letters filled "my current role as" with the HEADLINE,
+ * a sentence about the person, and never named a role or an employer.
+ */
+describe('the letters name the work history', () => {
+  const standard = COVER_LETTER_TEMPLATES.find((template) => template.id === 'cover-standard')!
+
+  it('names the latest role, its employer, its first bullet, and the role before it', () => {
+    const text = allText(personalizeTemplate(standard.content, FULL))
+    expect(text).toContain(
+      'In my most recent role, as Frontend Engineer at Northwind, I rebuilt the checkout flow.'
+    )
+    expect(text).toContain('Before that I worked as Junior Developer at Harbour Labs,')
+  })
+
+  it('keeps the prompts when the profile has no roles, rather than leaving a gap', () => {
+    const text = allText(personalizeTemplate(standard.content, { ...FULL, experiences: [] }))
+    expect(text).toContain('as [your job title] at [employer], I [the thing you were responsible for end to end].')
+    expect(text).toContain('Before that I [the earlier work that is relevant here]')
+  })
+
+  it('carries the LinkedIn address once in the sender block, not twice', () => {
+    const text = allText(personalizeTemplate(standard.content, FULL))
+    expect(text.match(/linkedin\.com\/in\/gabrielsantos/g)).toHaveLength(1)
+  })
+
+  it('reaches every letter that names an employer', () => {
+    for (const template of COVER_LETTER_TEMPLATES) {
+      const text = allText(personalizeTemplate(template.content, FULL))
+      if (/\[employer\]|\[current employer\]/.test(allText(template.content))) {
+        expect.soft(text, template.name).toContain('Northwind')
+      }
+    }
+  })
+})

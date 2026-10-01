@@ -102,7 +102,7 @@ export function DocumentRailPane({
 export function TailoringRailPane({
   tailoring,
   ...pane
-}: Omit<DocumentRailPaneProps, 'tailoring' | 'letter'> & { tailoring: CvTailoringOptions }) {
+}: Omit<DocumentRailPaneProps, 'tailoring'> & { tailoring: CvTailoringOptions }) {
   const state = useCvTailoring(tailoring)
   return <DocumentRailPane {...pane} tailoring={state} />
 }

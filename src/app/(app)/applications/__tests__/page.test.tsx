@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { makeJob } from '@/test/fixtures'
-import { selectedLabel } from '@/test/select'
+import { chooseOption, openOptions, selectedLabel } from '@/test/select'
 
 // Every read and write on this route goes through the useJobs hooks so they
 // all land on the same ['jobs', user?.id] cache entry the dashboard reads.
@@ -49,14 +49,22 @@ vi.mock('@/contexts/ToastContext', () => ({
 vi.mock('@/hooks/useActivity', () => ({ useActivity: () => ({ data: [], isLoading: false }) }))
 // The route now also writes CV links -- the "cv used" field on the form
 // pins a row in `application_documents` after the application itself saves.
+// Configurable per test; empty by default, which is every test written
+// before an application could carry a cover letter.
+const linksData = vi.hoisted(() => ({ current: [] as unknown[] }))
+const resumesData = vi.hoisted(() => ({ current: [] as unknown[] }))
+const pinMutate = vi.hoisted(() => vi.fn())
+const unpinMutate = vi.hoisted(() => vi.fn())
 vi.mock('@/hooks/useDocumentLinks', () => ({
-  useDocumentLinks: () => ({ data: [], isLoading: false }),
+  useDocumentLinks: () => ({ data: linksData.current, isLoading: false }),
   useResumeLinks: () => ({ data: [], isLoading: false }),
-  usePinDocumentLink: () => ({ mutateAsync: vi.fn(), isPending: false }),
-  useUnpinDocumentLink: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  usePinDocumentLink: () => ({ mutateAsync: pinMutate, isPending: false }),
+  useUnpinDocumentLink: () => ({ mutateAsync: unpinMutate, isPending: false }),
 }))
-// The form's "cv used" field offers the user's CVs.
-vi.mock('@/hooks/useResumes', () => ({ useResumes: () => ({ data: [], isLoading: false }) }))
+// The form's "cv used" and "cover letter used" fields offer the user's documents.
+vi.mock('@/hooks/useResumes', () => ({
+  useResumes: () => ({ data: resumesData.current, isLoading: false }),
+}))
 // Tidy-and-summarise runs through its own mutation, which needs a
 // QueryClient this suite deliberately does not stand up.
 vi.mock('@/hooks/usePostingDigest', () => ({
@@ -127,6 +135,10 @@ beforeEach(() => {
   useUserPreferencesMock.mockReturnValue({ data: null, isLoading: false, error: null })
   deleteJobMutate.mockReset().mockResolvedValue(undefined)
   searchParamMock.mockImplementation(() => null)
+  linksData.current = []
+  resumesData.current = []
+  pinMutate.mockReset().mockResolvedValue(undefined)
+  unpinMutate.mockReset().mockResolvedValue(undefined)
 })
 
 afterEach(() => cleanup())
@@ -348,5 +360,65 @@ describe('Applications route wrapper', () => {
     await user.click(screen.getAllByRole('button', { name: /^delete/i })[0])
     await user.click(screen.getByRole('button', { name: 'delete' }))
     await waitFor(() => expect(deleteJobMutate).toHaveBeenCalledWith('1'))
+  })
+})
+
+/**
+ * ONE CV AND ONE COVER LETTER PER APPLICATION (Gabe, 2026-10-01: "Add another
+ * input field to the application overview called cover letter used").
+ *
+ * The CV field used to clear every link but the one it named, which was right
+ * while a link could only be a CV. With a letter beside it, that would have
+ * silently unpinned the letter every time somebody changed the CV.
+ */
+describe('the cv and cover letter fields', () => {
+  const JOB = makeJob({ id: 'job-1', status: 'applied', company: 'Initech', role: 'Engineer' })
+  const doc = (id: string, title: string, mode: 'word' | 'cover_letter') => ({
+    id,
+    title,
+    mode,
+    updated_at: '2026-10-01T00:00:00Z',
+    sections: null,
+  })
+  const link = (resume_id: string, mode: 'word' | 'cover_letter', title: string) => ({
+    resume_id,
+    mode,
+    title,
+    version: null,
+    sent_at: '2026-10-01',
+  })
+
+  beforeEach(() => {
+    useJobsMock.mockReturnValue({ data: [JOB], isLoading: false, error: null })
+    useUpdateJobMock.mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue(JOB), isPending: false })
+    resumesData.current = [
+      doc('cv-old', 'Old CV', 'word'),
+      doc('cv-new', 'New CV', 'word'),
+      doc('letter-1', 'Initech letter', 'cover_letter'),
+    ]
+    linksData.current = [link('cv-old', 'word', 'Old CV'), link('letter-1', 'cover_letter', 'Initech letter')]
+  })
+
+  it('offers CVs in one field and cover letters in the other, each showing its own link', async () => {
+    const user = userEvent.setup()
+    render(<Page />)
+    await user.click(screen.getAllByRole('button', { name: /^view/i })[0])
+
+    expect(selectedLabel(screen.getByLabelText('cv used'))).toBe('Old CV')
+    expect(selectedLabel(screen.getByLabelText('cover letter used'))).toBe('Initech letter')
+    expect(await openOptions(user, screen.getByLabelText('cv used'))).not.toContain('Initech letter')
+  })
+
+  it('replaces the CV without unpinning the cover letter', async () => {
+    const user = userEvent.setup()
+    render(<Page />)
+    await user.click(screen.getAllByRole('button', { name: /^view/i })[0])
+
+    await chooseOption(user, screen.getByLabelText('cv used'), 'New CV')
+    await user.click(screen.getByRole('button', { name: /save application/i }))
+
+    await waitFor(() => expect(pinMutate).toHaveBeenCalledWith({ job_id: 'job-1', resume_id: 'cv-new' }))
+    expect(unpinMutate).toHaveBeenCalledWith({ jobId: 'job-1', resumeId: 'cv-old' })
+    expect(unpinMutate).not.toHaveBeenCalledWith({ jobId: 'job-1', resumeId: 'letter-1' })
   })
 })

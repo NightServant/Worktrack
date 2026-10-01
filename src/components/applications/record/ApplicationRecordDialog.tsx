@@ -77,6 +77,10 @@ export interface ApplicationRecordDialogProps {
   resumes?: { id: string; title: string }[]
   linkedResumeId?: string | null
   onLinkedResumeChange?: (resumeId: string | null) => void
+  /** For the record's "cover letter used" field. */
+  letters?: { id: string; title: string }[]
+  linkedLetterId?: string | null
+  onLinkedLetterChange?: (letterId: string | null) => void
 }
 
 export function ApplicationRecordDialog({
@@ -91,6 +95,9 @@ export function ApplicationRecordDialog({
   resumes,
   linkedResumeId,
   onLinkedResumeChange,
+  letters,
+  linkedLetterId,
+  onLinkedLetterChange,
 }: ApplicationRecordDialogProps) {
   const [view, setView] = React.useState<'record' | 'description'>('record')
 
@@ -166,6 +173,9 @@ export function ApplicationRecordDialog({
           resumes={resumes}
           linkedResumeId={linkedResumeId}
           onLinkedResumeChange={onLinkedResumeChange}
+          letters={letters}
+          linkedLetterId={linkedLetterId}
+          onLinkedLetterChange={onLinkedLetterChange}
           postingOpen={view === 'description'}
           onReadMore={() => setView('description')}
           onBack={() => setView('record')}

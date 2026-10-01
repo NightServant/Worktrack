@@ -125,9 +125,20 @@ const SUGGESTIONS_TAB: DocumentTab = {
 /** Every tab there is, for lookups that do not know the kind. */
 const ALL_TABS: readonly DocumentTab[] = [GRAMMAR_TAB, TAILOR_TAB, SUGGESTIONS_TAB]
 
+/**
+ * The letter's tailor tab: the same pane, its own promise (Gabe, 2026-10-01:
+ * "Implement the same logic of CV tailoring to enhance cover letters"). Same
+ * id, so the stored tab and `needsApplication` work unchanged; the hint says
+ * fit rather than ATS, because a letter is scored by `letterFit`.
+ */
+const LETTER_TAILOR_TAB: DocumentTab = {
+  ...TAILOR_TAB,
+  hint: 'check its fit, then rewrite it',
+}
+
 export const DOCUMENT_TABS: Record<ResumeMode, readonly DocumentTab[]> = {
   word: [GRAMMAR_TAB, TAILOR_TAB],
-  cover_letter: [GRAMMAR_TAB, SUGGESTIONS_TAB],
+  cover_letter: [GRAMMAR_TAB, LETTER_TAILOR_TAB, SUGGESTIONS_TAB],
 } as const
 
 /**

@@ -27,8 +27,10 @@ import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion'
 import { authedFetch } from '@/lib/authedFetch'
 import { matchKeywords, type KeywordMatch } from '@/services/atsMatch'
 import type { TailoringResult } from '@/services/integrations/tailoring'
-import type { ResumeContent } from '@/services/resumeService'
+import type { ResumeContent, ResumeMode } from '@/services/resumeService'
 import type { Job } from '@/types'
+import { AlertCircleIcon, CheckIcon } from '@/components/icons'
+import { letterFit, type LetterFit } from './letterFit'
 import { ApplicationPicker } from './ApplicationPicker'
 import { applySuggestions, tailoredTitle } from './applyTailoring'
 
@@ -121,10 +123,25 @@ export interface CvTailoringState {
    * verdict with no visible provenance is one somebody re-runs to be sure.
    */
   restored: boolean
+  /** Which kind of document the rail is tailoring. Decides its words and its score. */
+  kind: ResumeMode
+  /**
+   * A cover letter's score against the selected application, or null for a CV
+   * (which has `match`) and for a letter with nothing selected. See `letterFit`.
+   */
+  fit: LetterFit | null
 }
 
 export interface CvTailoringOptions {
   cvText: string
+  /**
+   * A CV, or a cover letter (Gabe, 2026-10-01: "Implement the same logic of
+   * CV tailoring to enhance cover letters"). The same flow either way -- pick
+   * a wishlist application, rewrite, a new file the first time and the same
+   * file after -- with the letter's own prompt on the server and its own
+   * score here instead of the ATS one.
+   */
+  kind?: ResumeMode
   /** Every application the account has; the wishlist is taken out of it here. */
   jobs: Job[]
   /**
@@ -300,7 +317,8 @@ function writeCachedRun(documentId: string, jobId: string, result: TailoringResu
  * new document's name.
  */
 export function useCvTailoring(options: CvTailoringOptions): CvTailoringState {
-  const { jobId, onJobId, documentId = '', tailoredForJobId = '' } = options
+  const { jobId, onJobId, documentId = '', tailoredForJobId = '', kind = 'word' } = options
+  const letter = kind === 'cover_letter'
   const [running, setRunning] = React.useState(false)
   const runningRef = React.useRef(false)
   const [result, setResult] = React.useState<TailoringResult | null>(null)
@@ -389,9 +407,27 @@ export function useCvTailoring(options: CvTailoringOptions): CvTailoringState {
 
   const description = selectedJob?.description?.trim() ?? ''
 
+  // THE CV'S SCORE OR THE LETTER'S, never both. The keyword match feeds the
+  // ATS ring and the CV prompt's "missing keywords"; a letter is scored by
+  // `letterFit` instead (Gabe, 2026-10-01).
   const match = React.useMemo(
-    () => (description && options.cvText.trim() ? matchKeywords(options.cvText, description) : null),
-    [description, options.cvText]
+    () =>
+      !letter && description && options.cvText.trim()
+        ? matchKeywords(options.cvText, description)
+        : null,
+    [letter, description, options.cvText]
+  )
+  const fit = React.useMemo(
+    () =>
+      letter && selectedJob && options.cvText.trim()
+        ? letterFit({
+            text: options.cvText,
+            company: selectedJob.company,
+            role: selectedJob.role,
+            description,
+          })
+        : null,
+    [letter, selectedJob, options.cvText, description]
   )
 
   const run = React.useCallback(async () => {
@@ -437,6 +473,9 @@ export function useCvTailoring(options: CvTailoringOptions): CvTailoringState {
             missingKeywords: match?.missing ?? [],
             role: selectedJob?.role,
             company: selectedJob?.company,
+            kind,
+            source: selectedJob?.source ?? undefined,
+            location: selectedJob?.location ?? undefined,
           }),
         })
         payload = (await response.json()) as TailoringResult
@@ -502,7 +541,7 @@ export function useCvTailoring(options: CvTailoringOptions): CvTailoringState {
           message:
             err instanceof Error && err.message
               ? err.message
-              : 'The rewrite worked, but the new CV could not be saved. Try again.',
+              : `The rewrite worked, but the new ${letter ? 'cover letter' : 'CV'} could not be saved. Try again.`,
         })
       }
     } finally {
@@ -512,7 +551,7 @@ export function useCvTailoring(options: CvTailoringOptions): CvTailoringState {
         setRunning(false)
       }
     }
-  }, [description, options, match, selectedJob, documentId, jobId])
+  }, [description, options, match, selectedJob, documentId, jobId, kind, letter])
 
   /**
    * Choosing a different application drops the previous run's answer.
@@ -555,6 +594,8 @@ export function useCvTailoring(options: CvTailoringOptions): CvTailoringState {
     selectedJob,
     tailoredFor,
     restored,
+    kind,
+    fit,
   }
 }
 
@@ -728,8 +769,56 @@ function useScoreSweep(score: number | null, matched: number, missing: number): 
 }
 
 /** The whole tailoring pane: pick a posting, read the match, rewrite the CV. */
+/**
+ * A cover letter's score: the verdict, then every check with what it found.
+ *
+ * NO RING. The ring is the ATS score's picture, a proportion of a posting's
+ * vocabulary; this is seven yes-or-no questions, and a list of them says more
+ * than an arc does. Passed checks stay on screen in muted ink so the reader
+ * can see what the number is made of.
+ */
+function LetterFitSection({ fit }: { fit: LetterFit | null }) {
+  return (
+    <div className="flex flex-col gap-4 border-t border-border-subtle pt-5" data-letter-fit>
+      {fit === null ? (
+        <p className="text-body-s text-text-muted">
+          pick an application above to see how well this letter answers it.
+        </p>
+      ) : (
+        <>
+          <p className="text-body-m text-text-primary">
+            <span className="text-heading-s">{fit.score}</span>
+            <span className="text-text-muted"> / 100 · </span>
+            {fit.score >= 85 ? 'ready to send' : fit.score >= 60 ? 'nearly there' : 'needs work'}
+          </p>
+          <ul className="flex flex-col gap-3">
+            {fit.checks.map((check) => (
+              <li key={check.id} className="flex items-start gap-2" data-fit-check={check.id}>
+                {check.passed ? (
+                  <CheckIcon size={16} aria-hidden className="mt-0.5 shrink-0 text-text-muted" />
+                ) : (
+                  <AlertCircleIcon size={16} aria-hidden className="mt-0.5 shrink-0 text-status-rejected-mark" />
+                )}
+                <div className="flex min-w-0 flex-col gap-0.5">
+                  <span className="text-body-s text-text-primary">
+                    {check.label}
+                    <span className="sr-only">{check.passed ? ': passed' : ': not yet'}</span>
+                  </span>
+                  <span className="text-body-s text-text-muted">{check.detail}</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
+  )
+}
+
 export function TailoringAnalysisRail({ state }: { state: CvTailoringState }) {
   const { match, result, running, outcome, restored } = state
+  const letter = state.kind === 'cover_letter'
+  const noun = letter ? 'cover letter' : 'CV'
   // One sweep, read by the ring, the number and both inventories.
   const shown = useScoreSweep(
     match?.score ?? null,
@@ -757,8 +846,8 @@ export function TailoringAnalysisRail({ state }: { state: CvTailoringState }) {
           // application, and adding it there is what makes this rail, the ATS
           // panel and the record view all work at once.
           <p className="text-body-s text-text-muted">
-            that application has no job description saved, so there is nothing to score against.
-            add one on the application.
+            that application has no job description saved, so there is nothing to{' '}
+            {letter ? 'tailor' : 'score'} against. add one on the application.
           </p>
         )}
       </div>
@@ -788,8 +877,11 @@ export function TailoringAnalysisRail({ state }: { state: CvTailoringState }) {
             a fourth copy of it. A control that misdescribes which document it
             is about to write is worse than one that says nothing. */}
         <p className="text-body-s text-text-muted">
-          rewrites this CV against the posting. the first run for an application saves a new
-          document; running it again for the same application updates that one.
+          {letter
+            ? 'rewrites this letter for the posting, filling in the company, role and other details it gives. '
+            : 'rewrites this CV against the posting. '}
+          the first run for an application saves a new document; running it again for the same
+          application updates that one.
         </p>
 
         <Button
@@ -799,7 +891,7 @@ export function TailoringAnalysisRail({ state }: { state: CvTailoringState }) {
           disabled={running || !state.description.trim()}
         >
           {running && <CssSpinner size={14} />}
-          {running ? 'tailoring' : 'tailor this CV'}
+          {running ? 'tailoring' : `tailor this ${noun}`}
         </Button>
 
         {!state.description.trim() && (
@@ -828,7 +920,7 @@ export function TailoringAnalysisRail({ state }: { state: CvTailoringState }) {
           // not be found. Creating a second identical CV to report that would
           // leave the user deleting the evidence of a no-op.
           <p role="status" className="text-body-s text-text-muted">
-            the model returned no changes this CV could take, so nothing was created.
+            the model returned no changes this {noun} could take, so nothing was created.
           </p>
         )}
 
@@ -877,6 +969,9 @@ export function TailoringAnalysisRail({ state }: { state: CvTailoringState }) {
           MATCHED BEFORE MISSING, same as the record. The revision asked for
           the matched list "for positive reinforcement", and a list of failures
           above a list of wins reverses the point of showing them at all. */}
+      {letter ? (
+        <LetterFitSection fit={state.fit} />
+      ) : (
       <div className="flex flex-col gap-4 border-t border-border-subtle pt-5">
         {match === null ? (
           <p className="text-body-s text-text-muted">
@@ -931,6 +1026,7 @@ export function TailoringAnalysisRail({ state }: { state: CvTailoringState }) {
           </>
         )}
       </div>
+      )}
 
     </PanelSection>
   )

@@ -108,14 +108,17 @@ beforeEach(() => {
 afterEach(() => cleanup())
 
 describe('the editor opened as a cover letter', () => {
-  it('does not run the tailoring path at all', () => {
+  it('tailors a cover letter too, scored by fit rather than by ATS', () => {
+    // REVERSED 2026-10-01 (Gabe: "Implement the same logic of CV tailoring to
+    // enhance cover letters", then "Letter tailoring should not implement the
+    // ATS scoring"). The hook runs; the pane offers the rewrite under the
+    // letter's own name and shows the fit checklist in place of the ring.
+    window.localStorage.setItem('worktrack:document-tab', 'tailor')
     renderEditor('cover_letter')
-    // Not "renders nothing" -- never called. See the docblock.
-    expect(tailoringCalls).not.toHaveBeenCalled()
-    // And so nothing downstream of it exists either: no posting picker, no
-    // ring, no rewrite button.
-    expect(screen.queryByRole('combobox', { name: /application/i })).toBeNull()
-    expect(screen.queryByRole('button', { name: /tailor this/i })).toBeNull()
+    expect(tailoringCalls).toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: /tailor this cover letter/i })).toBeInTheDocument()
+    expect(document.querySelector('[data-letter-fit]')).toBeInTheDocument()
+    expect(screen.queryByText(/score this CV/i)).toBeNull()
   })
 
   it('still runs it for a CV, which is the control for the test above', () => {
@@ -123,14 +126,14 @@ describe('the editor opened as a cover letter', () => {
     expect(tailoringCalls).toHaveBeenCalled()
   })
 
-  it('swaps the tailor tab for the letter check', () => {
+  it('carries the tailor tab beside the letter check', () => {
     renderEditor('cover_letter')
     // A column tab reads as label + hint in one node, so these are substring
     // checks rather than equality.
-    expect(tabNames()).toHaveLength(2)
+    expect(tabNames()).toHaveLength(3)
     expect(tabNames().some((name) => name.startsWith('grammar check'))).toBe(true)
+    expect(tabNames().some((name) => name.startsWith('tailor to a job'))).toBe(true)
     expect(tabNames().some((name) => name.startsWith('letter check'))).toBe(true)
-    expect(tabNames().some((name) => name.includes('tailor'))).toBe(false)
   })
 
   it('leaves the CV rail exactly as it was, with no kind passed', () => {
@@ -145,22 +148,22 @@ describe('the editor opened as a cover letter', () => {
     expect(screen.getByText(/print-ready cover letter/i)).toBeInTheDocument()
   })
 
-  it('does not strand itself on a tab remembered from a CV', () => {
-    // The bug this exists for: one storage key serves both editors, so a CV
-    // left on `tailor` would otherwise restore a pane this rail does not have.
-    window.localStorage.setItem('worktrack:document-tab', 'tailor')
-    renderEditor('cover_letter')
+  it('does not strand a CV on a tab remembered from a letter', () => {
+    // One storage key serves both editors, so a letter left on its letter
+    // check would otherwise restore a pane the CV rail does not have.
+    window.localStorage.setItem('worktrack:document-tab', 'suggestions')
+    renderEditor('word')
     expect(document.querySelector('[data-document-pane]')).toHaveAttribute(
       'data-document-pane',
       'grammar'
     )
-    // And the CV it was remembered from still gets it back -- the coercion is
-    // on read, so opening a letter does not rewrite the stored preference.
+    // And the letter it was remembered from still gets it back -- the
+    // coercion is on read, so opening a CV does not rewrite the preference.
     cleanup()
-    renderEditor('word')
+    renderEditor('cover_letter')
     expect(document.querySelector('[data-document-pane]')).toHaveAttribute(
       'data-document-pane',
-      'tailor'
+      'suggestions'
     )
   })
 

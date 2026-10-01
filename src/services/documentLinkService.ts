@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { requireUserId, toError } from './supabaseHelpers'
 import type { ApplicationDocument } from '@/types'
 import type { DocumentLinkSummary, ResumeLinkSummary } from './applicationDocuments'
+import { normalizeMode, type ResumeMode } from './resumeService'
 
 export interface DocumentLinkInput {
   job_id: string
@@ -57,10 +58,19 @@ export const documentLinkService = {
    * behind owner-only RLS, and a redundant filter hides a broken policy rather
    * than surfacing it.
    */
-  async listLinkedJobIds(client: SupabaseClient): Promise<string[]> {
-    const { data, error } = await client.from('application_documents').select('job_id')
+  async listLinkedJobIds(client: SupabaseClient, mode?: ResumeMode): Promise<string[]> {
+    const { data, error } = await client
+      .from('application_documents')
+      .select('job_id, resumes(mode)')
     if (error) throw toError(error)
-    const ids = new Set((data ?? []).map((row) => (row as { job_id: string }).job_id))
+    // BY KIND WHEN ASKED (2026-10-01). An application with a tailored CV still
+    // wants a tailored letter, so the letter's picker must not hide it.
+    const rows = (data ?? []) as unknown as { job_id: string; resumes: { mode: string } | null }[]
+    const ids = new Set(
+      rows
+        .filter((row) => !mode || normalizeMode(row.resumes?.mode) === mode)
+        .map((row) => row.job_id)
+    )
     return [...ids]
   },
 
@@ -83,7 +93,7 @@ export const documentLinkService = {
   async listForJob(client: SupabaseClient, jobId: string): Promise<DocumentLinkSummary[]> {
     const { data, error } = await client
       .from('application_documents')
-      .select('resume_id, sent_at, resumes(title), resume_snapshots(version)')
+      .select('resume_id, sent_at, resumes(title, mode), resume_snapshots(version)')
       .eq('job_id', jobId)
       // NEWEST FIRST, because callers read `[0]` as "the CV that was sent".
       // Without an order Postgres is free to return these in any order, so
@@ -92,10 +102,11 @@ export const documentLinkService = {
     if (error) throw toError(error)
 
     return (data ?? []).map((row) => {
-      const resume = row.resumes as unknown as { title: string } | null
+      const resume = row.resumes as unknown as { title: string; mode: string | null } | null
       const snapshot = row.resume_snapshots as unknown as { version: number | null } | null
       return {
         resume_id: row.resume_id as string,
+        mode: normalizeMode(resume?.mode),
         title: resume?.title ?? 'untitled cv',
         version: snapshot?.version ?? null,
         sent_at: row.sent_at as string,

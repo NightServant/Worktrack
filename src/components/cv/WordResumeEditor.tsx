@@ -31,7 +31,7 @@ import type { CvTailoringOptions } from './CvTailoring'
 import { DocumentRailTabs } from './DocumentRail'
 import { DocumentNavigator } from './DocumentNavigator'
 import { DocumentToolbar } from './DocumentToolbar'
-import { DocumentRailPane, TailoringRailPane } from './DocumentRailPane'
+import { TailoringRailPane } from './DocumentRailPane'
 import { DocumentSkeleton } from '@/components/ui/loading-skeletons'
 import { AnalyzingDocument } from '@/components/ui/analyzing-document'
 import { RotatingText } from '@/components/ui/status-state'
@@ -645,14 +645,19 @@ export function WordResumeEditor({
       const updated = await onPersistDraft(
         draft.id,
         title.trim() || 'Untitled document',
-        'word',
+        // THE DOCUMENT'S OWN KIND, NOT 'word' (Gabe, 2026-10-01: a cover
+        // letter "marked as CV"). This was the literal `'word'`, and the
+        // patch writes `mode` on every autosave -- so the first save after
+        // opening a letter turned it into a CV for good, and the next visit
+        // opened it in the CV editor with the CV rail.
+        kind,
         editor.getJSON()
       )
       setLastSavedAt(updated.updated_at)
       // Never rewind: two saves can overlap, and the older one landing second
       // must not un-save what the newer one already wrote.
       setSavedRevision((current) => Math.max(current, writing))
-      if (notify) success('Draft saved', 'Your CV draft is saved to Supabase.')
+      if (notify) success('Draft saved', `Your ${isLetter ? 'cover letter' : 'CV'} draft is saved.`)
       return true
     } catch (err) {
       showError('Save failed', err instanceof Error ? err.message : 'Unable to save draft')
@@ -887,6 +892,9 @@ export function WordResumeEditor({
    */
   const tailoringOptions: CvTailoringOptions = {
     cvText,
+    // A letter is tailored too since 2026-10-01, with its own prompt and its
+    // own score; the hook reads this to decide which.
+    kind,
     jobs,
     linkedJobIds,
     title,
@@ -1337,21 +1345,16 @@ export function WordResumeEditor({
          picker, no ATS ring and no rewrite in this tree at all, rather than a
          hidden one. */
       rightRail={
-        isLetter ? (
-          <DocumentRailPane
-            active={tab}
-            proofread={proofread}
-            thesaurus={thesaurus}
-            letter={review}
-          />
-        ) : (
-          <TailoringRailPane
-            active={tab}
-            proofread={proofread}
-            thesaurus={thesaurus}
-            tailoring={tailoringOptions}
-          />
-        )
+        /* BOTH KINDS TAILOR NOW (Gabe, 2026-10-01). A letter keeps its letter
+           check as a third tab, and the tailor pane scores it with
+           `letterFit` rather than the ATS ring -- see CvTailoring. */
+        <TailoringRailPane
+          active={tab}
+          proofread={proofread}
+          thesaurus={thesaurus}
+          tailoring={tailoringOptions}
+          letter={isLetter ? review : undefined}
+        />
       }
       /* THE PAGE IS THE SAME PAGE AND THE NOTE UNDER IT IS NOT. Both are
          letter-sized sheets with the same margins, but "print-ready CV" under

@@ -181,8 +181,33 @@ function birthdayValue(profile: UserProfile): string | null {
  * pins it -- the alternative is the same template rendering a different date
  * format per machine, including in tests.
  */
+/**
+ * A CV bullet as the rest of a sentence that begins "I ".
+ *
+ * Bullets are written as past-tense verb phrases -- "Designed prototypes for
+ * key web pages using Figma" -- so a letter can say "I designed prototypes..."
+ * by lowering one capital and dropping the full stop. Only an ordinary
+ * capitalised word is lowered: "API work" stays "API work".
+ */
+function asClause(bullet: string | undefined): string | null {
+  const text = clean(bullet ?? null)?.replace(/[.;]+$/, '')
+  if (!text) return null
+  return /^[A-Z][a-z]/.test(text) ? text[0].toLowerCase() + text.slice(1) : text
+}
+
+/** "worked as Frontend Developer at Acme" -- the role before the latest. */
+function earlierRoleClause(entry: ProfileExperience | undefined): string | null {
+  const title = clean(entry?.title ?? null)
+  if (!title) return null
+  const company = clean(entry?.company ?? null)
+  return company ? `worked as ${title} at ${company}` : `worked as ${title}`
+}
+
 function tokenValues(profile: UserProfile, prose: CvWriting): Record<string, string | null> {
   const github = sourceUrl(profile, 'GitHub')
+  // Newest first, as every source and the CV's own Experience section order
+  // them.
+  const [latest, earlier] = profile.experiences
   return {
     name: clean(profile.name),
     headline: clean(profile.headline),
@@ -206,6 +231,21 @@ function tokenValues(profile: UserProfile, prose: CvWriting): Record<string, str
      * actually wrote and adds the role and the tools under it.
      */
     summary: clean(prose?.summary ?? null) ?? clean(professionalSummary(profile)),
+    /*
+     * THE WORK HISTORY, FOR THE LETTERS (Gabe, 2026-10-01: "There is no
+     * mention of Previous Work Experience in the cover letter"). The letters
+     * said "In my current role as {{headline}}", and a headline is a sentence
+     * about the person rather than a job title -- so a profile with a role on
+     * it produced "my current role as Detail-oriented and motivated ...
+     * graduate" and never named the role at all. These four read the
+     * experience entries the CV's Experience section is already built from.
+     */
+    role: clean(latest?.title ?? null),
+    employer: clean(latest?.company ?? null),
+    highlight: asClause(bulletItems(latest?.description ?? null)[0]),
+    // Lowercase, as every key here: `substituteTokens` lowers the name it
+    // looks up, so `{{earlierRole}}` in a template reads `earlierrole`.
+    earlierrole: earlierRoleClause(earlier),
     today: new Date().toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'long',
@@ -329,11 +369,15 @@ function joined(...parts: (string | null)[]): string | null {
  * asterisk. Stripping it matters because the text goes into a `bulletList`,
  * which draws its own marker: without this the CV shows "• - Built the thing".
  */
-function bulletsFrom(description: string | null): JSONContent | null {
-  const items = (description ?? '')
+function bulletItems(description: string | null): string[] {
+  return (description ?? '')
     .split(/\r?\n/)
     .map((line) => line.replace(/^\s*[-•*·‣◦]\s*/, '').trim())
     .filter((line) => line.length > 0)
+}
+
+function bulletsFrom(description: string | null): JSONContent | null {
+  const items = bulletItems(description)
   if (items.length === 0) return null
   return {
     type: 'bulletList',

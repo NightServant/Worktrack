@@ -43,7 +43,10 @@ export function useApplicationRecord(
   const historyQuery = useJobStatusHistory(jobId)
 
   const activity = activityQuery.data ?? []
-  const links = linksQuery.data ?? []
+  // THE CV LINKS ONLY. An application carries a cover letter too now, and
+  // everything this record does with a link -- the ATS score, the "scored
+  // against" line -- is about the CV.
+  const links = (linksQuery.data ?? []).filter((link) => link.mode === 'word')
   const events = eventsQuery.data ?? []
   const history = historyQuery.data ?? []
 

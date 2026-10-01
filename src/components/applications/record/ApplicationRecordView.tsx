@@ -89,6 +89,10 @@ export interface ApplicationRecordViewProps {
   resumes?: { id: string; title: string }[]
   linkedResumeId?: string | null
   onLinkedResumeChange?: (resumeId: string | null) => void
+  /** The cover letters available to the "cover letter used" field. */
+  letters?: { id: string; title: string }[]
+  linkedLetterId?: string | null
+  onLinkedLetterChange?: (letterId: string | null) => void
   /**
    * Set by the add wizard: the same frame with no pipeline bar and no ATS
    * match, because neither exists before the application does.
@@ -309,6 +313,9 @@ export function ApplicationRecordView({
   resumes = [],
   linkedResumeId = null,
   onLinkedResumeChange,
+  letters = [],
+  linkedLetterId = null,
+  onLinkedLetterChange,
   layout = 'record',
   onReadMore,
   onPostingPasted,
@@ -357,7 +364,14 @@ export function ApplicationRecordView({
    * unreachable, not because the select was.
    */
   const resumeDirty = resumeId !== (linkedResumeId ?? '')
-  const unsaved = dirty || resumeDirty
+
+  // The cover letter link, by the same reasoning as the CV's: a row in
+  // `application_documents`, so it has to count as a change on its own.
+  const [letterId, setLetterId] = React.useState(linkedLetterId ?? '')
+  React.useEffect(() => setLetterId(linkedLetterId ?? ''), [linkedLetterId])
+  const letterDirty = letterId !== (linkedLetterId ?? '')
+
+  const unsaved = dirty || resumeDirty || letterDirty
 
   /**
    * And the DIALOG has to hear about it too, or picking a CV and pressing
@@ -507,6 +521,12 @@ export function ApplicationRecordView({
           // difference between "no CV" and "leave the link alone", and only the
           // former unpins.
           onLinkedResumeChange?.(next || null)
+        }}
+        letters={letters}
+        letterId={letterId}
+        onLetterIdChange={(next) => {
+          setLetterId(next)
+          onLinkedLetterChange?.(next || null)
         }}
       />
     </>

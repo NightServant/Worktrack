@@ -21,6 +21,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useUserPreferences } from '@/hooks/useUserPreferences'
 import { useResumes } from '@/hooks/useResumes'
 import { linksToUnpin } from '@/services/applicationDocuments'
+import type { ResumeMode } from '@/services/resumeService'
 import { usePostingDigest } from '@/hooks/usePostingDigest'
 import {
   useDocumentLinks,
@@ -156,9 +157,19 @@ function ApplicationsRoute() {
    * person was writing; losing it because a secondary row would not write
    * would be the wrong trade. The toast says which half worked.
    */
-  const linkResume = async (jobId: string, resumeId: string | null | undefined) => {
+  const linkResume = async (
+    jobId: string,
+    resumeId: string | null | undefined,
+    /**
+     * WHICH OF THE TWO FIELDS this is (2026-10-01). An application carries a
+     * CV and a cover letter, one of each, so replacing the CV must leave the
+     * letter's link alone -- `linksToUnpin` is only ever given links of the
+     * same kind.
+     */
+    mode: ResumeMode = 'word'
+  ) => {
     // `undefined` means the field was never touched. Only an explicit `null`
-    // means "no CV", and only that should remove an existing link.
+    // means "none", and only that should remove an existing link.
     if (resumeId === undefined) return
     try {
       // THE OLD CV HAS TO GO FIRST. `application_documents` is unique on the
@@ -172,12 +183,16 @@ function ApplicationsRoute() {
       // re-fetching: a newly created application cannot have any, so the only
       // case with something to remove is the one where `openLinks` is already
       // the right list.
-      for (const staleId of linksToUnpin(openLinks, resumeId)) {
+      const sameKind = openLinks.filter((link) => link.mode === mode)
+      for (const staleId of linksToUnpin(sameKind, resumeId)) {
         await unpinLink.mutateAsync({ jobId, resumeId: staleId })
       }
       if (resumeId) await pinLink.mutateAsync({ job_id: jobId, resume_id: resumeId })
     } catch (err) {
-      showError('Saved, but the CV link did not', message(err, 'Unknown error'))
+      showError(
+        `Saved, but the ${mode === 'cover_letter' ? 'cover letter' : 'CV'} link did not`,
+        message(err, 'Unknown error')
+      )
     }
   }
 
@@ -221,13 +236,15 @@ function ApplicationsRoute() {
   const handleCreate = async (
     data: JobFormData,
     resumeId?: string | null,
-    interviewAt?: string | null
+    interviewAt?: string | null,
+    letterId?: string | null
   ) => {
     try {
       const created = await createJob.mutateAsync(data)
       success('Application added')
       if (created?.id) {
         await linkResume(created.id, resumeId)
+        await linkResume(created.id, letterId, 'cover_letter')
         await saveInterview(created.id, interviewAt, data)
       }
       return true
@@ -241,12 +258,14 @@ function ApplicationsRoute() {
     id: string,
     data: JobFormData,
     resumeId?: string | null,
-    interviewAt?: string | null
+    interviewAt?: string | null,
+    letterId?: string | null
   ) => {
     try {
       await updateJob.mutateAsync({ id, data })
       success('Application updated')
       await linkResume(id, resumeId)
+      await linkResume(id, letterId, 'cover_letter')
       await saveInterview(id, interviewAt, data)
       return true
     } catch (err) {
@@ -287,8 +306,18 @@ function ApplicationsRoute() {
         jobs={jobs}
         defaultCurrency={resolveDefaultCurrency(prefs, country)}
         onDigest={(text) => digest.mutateAsync(text)}
-        resumes={resumes.map((resume) => ({ id: resume.id, title: resume.title }))}
-        linkedResumeId={openLinks[0]?.resume_id ?? null}
+        /* CVs IN THE CV FIELD, LETTERS IN THE LETTER FIELD. Both lists were
+           one list until 2026-10-01, so a cover letter could be recorded as
+           the CV that was sent. `openLinks` is newest first, so `find` reads
+           the latest of each kind. */
+        resumes={resumes
+          .filter((resume) => resume.mode === 'word')
+          .map((resume) => ({ id: resume.id, title: resume.title }))}
+        linkedResumeId={openLinks.find((link) => link.mode === 'word')?.resume_id ?? null}
+        letters={resumes
+          .filter((resume) => resume.mode === 'cover_letter')
+          .map((resume) => ({ id: resume.id, title: resume.title }))}
+        linkedLetterId={openLinks.find((link) => link.mode === 'cover_letter')?.resume_id ?? null}
         onCreate={handleCreate}
         onUpdate={handleUpdate}
         onDelete={handleDelete}

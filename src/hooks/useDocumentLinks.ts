@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { documentLinkService, type DocumentLinkInput } from '@/services/documentLinkService'
+import type { ResumeMode } from '@/services/resumeService'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 
@@ -52,11 +53,11 @@ export function useResumeLinks(resumeId?: string | null) {
  * and invalidated by the same helper as the other two -- pinning a CV changes
  * this list as surely as it changes the other directions.
  */
-export function useLinkedJobIds() {
+export function useLinkedJobIds(mode?: ResumeMode) {
   const { user } = useAuth()
   return useQuery({
-    queryKey: ['linked-job-ids', user?.id],
-    queryFn: () => documentLinkService.listLinkedJobIds(supabase),
+    queryKey: ['linked-job-ids', user?.id, mode],
+    queryFn: () => documentLinkService.listLinkedJobIds(supabase, mode),
     enabled: !!user,
     staleTime: 30_000,
     gcTime: 5 * 60_000,

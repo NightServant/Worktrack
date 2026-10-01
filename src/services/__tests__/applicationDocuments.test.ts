@@ -6,6 +6,7 @@ describe('describeLink', () => {
     expect(
       describeLink({
         resume_id: 'resume-1',
+        mode: 'word',
         title: 'software engineer cv',
         version: 3,
         sent_at: '2026-08-21',
@@ -17,6 +18,7 @@ describe('describeLink', () => {
     expect(
       describeLink({
         resume_id: 'resume-1',
+        mode: 'word',
         title: 'software engineer cv',
         version: null,
         sent_at: '2026-08-21',

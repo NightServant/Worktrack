@@ -296,9 +296,28 @@ describe('/cv?draft=<id> opens the right editor', () => {
 
     const tabs = screen.getAllByRole('tab').map((tab) => tab.textContent?.toLowerCase() ?? '')
     expect(tabs.some((name) => name.includes('letter check'))).toBe(true)
-    expect(tabs.some((name) => name.includes('tailor'))).toBe(false)
-    // And the rewrite controls a letter is never scored by are absent with it.
-    expect(screen.queryByRole('button', { name: /tailor this/i })).toBeNull()
+    // Letters are tailored too since 2026-10-01, with the letter's own hint.
+    expect(tabs.some((name) => name.includes('tailor'))).toBe(true)
+  })
+
+  it('autosaves a cover letter AS a cover letter', async () => {
+    // Gabe, 2026-10-01: a cover letter "marked as CV". The autosave wrote the
+    // literal 'word' into `mode`, so the first save turned every letter into
+    // a CV and the next visit opened it in the CV editor.
+    vi.useFakeTimers()
+    params('cv-2')
+    resolved(wordDraft({ id: 'cv-2', title: 'Initech letter', mode: 'cover_letter' }))
+    render(<Page />)
+
+    fireEvent.change(screen.getByLabelText(/document title/i), { target: { value: 'Initech letter v2' } })
+    await act(async () => {
+      vi.advanceTimersByTime(1200)
+    })
+    expect(updateMutate).toHaveBeenCalledWith({
+      id: 'cv-2',
+      patch: expect.objectContaining({ mode: 'cover_letter' }),
+    })
+    vi.useRealTimers()
   })
 
 })

@@ -141,7 +141,9 @@ function CvRoute() {
   // writes, and a hook cannot be called from inside a callback.
   const resumeLinks = useResumeLinks(isNew ? null : draftParam)
   /** Every application that already has a document pinned, for the picker. */
-  const linkedJobIds = useLinkedJobIds()
+  // OF THIS KIND (2026-10-01): an application tailored a CV is still waiting
+  // for its letter, so the letter's picker must keep offering it.
+  const linkedJobIds = useLinkedJobIds(draftQuery.data?.mode)
   const pinLink = usePinDocumentLink()
   const deleteResume = useDeleteResume()
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
@@ -207,6 +209,12 @@ function CvRoute() {
       links: resumeLinks.data ?? [],
     })
 
+    // A TAILORED LETTER IS A LETTER. The copy takes the kind of the document
+    // it was tailored from; this was the literal 'word' while only CVs could
+    // be tailored.
+    const kind: ResumeMode = draftQuery.data?.mode ?? 'word'
+    const noun = kind === 'cover_letter' ? 'cover letter' : 'CV'
+
     try {
       if (isRetailor) {
         // IN PLACE, AND THE TITLE IS LEFT ALONE. It is the same document for
@@ -218,12 +226,12 @@ function CvRoute() {
           id: draftParam as string,
           patch: { content: input.content },
         })
-        success('Tailored CV updated', 'Rewritten for the same application.')
+        success(`Tailored ${noun} updated`, 'Rewritten for the same application.')
         return 'updated'
       }
 
       const created = await createResume.mutateAsync({
-        mode: 'word',
+        mode: kind,
         title: input.title,
         content: input.content,
       })
@@ -233,7 +241,7 @@ function CvRoute() {
       if (input.jobId) {
         await pinLink.mutateAsync({ job_id: input.jobId, resume_id: created.id })
       }
-      success('Tailored CV created', `${input.title} is ready.`)
+      success(`Tailored ${noun} created`, `${input.title} is ready.`)
       router.push(`/cv?draft=${created.id}`)
       return 'created'
     } catch (err) {
@@ -242,7 +250,7 @@ function CvRoute() {
       // words, and a louder toast claiming the opposite sent people back to
       // re-run a request that costs metered allowance.
       showError(
-        'Could not save the tailored CV',
+        `Could not save the tailored ${noun}`,
         err instanceof Error ? err.message : 'The rewrite is still on screen. Try again.'
       )
       // Rethrown so the rail can say the rewrite survived and only the save

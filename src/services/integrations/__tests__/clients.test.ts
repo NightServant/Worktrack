@@ -352,6 +352,40 @@ describe('the tailoring request', () => {
     expect(body.model).toBe('test-model')
   })
 
+  it('tailors a cover letter with the letter prompt and the application details', async () => {
+    // Gabe, 2026-10-01: letters are tailored too. The letter prompt keeps the
+    // rule against invention, fills only the placeholders the posting or the
+    // application answers, and is told the company, role and board by name.
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ choices: [{ message: { content: '{"summary":null,"suggestions":[]}' } }] }),
+    }) as unknown as typeof fetch
+
+    await tailorCv(
+      {
+        cvText: 'Dear [name], I am applying to [Company].',
+        jobDescription: 'jd',
+        kind: 'cover_letter',
+        company: 'Initech',
+        role: 'Frontend Engineer',
+        source: 'JobStreet',
+        location: 'Taguig City',
+      },
+      { config, fetchImpl }
+    )
+    const body = JSON.parse(
+      (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1].body as string
+    )
+    expect(body.messages[0].content).toMatch(/cover letter/i)
+    expect(body.messages[0].content).toMatch(/must not invent/i)
+    expect(body.messages[0].content).toMatch(/Leave every other placeholder exactly as written/)
+    expect(body.messages[1].content).toContain('Company: Initech')
+    expect(body.messages[1].content).toContain('Advertised on: JobStreet')
+    expect(body.messages[1].content).toContain('--- CURRENT COVER LETTER ---')
+    expect(body.messages[1].content).not.toContain('Keywords the CV is currently missing')
+  })
+
   it('asks the provider to constrain the reply to JSON', async () => {
     // Production returned "The model returned malformed JSON" while the prompt
     // alone was doing the asking. The prompt is still there, but a generated

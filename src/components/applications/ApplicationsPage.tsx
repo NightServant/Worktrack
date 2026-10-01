@@ -124,13 +124,16 @@ export interface ApplicationsPageProps {
   onCreate?: (
     data: JobFormData,
     resumeId?: string | null,
-    interviewAt?: string | null
+    interviewAt?: string | null,
+    /** The cover letter, with the same three states as `resumeId`. */
+    letterId?: string | null
   ) => Promise<boolean>
   onUpdate?: (
     id: string,
     data: JobFormData,
     resumeId?: string | null,
-    interviewAt?: string | null
+    interviewAt?: string | null,
+    letterId?: string | null
   ) => Promise<boolean>
   /**
    * Tidies and summarises a fetched posting, inside the add wizard.
@@ -145,6 +148,10 @@ export interface ApplicationsPageProps {
   resumes?: { id: string; title: string }[]
   /** The CV already linked to whichever row is open, if any. */
   linkedResumeId?: string | null
+  /** The cover letters available to the "cover letter used" field. */
+  letters?: { id: string; title: string }[]
+  /** The cover letter already linked to whichever row is open, if any. */
+  linkedLetterId?: string | null
   onDelete?: (job: Job) => void
   onImport?: (rows: JobFormData[]) => Promise<boolean>
   onAutofill?: (url: string, html?: string) => Promise<JobAutofillResult>
@@ -191,6 +198,8 @@ export function ApplicationsPage({
   onDigest,
   resumes = [],
   linkedResumeId = null,
+  letters = [],
+  linkedLetterId = null,
   onDelete,
   onImport,
   onAutofill,
@@ -248,6 +257,8 @@ export function ApplicationsPage({
   // `undefined` means the field was never touched, which is different from
   // `null` (explicitly "no CV"). Only the second should unpin an existing link.
   const [resumeChoice, setResumeChoice] = React.useState<string | null | undefined>(undefined)
+  // The cover letter's copy, with the same three states.
+  const [letterChoice, setLetterChoice] = React.useState<string | null | undefined>(undefined)
   const [discardOpen, setDiscardOpen] = React.useState(false)
   // Parsing, deduplication and the import request. Six of this component's
   // props existed only to serve it; see useCsvImport.
@@ -271,6 +282,7 @@ export function ApplicationsPage({
     // Abandoned along with the rest of the form. A choice made and then
     // dismissed must not be applied to the next record opened.
     setResumeChoice(undefined)
+    setLetterChoice(undefined)
     onOpenJobChange?.(null)
   }
 
@@ -321,22 +333,24 @@ export function ApplicationsPage({
     // onUpdate resolves to false on a caught failure rather than throwing, so
     // a rejected save leaves the record open with every typed field intact
     // instead of discarding them behind a toast.
-    const ok = await onUpdate?.(editingJob.id, data, resumeChoice, interviewAt)
+    const ok = await onUpdate?.(editingJob.id, data, resumeChoice, interviewAt, letterChoice)
     // Returned, not swallowed: the record moves its own baseline on a save
     // that landed, and must not on one that did not.
     if (ok === false) return false
     // Consumed. Leaving it set would re-apply the same link to the NEXT row
     // opened in this session, which is a link the person never asked for.
     setResumeChoice(undefined)
+    setLetterChoice(undefined)
     setFormDirty(false)
     return true
   }
 
   /** Saving the wizard's new application. It closes; there is nothing behind it. */
   const submitNew = async (data: JobFormData, interviewAt?: string | null) => {
-    const ok = await onCreate?.(data, resumeChoice, interviewAt)
+    const ok = await onCreate?.(data, resumeChoice, interviewAt, letterChoice)
     if (ok === false) return false
     setResumeChoice(undefined)
+    setLetterChoice(undefined)
     setFormDirty(false)
     setAddOpen(false)
     return true
@@ -386,6 +400,9 @@ export function ApplicationsPage({
         resumes={resumes}
         linkedResumeId={linkedResumeId}
         onLinkedResumeChange={setResumeChoice}
+        letters={letters}
+        linkedLetterId={linkedLetterId}
+        onLinkedLetterChange={setLetterChoice}
         onSubmit={submit}
         onDirtyChange={setFormDirty}
       />
@@ -406,12 +423,15 @@ export function ApplicationsPage({
           }
           setAddOpen(false)
           setResumeChoice(undefined)
+          setLetterChoice(undefined)
         }}
         defaultCurrency={defaultCurrency}
         resumes={resumes}
         saving={saving}
         onSubmit={submitNew}
         onLinkedResumeChange={setResumeChoice}
+        letters={letters}
+        onLinkedLetterChange={setLetterChoice}
         onAutofill={onAutofill}
         autofilling={autofilling}
         onDigest={onDigest}

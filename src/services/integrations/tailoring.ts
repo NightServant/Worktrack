@@ -32,6 +32,16 @@ export interface TailoringInput {
   missingKeywords?: string[]
   role?: string
   company?: string
+  /**
+   * Which kind of document `cvText` is (Gabe, 2026-10-01: "Implement the same
+   * logic of CV tailoring to enhance cover letters"). Absent means a CV, which
+   * is every caller written before letters could be tailored.
+   */
+  kind?: 'word' | 'cover_letter'
+  /** Where the posting was found, for a letter's "advertised on [...]". */
+  source?: string
+  /** Where the job is, for a letter's address block. */
+  location?: string
 }
 
 export interface TailoringSuggestion {
@@ -121,6 +131,43 @@ const SYSTEM_PROMPT = [
   '"after": string, "rationale": string}]}',
 ].join(' ')
 
+/**
+ * The instruction for a cover letter.
+ *
+ * THE SAME RULE AGAINST INVENTION, and it matters more here: a letter is
+ * prose, and prose is where a model most wants to add a sentence about
+ * leadership nobody claimed.
+ *
+ * WHAT A LETTER HAS THAT A CV DOES NOT is its bracketed prompts --
+ * `[Company]`, `[role]`, `[where you found it]` -- which the templates leave
+ * for the writer. The posting and the application answer some of them, and
+ * only those are filled. `[the outcome, with the number attached]` is the
+ * writer's to answer, so it stays: a letter with a visible prompt in it is one
+ * nobody sends by accident, and a letter with an invented number in it is.
+ *
+ * MORE SUGGESTIONS THAN A CV, because `[Company]` alone recurs in four
+ * sentences of the standard template and each rewrite is one sentence.
+ */
+const LETTER_SUGGESTIONS = 12
+
+const LETTER_PROMPT = [
+  'You revise a cover letter so it answers one job posting.',
+  'You must not invent experience, employers, dates, qualifications, achievements or numbers.',
+  'Use only what the letter already says about the writer.',
+  'The letter may contain placeholders in square brackets, such as [Company] or [role].',
+  'Replace a placeholder only when the posting or the application details state the answer:',
+  'the company name, the role title, where it was advertised, where the job is.',
+  'Leave every other placeholder exactly as written, brackets included.',
+  "Where the letter describes the writer's experience, rephrase it so it speaks to what the",
+  "posting asks for, in the posting's own words, without adding anything the letter does not say.",
+  `Give at most ${LETTER_SUGGESTIONS} suggestions.`,
+  'In "before", quote one sentence or one line of the letter exactly as written, never a whole',
+  'paragraph.',
+  'Reply with JSON only, no prose and no code fences, in exactly this shape:',
+  '{"summary": string|null, "suggestions": [{"section": string, "before": string,',
+  '"after": string, "rationale": string}]}',
+].join(' ')
+
 /** Pull a JSON object out of a reply, tolerating fences and stray prose. */
 export function parseTailoringReply(raw: string): TailoringResult {
   const trimmed = raw.trim()
@@ -197,7 +244,7 @@ export async function tailorCv(
     return {
       ok: false,
       reason: 'bad-response',
-      message: 'Tailoring needs both a CV and a job description.',
+      message: 'Tailoring needs both a document and a job description.',
     }
   }
 
@@ -205,16 +252,36 @@ export async function tailorCv(
   const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? TAILOR_TIMEOUT_MS)
   const doFetch = options.fetchImpl ?? fetch
 
-  const user = [
-    input.role || input.company ? `Target role: ${input.role ?? ''} ${input.company ?? ''}`.trim() : '',
-    input.missingKeywords?.length
-      ? `Keywords the CV is currently missing: ${input.missingKeywords.join(', ')}`
-      : '',
-    '--- JOB POSTING ---',
-    input.jobDescription,
-    '--- CURRENT CV ---',
-    input.cvText,
-  ]
+  const letter = input.kind === 'cover_letter'
+  const user = (
+    letter
+      ? [
+          // NAMED FIELDS, so the model can quote them into a placeholder
+          // rather than guess at them from the posting's prose.
+          [
+            input.company ? `Company: ${input.company}` : '',
+            input.role ? `Role: ${input.role}` : '',
+            input.source ? `Advertised on: ${input.source}` : '',
+            input.location ? `Location: ${input.location}` : '',
+          ]
+            .filter(Boolean)
+            .join('\n'),
+          '--- JOB POSTING ---',
+          input.jobDescription,
+          '--- CURRENT COVER LETTER ---',
+          input.cvText,
+        ]
+      : [
+          input.role || input.company ? `Target role: ${input.role ?? ''} ${input.company ?? ''}`.trim() : '',
+          input.missingKeywords?.length
+            ? `Keywords the CV is currently missing: ${input.missingKeywords.join(', ')}`
+            : '',
+          '--- JOB POSTING ---',
+          input.jobDescription,
+          '--- CURRENT CV ---',
+          input.cvText,
+        ]
+  )
     .filter(Boolean)
     .join('\n\n')
 
@@ -260,7 +327,7 @@ export async function tailorCv(
         // cut short, where the unconstrained call returned nothing usable.
         response_format: { type: 'json_object' },
         messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'system', content: letter ? LETTER_PROMPT : SYSTEM_PROMPT },
           { role: 'user', content: user },
         ],
       }),

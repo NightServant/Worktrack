@@ -1,6 +1,14 @@
+import type { ResumeMode } from './resumeService'
+
 export interface DocumentLinkSummary {
   /** The resume this link points at, needed to read its content for ATS matching. */
   resume_id: string
+  /**
+   * Which kind of document is linked (2026-10-01). An application carries a
+   * CV and a cover letter now, one of each, and every reader of these links
+   * wants one of the two -- the ATS score reads the CV, never the letter.
+   */
+  mode: ResumeMode
   title: string
   version: number | null
   sent_at: string

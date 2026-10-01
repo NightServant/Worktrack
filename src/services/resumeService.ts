@@ -118,7 +118,7 @@ type SummaryRow = Omit<ResumeRow, 'content'> & {
  * folds to `'word'`. A row whose kind this code does not recognise still opens
  * in the editor that exists, which is the same promise the old constant made.
  */
-function normalizeMode(mode: string | null | undefined): ResumeMode {
+export function normalizeMode(mode: string | null | undefined): ResumeMode {
   return mode === 'cover_letter' ? 'cover_letter' : 'word'
 }
 

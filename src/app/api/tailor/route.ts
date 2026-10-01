@@ -89,7 +89,7 @@ export async function POST(request: Request) {
   const jobDescription = String(body.jobDescription ?? '').slice(0, MAX_CHARS)
   if (!cvText.trim() || !jobDescription.trim()) {
     return NextResponse.json(
-      { ok: false, reason: 'bad-response', message: 'Tailoring needs both a CV and a job description.' },
+      { ok: false, reason: 'bad-response', message: 'Tailoring needs both a document and a job description.' },
       { status: 400 }
     )
   }
@@ -113,6 +113,10 @@ export async function POST(request: Request) {
         : undefined,
       role: body.role ? String(body.role) : undefined,
       company: body.company ? String(body.company) : undefined,
+      // An allow-list, like `normalizeMode`: anything else is a CV.
+      kind: body.kind === 'cover_letter' ? 'cover_letter' : 'word',
+      source: body.source ? String(body.source).slice(0, 200) : undefined,
+      location: body.location ? String(body.location).slice(0, 200) : undefined,
     },
     { config }
   )

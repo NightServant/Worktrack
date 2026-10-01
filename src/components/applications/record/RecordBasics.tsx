@@ -70,6 +70,14 @@ export interface RecordBasicsProps {
   resumes?: { id: string; title: string }[]
   resumeId?: string
   onResumeIdChange?: (resumeId: string) => void
+  /**
+   * `cover letter used` (Gabe, 2026-10-01), the letter's copy of the three
+   * above. Same table, same one-of-each rule: the link is a row in
+   * `application_documents`, so it leaves through its own callback.
+   */
+  letters?: { id: string; title: string }[]
+  letterId?: string
+  onLetterIdChange?: (letterId: string) => void
 }
 
 /** Today as `YYYY-MM-DD`, locally. `toISOString` is UTC and shifts the day. */
@@ -84,6 +92,9 @@ export function RecordBasics({
   resumes = [],
   resumeId = '',
   onResumeIdChange,
+  letters = [],
+  letterId = '',
+  onLetterIdChange,
 }: RecordBasicsProps) {
   const { draft, set, errorFor, blur } = form
   // THE WIZARD'S REVIEW STEP OBEYS THIS TOO (Gabe, 2026-10-01: "show fields
@@ -312,6 +323,24 @@ export function RecordBasics({
           items={[
             { value: '', label: resumes.length ? 'none' : 'no CVs yet' },
             ...resumes.map((resume) => ({ value: resume.id, label: resume.title })),
+          ]}
+        />
+      </Field>
+
+      <Field
+        id="letter_id"
+        label="cover letter used"
+        hint={letters.length ? undefined : 'no cover letters yet — write one in Documents and it will appear here.'}
+      >
+        <Select
+          id="letter_id"
+          icon="Mail"
+          disabled={letters.length === 0}
+          value={letterId}
+          onValueChange={(next) => onLetterIdChange?.(next)}
+          items={[
+            { value: '', label: letters.length ? 'none' : 'no cover letters yet' },
+            ...letters.map((letter) => ({ value: letter.id, label: letter.title })),
           ]}
         />
       </Field>
