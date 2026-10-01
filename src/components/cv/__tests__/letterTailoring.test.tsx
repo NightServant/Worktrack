@@ -106,7 +106,11 @@ describe('the letter’s one pane', () => {
   it('is titled tailor & review, scores fit rather than ATS, and lists what is left to change', () => {
     render(<Harness fetchImpl={okReply()} />)
 
-    expect(screen.getByText('tailor & review')).toBeInTheDocument()
+    // NO HEADING OF ITS OWN (2026-10-01): the tab above already reads
+    // `tailor & review`, and on a 768px laptop the repeat kept the score below
+    // the fold.
+    expect(screen.queryByRole('heading', { name: 'tailor & review' })).toBeNull()
+    expect(document.querySelector('[data-tailor-frame="letter"]')).toBeInTheDocument()
     expect(document.querySelector('[data-letter-fit]')).toBeInTheDocument()
     expect(document.querySelector('[data-donut]')).toBeNull()
     expect(document.querySelector('[data-pane="letter-advice"]')).toBeInTheDocument()

@@ -118,7 +118,13 @@ export function DocumentRailTabs({
           // tab's 2px rule sits on top of: without it the marker is a floating
           // dash, with it a selection along a track. A column needs none -- each
           // row carries its own leading rule.
-          row ? 'items-stretch border-b border-border-subtle' : 'flex-col'
+          row ? 'items-stretch border-b border-border-subtle' : 'flex-col',
+          // THE STRIP MEASURES ITSELF (2026-10-01, Gabe: "fix the
+          // responsiveness ... of tab navigation in laptop screens"). Below
+          // 1700 the rail is one 320px column, and two tabs of icon + label +
+          // count needed 278px of a 268px strip, so the second ran past the
+          // column's edge. The icons go when the strip is narrow; see RailTab.
+          row && '@container/tabs'
         )}
       >
         {tabs.map((tab) => (
@@ -195,7 +201,10 @@ const RailTab = React.forwardRef<HTMLButtonElement, RailTabProps>(function RailT
         'active:scale-[0.99]',
         row
           ? cn(
-              'relative flex flex-1 items-center justify-center gap-2 px-2 py-2.5',
+              // `min-w-0`: a flex item will not shrink below its content
+              // without it, which is how the second tab overflowed instead
+              // of taking its half. The label truncates as the last resort.
+              'relative flex min-w-0 flex-1 items-center justify-center gap-2 px-2 py-2.5',
               // The marker sits ON the strip's own hairline rather than above
               // it, so the two read as one track with a selected span.
               active
@@ -215,6 +224,10 @@ const RailTab = React.forwardRef<HTMLButtonElement, RailTabProps>(function RailT
         className={cn(
           'shrink-0 transition-colors',
           !row && 'mt-0.5',
+          // In a narrow row the icon is the part that can go: the label says
+          // the same thing, and the 2px rule already marks the active tab.
+          // Back at 20rem of strip, where two of them fit with their counts.
+          row && 'hidden @[20rem]/tabs:inline-flex',
           active ? 'text-accent-default' : 'text-text-muted group-hover:text-text-secondary'
         )}
       >

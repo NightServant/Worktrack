@@ -790,6 +790,25 @@ function useScoreSweep(score: number | null, matched: number, missing: number): 
 }
 
 /** The whole tailoring pane: pick a posting, read the match, rewrite the CV. */
+/**
+ * The pane's frame. A CV's keeps its section heading; a letter's has none,
+ * because its tab already reads `tailor & review` 50px above it -- the
+ * duplicate header this app has removed from its dialogs twice, and on a
+ * 768px laptop the line that kept the score below the fold. The tabpanel is
+ * labelled by its tab, so nothing is lost to a screen reader.
+ */
+function RailFrame({ letter, children }: { letter: boolean; children: React.ReactNode }) {
+  return letter ? (
+    <div className="flex flex-col gap-3" data-tailor-frame="letter">
+      {children}
+    </div>
+  ) : (
+    <PanelSection title="tailor to a job" icon="ShieldCheck" className="border-t-0 pt-0">
+      {children}
+    </PanelSection>
+  )
+}
+
 export function TailoringAnalysisRail({
   state,
   review,
@@ -811,11 +830,7 @@ export function TailoringAnalysisRail({
   return (
     // `border-t-0 pt-0`: it is the first thing in the rail, so the section's
     // own rule would be a line under the tab strip.
-    <PanelSection
-      title={letter ? 'tailor & review' : 'tailor to a job'}
-      icon={letter ? 'Mail' : 'ShieldCheck'}
-      className="border-t-0 pt-0"
-    >
+    <RailFrame letter={letter}>
       {/* ONE: WHAT IT IS BEING TAILORED TO. */}
       <div className="flex flex-col gap-3">
         <ApplicationPicker
@@ -863,11 +878,16 @@ export function TailoringAnalysisRail({
             a fourth copy of it. A control that misdescribes which document it
             is about to write is worse than one that says nothing. */}
         <p className="text-body-s text-text-muted">
-          {letter
-            ? 'rewrites this letter for the posting, from the application and the CV linked to it. '
-            : 'rewrites this CV against the posting. '}
-          the first run for an application saves a new document; running it again for the same
-          application updates that one.
+          {letter ? (
+            // THREE LINES IN A 268px COLUMN, down from five: on a 768px laptop
+            // the two it gave back are what put the score above the fold.
+            'rewrites it from the application and its CV. the first run saves a new letter; later runs update it.'
+          ) : (
+            <>
+              rewrites this CV against the posting. the first run for an application saves a new
+              document; running it again for the same application updates that one.
+            </>
+          )}
         </p>
 
         <Button
@@ -1023,6 +1043,6 @@ export function TailoringAnalysisRail({
       </div>
       )}
 
-    </PanelSection>
+    </RailFrame>
   )
 }
