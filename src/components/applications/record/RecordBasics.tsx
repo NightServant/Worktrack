@@ -55,8 +55,6 @@ const WORK_MODES: { value: WorkMode; label: string }[] = [
  */
 export interface RecordBasicsProps {
   form: UseRecordDraftResult
-  /** Forces every field open. The add wizard's review step wants them all. */
-  showAll?: boolean
   /**
    * `cv used` MOVED IN HERE (2026-09-13) and it is a layout fix, not a
    * tidy-up. It was rendered by ApplicationRecordView directly under this
@@ -83,14 +81,14 @@ function todayValue(): string {
 
 export function RecordBasics({
   form,
-  showAll = false,
   resumes = [],
   resumeId = '',
   onResumeIdChange,
 }: RecordBasicsProps) {
   const { draft, set, errorFor, blur } = form
-  const [expanded, setExpanded] = React.useState(false)
-  const open = expanded || showAll
+  // THE WIZARD'S REVIEW STEP OBEYS THIS TOO (Gabe, 2026-10-01: "show fields
+  // with real input only"). It used to force every field open.
+  const [open, setOpen] = React.useState(false)
 
   /** Which optional fields hold something. Drives what is on screen. */
   const filled: Record<string, boolean> = {
@@ -258,18 +256,29 @@ export function RecordBasics({
         </Field>
       )}
 
-      {shows('dateApplied') &&
-        (
-          <Field id="date_applied" label="date applied">
-            <DatePicker
-              id="date_applied"
-              value={draft.dateApplied}
-              onChange={(next) => set('dateApplied', next)}
-              max={todayValue()}
-              invalid={Boolean(errorFor('date_applied'))}
-            />
-          </Field>
-        )}
+      {/* APPEARS, AND IS REQUIRED, ONCE THE STATUS IS `applied` (Gabe,
+          2026-10-01), the same way the interview field follows
+          `interviewing`. Later statuses keep it when it holds a date. */}
+      {(shows('dateApplied') || draft.status === 'applied') && (
+        <Field
+          id="date_applied"
+          label="date applied"
+          required={draft.status === 'applied'}
+          hint={
+            errorFor('date_applied') && !draft.dateApplied
+              ? 'an applied application needs the day it was sent.'
+              : undefined
+          }
+        >
+          <DatePicker
+            id="date_applied"
+            value={draft.dateApplied}
+            onChange={(next) => set('dateApplied', next)}
+            max={todayValue()}
+            invalid={Boolean(errorFor('date_applied'))}
+          />
+        </Field>
+      )}
 
       {shows('source') && text('source', { id: 'source', label: 'source', icon: 'Globe', placeholder: 'LinkedIn' })}
 
@@ -337,7 +346,7 @@ export function RecordBasics({
           variant="ghost"
           size="s"
           className="self-start px-0"
-          onClick={() => setExpanded(true)}
+          onClick={() => setOpen(true)}
         >
           <PlusIcon size={16} aria-hidden className={iconMotion('open')} />
           add more details

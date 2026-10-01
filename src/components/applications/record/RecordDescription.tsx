@@ -504,6 +504,45 @@ export function RecordDescription({
     setEditing(sections.length)
   }
 
+  /*
+   * AN EMPTY POSTING IS A FIELD, NOT A MESSAGE. There are no sections to
+   * hang an edit control off yet, and a person looking at a blank surface
+   * should not have to work out that a button turns it into one. This is
+   * also the paste target: a whole advert goes in here and comes back out
+   * as sections the moment it is parsed.
+   */
+  const pasteField = (
+    <Textarea
+      id="description"
+      aria-label="job description"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      // SEE `onPostingPasted`: this is the last moment this node exists.
+      // BOTH FLAVOURS. Copying a rendered page puts `text/plain` AND
+      // `text/html` on the clipboard, and this read only the first -- so a
+      // paste carrying the whole marked-up posting arrived as words, and
+      // the digest tidies prose but cannot fill a salary field. The markup
+      // goes to the extractor instead; see `readPastedPosting`.
+      onPaste={(e) =>
+        onPostingPasted?.(
+          e.clipboardData.getData('text'),
+          e.clipboardData.getData('text/html') || undefined
+        )
+      }
+      autoSize
+      className="min-h-64"
+      placeholder="paste the posting here, or let the link fill it in."
+    />
+  )
+
+  /*
+   * THE WIZARD'S PREVIEW KEEPS THE PASTE FIELD while there is nothing to
+   * preview (2026-10-01). A failed read sends the reader to paste the posting,
+   * and `add a description` would hide that field one click away. The
+   * record's preview passes no `onPostingPasted`, so it is unchanged.
+   */
+  const previewPaste = preview && blocks.length === 0 && onPostingPasted !== undefined
+
   return (
     <div
       className={cn('flex flex-col gap-4', preview && 'min-h-0 flex-1', className)}
@@ -621,6 +660,8 @@ export function RecordDescription({
               />
             )}
           </div>
+        ) : previewPaste ? (
+          pasteField
         ) : (
           <p className="text-body-s text-text-muted">
             No description saved. It is what the ATS match reads.
@@ -662,34 +703,7 @@ export function RecordDescription({
           ))}
         </div>
       ) : (
-        /*
-         * AN EMPTY POSTING IS A FIELD, NOT A MESSAGE. There are no sections to
-         * hang an edit control off yet, and a person looking at a blank surface
-         * should not have to work out that a button turns it into one. This is
-         * also the paste target: a whole advert goes in here and comes back out
-         * as sections the moment it is parsed.
-         */
-        <Textarea
-          id="description"
-          aria-label="job description"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          // SEE `onPostingPasted`: this is the last moment this node exists.
-          // BOTH FLAVOURS. Copying a rendered page puts `text/plain` AND
-          // `text/html` on the clipboard, and this read only the first -- so a
-          // paste carrying the whole marked-up posting arrived as words, and
-          // the digest tidies prose but cannot fill a salary field. The markup
-          // goes to the extractor instead; see `readPastedPosting`.
-          onPaste={(e) =>
-            onPostingPasted?.(
-              e.clipboardData.getData('text'),
-              e.clipboardData.getData('text/html') || undefined
-            )
-          }
-          autoSize
-          className="min-h-64"
-          placeholder="paste the posting here, or let the link fill it in."
-        />
+        pasteField
       )}
 
       {/* ALWAYS ON THE PREVIEW, never on the full text. Its label says which
@@ -697,7 +711,7 @@ export function RecordDescription({
           `read more…` over a posting with nothing more to read is a lie the
           reader only discovers by pressing it -- and one that disappears over
           a short posting takes the only way in to the editor with it. */}
-      {preview && (
+      {preview && !previewPaste && (
         <Button
           type="button"
           variant="ghost"

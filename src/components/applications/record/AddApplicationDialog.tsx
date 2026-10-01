@@ -150,6 +150,13 @@ export function AddApplicationDialog({
 
   const [step, setStep] = React.useState<StepId>('link')
   const [linkError, setLinkError] = React.useState('')
+  const [dateError, setDateError] = React.useState('')
+  /**
+   * The posting's own view of the review step, opened by `read more…`.
+   * Same mechanism as ApplicationRecordDialog: one dialog, two views, so the
+   * draft is never torn down by reading the posting.
+   */
+  const [postingOpen, setPostingOpen] = React.useState(false)
   const [readNote, setReadNote] = React.useState('')
   /** A read that FAILED, which is the only state with anything to offer. */
   const [readError, setReadError] = React.useState('')
@@ -177,6 +184,8 @@ export function AddApplicationDialog({
     if (open) return
     setStep('link')
     setLinkError('')
+    setDateError('')
+    setPostingOpen(false)
     setReadNote('')
     setReadError('')
     setResumeId('')
@@ -446,6 +455,7 @@ export function AddApplicationDialog({
                 value={draft.status}
                 onValueChange={(next) => {
                   set('status', next as RecordDraft['status'])
+                  setDateError('')
                   // Choosing `wishlist` clears a date that would otherwise
                   // save an application date onto something never applied to.
                   if (next === 'wishlist') set('dateApplied', '')
@@ -461,7 +471,12 @@ export function AddApplicationDialog({
                 wishlist row are two questions with no answer. */}
             {draft.status === 'applied' && (
               <div className="flex flex-col gap-5 border-t border-border-subtle pt-5">
-                <Field id="add-date" label="date applied">
+                <Field
+                  id="add-date"
+                  label="date applied"
+                  required
+                  hint={dateError || undefined}
+                >
                   {/* THIS APP'S CALENDAR, NOT THE BROWSER'S (Gabe,
                       2026-09-21). `<input type="date">` opens Chrome's own
                       panel -- its blue, its radius, its type -- inside a
@@ -469,8 +484,12 @@ export function AddApplicationDialog({
                   <DatePicker
                     id="add-date"
                     value={draft.dateApplied}
-                    onChange={(next) => set('dateApplied', next)}
+                    onChange={(next) => {
+                      set('dateApplied', next)
+                      setDateError('')
+                    }}
                     max={todayValue()}
+                    invalid={Boolean(dateError)}
                   />
                 </Field>
                 <Field
@@ -548,8 +567,8 @@ export function AddApplicationDialog({
       case 'review':
       default:
         return (
-          <div className="flex flex-col gap-6">
-            <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-6 sm:min-h-0 sm:flex-1">
+            <div className="flex flex-col gap-1" hidden={postingOpen}>
               <p className="text-body-m text-text-primary">
                 {readError
                   ? 'Fill this in yourself, or try the read again.'
@@ -624,6 +643,9 @@ export function AddApplicationDialog({
               // action.
               saving={saving || digesting}
               onPostingPasted={readPastedPosting}
+              onReadMore={() => setPostingOpen(true)}
+              onBack={() => setPostingOpen(false)}
+              postingOpen={postingOpen}
               onSubmit={submitWithDigest}
               resumes={resumes}
               linkedResumeId={resumeId || null}
@@ -641,16 +663,30 @@ export function AddApplicationDialog({
   return (
     <AppDialog
       open={open}
-      onOpenChange={onOpenChange}
+      onOpenChange={(next, reason) => {
+        // ESCAPE MEANS BACK while the posting is open, as on the record.
+        if (!next && reason === 'escape-key' && postingOpen) {
+          setPostingOpen(false)
+          return
+        }
+        onOpenChange(next)
+      }}
       size={step === 'review' ? 'xl' : 'l'}
-      title="new application"
-      icon="Briefcase"
-      description="four steps, and the model does three of them."
+      title={postingOpen ? 'job description' : 'new application'}
+      icon={postingOpen ? 'Documents' : 'Briefcase'}
+      description={postingOpen ? undefined : 'four steps, and the model does three of them.'}
       headerSeparator={false}
+      // THE REVIEW STEP IS THE RECORD'S FRAME: the form column scrolls and
+      // nothing else does, so the body hands scrolling to it.
+      bodyScroll={step !== 'review'}
     >
-      <div className="flex flex-col gap-6">
-        <WizardProgress current={index} />
-        <Separator />
+      <div className={cn('flex flex-col gap-6', step === 'review' && 'sm:min-h-0 sm:flex-1')}>
+        {!postingOpen && (
+          <>
+            <WizardProgress current={index} />
+            <Separator />
+          </>
+        )}
         {stepBody()}
 
         {/* The review step carries its own save-and-back row inside the record
@@ -683,10 +719,21 @@ export function AddApplicationDialog({
             ) : (
               // NO `back` (Gabe, 2026-09-11: "it destroys the whole process of
               // creation"). Nothing is stranded by its removal: the review step
-              // renders every field open, the posting URL among them, so a
+              // renders the posting URL, which the first step made sure is filled, so a
               // mistyped link is still fixable -- one step further on rather
               // than one step back.
-              <Button onClick={() => void goRead()} disabled={autofilling}>
+              <Button
+                onClick={() => {
+                  // APPLIED NEEDS A DATE (Gabe, 2026-10-01). Asked here, where
+                  // the field is, rather than two steps later at save.
+                  if (draft.status === 'applied' && !draft.dateApplied) {
+                    setDateError('an applied application needs the day it was sent.')
+                    return
+                  }
+                  void goRead()
+                }}
+                disabled={autofilling}
+              >
                 {autofilling ? <CssSpinner size={14} /> : null}
                 fill it in
                 <ArrowRightIcon size={16} aria-hidden className={iconMotion('forward')} />

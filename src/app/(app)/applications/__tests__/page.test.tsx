@@ -297,6 +297,9 @@ describe('Applications route wrapper', () => {
     render(<Page />)
 
     await addUpToReview(user)
+    // The currency rides with the salary, which is empty, so it is behind
+    // `add more details` -- the review shows filled fields only.
+    await user.click(screen.getByRole('button', { name: /add more details/i }))
     // The control is a button now, not a <select>, so it has no `value` --
     // what it SHOWS is the assertion, which is what a user checks anyway.
     expect(selectedLabel(screen.getByLabelText(/^currency/))).toBe('PHP')
@@ -313,6 +316,7 @@ describe('Applications route wrapper', () => {
     render(<Page />)
 
     await addUpToReview(user)
+    await user.click(screen.getByRole('button', { name: /add more details/i }))
     expect(selectedLabel(screen.getByLabelText(/^currency/))).toBe('USD')
   })
 

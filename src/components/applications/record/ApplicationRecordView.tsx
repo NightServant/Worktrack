@@ -89,7 +89,10 @@ export interface ApplicationRecordViewProps {
   resumes?: { id: string; title: string }[]
   linkedResumeId?: string | null
   onLinkedResumeChange?: (resumeId: string | null) => void
-  /** Set by the add wizard: every field open, and no pipeline bar to read yet. */
+  /**
+   * Set by the add wizard: the same frame with no pipeline bar and no ATS
+   * match, because neither exists before the application does.
+   */
   layout?: 'record' | 'review'
   /**
    * Opens the posting's own view of this dialog. Also what turns the second
@@ -206,7 +209,8 @@ function RecordPanels({
   /** Present only when the form is a tab rather than the column beside it. */
   applicationPanel?: React.ReactNode
   descriptionPanel: React.ReactNode
-  atsPanel: React.ReactNode
+  /** Absent in the add wizard: there is no application to score yet. */
+  atsPanel?: React.ReactNode
 }) {
   return (
     <Tabs
@@ -240,9 +244,11 @@ function RecordPanels({
         <TabsTrigger value="posting" className={TAB}>
           job description
         </TabsTrigger>
-        <TabsTrigger value="ats" className={TAB}>
-          ATS match
-        </TabsTrigger>
+        {atsPanel && (
+          <TabsTrigger value="ats" className={TAB}>
+            ATS match
+          </TabsTrigger>
+        )}
       </TabsList>
 
       {/* `min-h-0` on every panel, so whatever scrolls inside one has a height
@@ -284,9 +290,11 @@ function RecordPanels({
           panel that can hide the missing-keyword list with no way to reach it,
           which is what a 1024px laptop was doing -- and unreachable content is
           worse than a scrollbar that almost never appears. */}
-      <TabsContent value="ats" className={cn('flex min-h-0 flex-1 flex-col overflow-y-auto', PANEL_GUTTER)}>
-        {atsPanel}
-      </TabsContent>
+      {atsPanel && (
+        <TabsContent value="ats" className={cn('flex min-h-0 flex-1 flex-col overflow-y-auto', PANEL_GUTTER)}>
+          {atsPanel}
+        </TabsContent>
+      )}
     </Tabs>
   )
 }
@@ -479,7 +487,7 @@ export function ApplicationRecordView({
       {/* THE COLUMN HAD NO HEADING and the others did, so the record read as a
           form with two panels bolted to it. Suppressed where the form is a TAB,
           because the tab already says this. */}
-      {layout === 'record' && wide && (
+      {wide && (
         <h3 className="flex items-center gap-2 text-heading-s text-text-primary">
           <BriefcaseIcon size={16} aria-hidden className="shrink-0 text-text-muted" />
           the application
@@ -491,7 +499,6 @@ export function ApplicationRecordView({
           travel inside the draft. */}
       <RecordBasics
         form={form}
-        showAll={layout === 'review'}
         resumes={resumes}
         resumeId={resumeId}
         onResumeIdChange={(next) => {
@@ -505,9 +512,22 @@ export function ApplicationRecordView({
     </>
   )
 
+  /**
+   * THE WIZARD GETS THE RECORD'S FRAME, MINUS THE SCORE (Gabe, 2026-10-01:
+   * "New Application Dialog must have the same layout of Application Overview
+   * dialog minus the ATS scoring"). It used to be its own grid, every field
+   * open, inside a body that scrolled the lot -- so reading the posting took
+   * the form off the screen.
+   *
+   * With one panel left there is nothing to tab between, so beside the form
+   * the posting takes a HEADING rather than a one-tab list, matching the
+   * form's own `the application`.
+   */
+  const withAts = layout === 'record'
+
   const descriptionPanel = (
     <RecordDescription
-      showHeading={false}
+      showHeading={!withAts && wide}
       value={draft.description}
       onChange={(next) => set('description', next)}
       // STRAIGHT THROUGH, AND OPTIONAL. Only the add wizard passes this: it is
@@ -518,9 +538,9 @@ export function ApplicationRecordView({
     />
   )
 
-  const atsPanel = (
+  const atsPanel = withAts ? (
     <RecordAts match={data.match} links={data.links} error={data.atsError} />
-  )
+  ) : undefined
 
   const [formError, setFormError] = React.useState('')
 
@@ -595,7 +615,7 @@ export function ApplicationRecordView({
         // Below 640 none of it applies: the sheet stacks, the pipeline is a
         // 299px column, and freezing that as chrome leaves a phone nothing to
         // read in. There the whole record flows and the body scrolls it.
-        layout === 'record' && 'sm:min-h-0 sm:flex-1'
+        'sm:min-h-0 sm:flex-1'
       )}
       data-application-record
     >
@@ -649,35 +669,18 @@ export function ApplicationRecordView({
         // it beat the `flex-1` below; a plain `[hidden]` rule would lose to any
         // class here on specificity.
         hidden={postingOpen}
-        className={cn(
-          layout === 'review'
-            ? 'grid gap-8 @2xl/record:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]'
-            : // A FRAME, NOT A SCROLLPORT (Gabe, 2026-09-13: "scroll should be
-              // applied only to the 1/3 column. 2/3 column should remove the
-              // scrolling"). It used to be the one thing that scrolled, which
-              // moved BOTH columns together -- so reading to the bottom of the
-              // posting took the form off the screen with it, and the ring
-              // scrolled away from the tags it was about. Each column owns its
-              // own overflow now; this only stops the pair growing the dialog.
-              'flex min-h-0 flex-col -mx-gutter px-gutter sm:flex-1 sm:overflow-hidden'
-        )}
+        className={
+          // A FRAME, NOT A SCROLLPORT (Gabe, 2026-09-13: "scroll should be
+          // applied only to the 1/3 column. 2/3 column should remove the
+          // scrolling"). It used to be the one thing that scrolled, which
+          // moved BOTH columns together -- so reading to the bottom of the
+          // posting took the form off the screen with it, and the ring
+          // scrolled away from the tags it was about. Each column owns its
+          // own overflow now; this only stops the pair growing the dialog.
+          'flex min-h-0 flex-col -mx-gutter px-gutter sm:flex-1 sm:overflow-hidden'
+        }
       >
-        {layout === 'review' ? (
-          <>
-            <div className="flex flex-col gap-4">{applicationPanel}</div>
-            <RecordDescription
-              className="@2xl/record:border-l @2xl/record:border-border-subtle @2xl/record:pl-6"
-              value={draft.description}
-              onChange={(next) => set('description', next)}
-              // THE REVIEW STEP IS THE PASTE TARGET. This layout renders its
-              // own copy rather than the shared `descriptionPanel`, so the
-              // wizard's hook has to be passed here too -- wiring only the
-              // shared one left the add wizard, the single surface that uses
-              // this prop, without it.
-              onPostingPasted={onPostingPasted}
-            />
-          </>
-        ) : wide ? (
+        {wide ? (
           /*
            * WIDE: the form beside a two-tab panel.
            *
@@ -729,10 +732,14 @@ export function ApplicationRecordView({
                 to this column's leading edge, so the space after it is this
                 column's to set. */}
             <div className="flex min-h-0 flex-col overflow-hidden pt-6 @6xl/record:border-l @6xl/record:border-border-subtle @6xl/record:pl-6">
-              <RecordPanels
-                descriptionPanel={descriptionPanel}
-                atsPanel={atsPanel}
-              />
+              {withAts ? (
+                <RecordPanels
+                  descriptionPanel={descriptionPanel}
+                  atsPanel={atsPanel}
+                />
+              ) : (
+                descriptionPanel
+              )}
             </div>
           </div>
         ) : (

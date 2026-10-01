@@ -75,8 +75,10 @@ describe('auto-fill and work mode', () => {
     // select into a state none of its options match, which renders as an empty
     // control the user cannot explain.
     await autofillWith({ company: 'Acme', role: 'Engineer', work_mode: 'from-the-moon' })
-    expect(screen.getByLabelText('work mode')).not.toHaveTextContent(/from-the-moon/i)
-    expect(screen.getByLabelText('work mode')).toHaveTextContent(/not set/i)
+    // Nothing usable arrived, so the field is empty -- and the review step
+    // shows fields with real input only (Gabe, 2026-10-01).
+    expect(screen.queryByText(/from-the-moon/i)).toBeNull()
+    expect(screen.queryByLabelText('work mode')).toBeNull()
   })
 
   it('fills the company and role, which are the record’s only required fields', async () => {
@@ -144,7 +146,9 @@ describe('auto-fill, tech stack and tags', () => {
 
   it('ignores empty arrays rather than clearing the field', async () => {
     await autofillWith({ tech_stack: [], tags: [] })
-    expect(screen.getByLabelText(/tech stack/i)).toHaveValue('')
+    // Empty, so not on screen: the review shows filled fields only.
+    expect(screen.queryByLabelText(/tech stack/i)).toBeNull()
+    expect(screen.queryByLabelText(/^tags/i)).toBeNull()
   })
 })
 
@@ -228,7 +232,8 @@ describe('when the posting cannot be read at all', () => {
     // THE URL GOES WITH IT. Left in the field it would be saved onto the
     // application and read back later as "this is where I applied", for a page
     // the app has just proved it cannot open.
-    expect(screen.getByLabelText(/posting url/i)).toHaveValue('')
+    // Empty, so the review no longer shows the field at all.
+    expect(screen.queryByLabelText(/posting url/i)).toBeNull()
     expect(screen.queryByText(/Could not fetch this URL/)).toBeNull()
     expect(screen.queryByRole('button', { name: /try again/i })).toBeNull()
     // Still on the review step, with a form to fill in by hand.
@@ -266,7 +271,7 @@ describe('when the posting cannot be read at all', () => {
   it('offers no way back once the wizard has started', async () => {
     // Gabe, 2026-09-11: "remove the back button in general, it destroys the
     // whole process of creation." Nothing is stranded by it -- the review step
-    // renders every field open, the posting URL among them.
+    // renders the posting URL, which the first step made sure is filled.
     const onAutofill = fill({})
     render(
       <AddApplicationDialog

@@ -226,6 +226,13 @@ export function useRecordDraft(
   for (const issue of jobValidation.validateJobFormData(payload)) {
     if (!errors[issue.field]) errors[issue.field] = issue.message
   }
+  // AN APPLIED APPLICATION HAS A DATE (Gabe, 2026-10-01: "APPLIED status must
+  // require an application date"). A rule of the DIALOGS, not of
+  // `jobValidation`: that also gates CSV import and the status-only update
+  // behind the table, where an old row without a date is still a valid row.
+  if (draft.status === 'applied' && !payload.date_applied && !errors.date_applied) {
+    errors.date_applied = 'Date applied is required for an applied application'
+  }
 
   const serialised = toBaseline(draft)
   const dirty = serialised !== baseline

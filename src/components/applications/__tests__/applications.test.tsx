@@ -651,11 +651,11 @@ describe('StatusTabs', () => {
  * because saving is what that step does.
  */
 describe('the record’s fields and its one submit', () => {
-  // `showAll` so the optional fields are on screen without a click. The
-  // record hides the ones this application has never filled in -- that rule
-  // has its own test in detail.test.tsx.
-  const renderRecord = (props: Partial<React.ComponentProps<typeof ApplicationRecordView>> = {}) =>
-    render(
+  // `add more details` so the optional fields are on screen. The record
+  // hides the ones this application has never filled in -- that rule has its
+  // own test in detail.test.tsx.
+  const renderRecord = (props: Partial<React.ComponentProps<typeof ApplicationRecordView>> = {}) => {
+    const view = render(
       <ApplicationRecordView
         job={null}
         defaultCurrency="PHP"
@@ -664,6 +664,10 @@ describe('the record’s fields and its one submit', () => {
         {...props}
       />
     )
+    const more = screen.queryByRole('button', { name: /add more details/i })
+    if (more) fireEvent.click(more)
+    return view
+  }
 
   it('starts a new application in the stored default currency', () => {
     // A PHP user typing a peso figure into a form defaulted to USD produces a
@@ -778,10 +782,10 @@ describe('ApplicationsTable accent header', () => {
  */
 describe('naming the record\'s fields with glyphs', () => {
   function renderForm() {
-    // `layout="review"` opens every optional field, which is what makes this
+    // `add more details` opens every optional field, which is what makes this
     // an all-or-nothing check over the whole set rather than over whichever
     // fields one fixture happened to fill in.
-    return render(
+    const view = render(
       <ApplicationRecordView
         job={null}
         defaultCurrency="PHP"
@@ -789,6 +793,8 @@ describe('naming the record\'s fields with glyphs', () => {
         layout="review"
       />
     )
+    fireEvent.click(screen.getByRole('button', { name: /add more details/i }))
+    return view
   }
 
   /** The glyph a control carries, if any. */
