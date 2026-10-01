@@ -87,7 +87,7 @@ export interface LetterReview {
  * fortieth time today. Past the fold the argument is not weaker, it is simply
  * not read, which is a worse outcome than having cut it yourself.
  */
-const MAX_LETTER_WORDS = 400
+export const MAX_LETTER_WORDS = 400
 
 /**
  * The length below which there is not a letter here yet.
@@ -97,7 +97,7 @@ const MAX_LETTER_WORDS = 400
  * rather than kept short -- it reads as a note stapled to a CV. Deliberately
  * generous: plenty of good letters are 200 words, and this is not a target.
  */
-const MIN_LETTER_WORDS = 150
+export const MIN_LETTER_WORDS = 150
 
 /**
  * What separates a body paragraph from a greeting or a sign-off.

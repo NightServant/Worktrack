@@ -29,8 +29,8 @@ import { matchKeywords, type KeywordMatch } from '@/services/atsMatch'
 import type { TailoringResult } from '@/services/integrations/tailoring'
 import type { ResumeContent, ResumeMode } from '@/services/resumeService'
 import type { Job } from '@/types'
-import { AlertCircleIcon, CheckIcon } from '@/components/icons'
 import { letterFit, type LetterFit } from './letterFit'
+import { LetterFitSection } from './LetterFitPanel'
 import { LetterAdvice } from './LetterCheckPane'
 import type { LetterReview } from './letterSuggestions'
 import { ApplicationPicker } from './ApplicationPicker'
@@ -790,52 +790,6 @@ function useScoreSweep(score: number | null, matched: number, missing: number): 
 }
 
 /** The whole tailoring pane: pick a posting, read the match, rewrite the CV. */
-/**
- * A cover letter's score: the verdict, then every check with what it found.
- *
- * NO RING. The ring is the ATS score's picture, a proportion of a posting's
- * vocabulary; this is seven yes-or-no questions, and a list of them says more
- * than an arc does. Passed checks stay on screen in muted ink so the reader
- * can see what the number is made of.
- */
-function LetterFitSection({ fit }: { fit: LetterFit | null }) {
-  return (
-    <div className="flex flex-col gap-4 border-t border-border-subtle pt-5" data-letter-fit>
-      {fit === null ? (
-        <p className="text-body-s text-text-muted">
-          pick an application above to see how well this letter answers it.
-        </p>
-      ) : (
-        <>
-          <p className="text-body-m text-text-primary">
-            <span className="text-heading-s">{fit.score}</span>
-            <span className="text-text-muted"> / 100 · </span>
-            {fit.score >= 85 ? 'ready to send' : fit.score >= 60 ? 'nearly there' : 'needs work'}
-          </p>
-          <ul className="flex flex-col gap-3">
-            {fit.checks.map((check) => (
-              <li key={check.id} className="flex items-start gap-2" data-fit-check={check.id}>
-                {check.passed ? (
-                  <CheckIcon size={16} aria-hidden className="mt-0.5 shrink-0 text-text-muted" />
-                ) : (
-                  <AlertCircleIcon size={16} aria-hidden className="mt-0.5 shrink-0 text-status-rejected-mark" />
-                )}
-                <div className="flex min-w-0 flex-col gap-0.5">
-                  <span className="text-body-s text-text-primary">
-                    {check.label}
-                    <span className="sr-only">{check.passed ? ': passed' : ': not yet'}</span>
-                  </span>
-                  <span className="text-body-s text-text-muted">{check.detail}</span>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-    </div>
-  )
-}
-
 export function TailoringAnalysisRail({
   state,
   review,
@@ -910,7 +864,7 @@ export function TailoringAnalysisRail({
             is about to write is worse than one that says nothing. */}
         <p className="text-body-s text-text-muted">
           {letter
-            ? 'rewrites this letter for the posting, filling in the company, role and other details it gives. '
+            ? 'rewrites this letter for the posting, from the application and the CV linked to it. '
             : 'rewrites this CV against the posting. '}
           the first run for an application saves a new document; running it again for the same
           application updates that one.
@@ -1005,7 +959,11 @@ export function TailoringAnalysisRail({
         <>
           <LetterFitSection fit={state.fit} />
           {review && (
-            <LetterAdvice review={review} covered={state.fit?.checks.map((check) => check.id) ?? []} />
+            <LetterAdvice
+              review={review}
+              covered={state.fit?.checks.map((check) => check.id) ?? []}
+              ready={state.fit?.verdict === 'pass'}
+            />
           )}
         </>
       ) : (

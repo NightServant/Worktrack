@@ -77,3 +77,21 @@ describe('letterFit', () => {
     expect(fit.checks.find((check) => check.id === 'length')!.passed).toBe(false)
   })
 })
+
+describe('the verdict', () => {
+  it('says ready to send only when nothing fails', () => {
+    expect(letterFit({ text: READY, company: 'Initech', role: 'Frontend Engineer', description: POSTING }).verdict).toBe('pass')
+    // Two failures (company, role): close, but not sendable.
+    expect(letterFit({ text: READY, company: 'Globex', role: 'Data Analyst', description: POSTING }).verdict).toBe('review')
+    expect(
+      letterFit({ text: 'Dear Initech, hire me.', company: 'Globex', role: 'Analyst', description: POSTING }).verdict
+    ).toBe('fail')
+  })
+
+  it('reports the measurements the gauges draw', () => {
+    const fit = letterFit({ text: READY, company: 'Initech', role: 'Frontend Engineer', description: POSTING })
+    expect(fit.words).toBeGreaterThan(150)
+    expect(fit.posting.used.length).toBeGreaterThanOrEqual(3)
+    expect(fit.placeholders).toEqual([])
+  })
+})

@@ -1,5 +1,6 @@
 import { matchKeywords } from '@/services/atsMatch'
 import { letterReview, type LetterFindingId } from './letterSuggestions'
+export { MAX_LETTER_WORDS, MIN_LETTER_WORDS } from './letterSuggestions'
 
 /**
  * How well a cover letter answers ONE posting -- the letter's score in the
@@ -32,12 +33,27 @@ export interface LetterFitCheck {
   passed: boolean
   /** Sentence case: what was found, in this letter's terms. */
   detail: string
+  /**
+   * WHICH QUESTION THE CHECK ANSWERS. `job`: is this written for this
+   * application. `send`: is it finished. The pane draws them as two groups,
+   * because a letter can be perfectly finished for the wrong employer.
+   */
+  group: 'job' | 'send'
 }
+
+/** The pane's verdict. `pass` only when nothing fails: one open prompt is enough to stop a send. */
+export type LetterFitVerdict = 'pass' | 'review' | 'fail'
 
 export interface LetterFit {
   /** 0-100, the share of checks passed. */
   score: number
+  verdict: LetterFitVerdict
   checks: LetterFitCheck[]
+  /** The measurements behind three of the checks, for the pane's gauges. */
+  words: number
+  /** Posting terms the letter uses, and the ones it does not, role and company words excluded. */
+  posting: { used: string[]; asked: string[] }
+  placeholders: string[]
 }
 
 export interface LetterFitInput {
@@ -85,9 +101,11 @@ export function letterFit({ text, company, role, description }: LetterFitInput):
   const used = (terms?.matched ?? []).filter((term) => !own(term))
   const asked = (terms?.missing ?? []).filter((term) => !own(term))
 
+  // GROUPED AS THE PANE DRAWS THEM: for this job, then ready to send.
   const checks: LetterFitCheck[] = [
     {
       id: 'company',
+      group: 'job',
       label: 'names the company',
       passed: mentions(text, company),
       detail: mentions(text, company)
@@ -96,6 +114,7 @@ export function letterFit({ text, company, role, description }: LetterFitInput):
     },
     {
       id: 'role',
+      group: 'job',
       label: 'names the role',
       passed: namesRole(text, role),
       detail: namesRole(text, role)
@@ -103,16 +122,8 @@ export function letterFit({ text, company, role, description }: LetterFitInput):
         : `The letter never says it is applying for ${role}.`,
     },
     {
-      id: 'placeholders',
-      label: 'nothing left to fill',
-      passed: placeholders.length === 0,
-      detail:
-        placeholders.length === 0
-          ? 'No bracketed prompts are left.'
-          : `${placeholders.length} ${placeholders.length === 1 ? 'prompt is' : 'prompts are'} still in brackets, starting with ${placeholders[0]}.`,
-    },
-    {
       id: 'posting',
+      group: 'job',
       label: 'answers the posting',
       passed: used.length >= POSTING_TERMS_NEEDED || used.length + asked.length === 0,
       detail:
@@ -123,7 +134,18 @@ export function letterFit({ text, company, role, description }: LetterFitInput):
             : `Uses ${used.length} of the posting's terms. It asks for ${asked.slice(0, 4).join(', ')}.`,
     },
     {
+      id: 'placeholders',
+      group: 'send',
+      label: 'nothing left to fill',
+      passed: placeholders.length === 0,
+      detail:
+        placeholders.length === 0
+          ? 'No bracketed prompts are left.'
+          : `${placeholders.length} ${placeholders.length === 1 ? 'prompt is' : 'prompts are'} still in brackets, starting with ${placeholders[0]}.`,
+    },
+    {
       id: 'evidence',
+      group: 'send',
       label: 'shows evidence',
       passed: !flagged.has('evidence'),
       detail: flagged.has('evidence')
@@ -132,6 +154,7 @@ export function letterFit({ text, company, role, description }: LetterFitInput):
     },
     {
       id: 'length',
+      group: 'send',
       label: 'fits one page',
       passed: !flagged.has('length'),
       detail: flagged.has('length')
@@ -140,6 +163,7 @@ export function letterFit({ text, company, role, description }: LetterFitInput):
     },
     {
       id: 'closing',
+      group: 'send',
       label: 'asks for a next step',
       passed: !flagged.has('closing'),
       detail: flagged.has('closing')
@@ -149,5 +173,13 @@ export function letterFit({ text, company, role, description }: LetterFitInput):
   ]
 
   const passed = checks.filter((check) => check.passed).length
-  return { score: Math.round((passed / checks.length) * 100), checks }
+  const failed = checks.length - passed
+  return {
+    score: Math.round((passed / checks.length) * 100),
+    verdict: failed === 0 ? 'pass' : failed <= 2 ? 'review' : 'fail',
+    checks,
+    words: review.words,
+    posting: { used, asked },
+    placeholders,
+  }
 }

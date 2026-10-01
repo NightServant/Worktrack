@@ -24,9 +24,16 @@ import type { LetterFindingId, LetterReview } from './letterSuggestions'
 export function LetterAdvice({
   review,
   covered = [],
+  ready = false,
 }: {
   review: LetterReview
   covered?: readonly string[]
+  /**
+   * The fit score above says the letter is ready to send. What is left here is
+   * then polish, not a blocker, and the heading has to say so -- "ready to
+   * send" over "what to change: 2" reads as the pane contradicting itself.
+   */
+  ready?: boolean
 }) {
   const findings = review.findings.filter(
     (finding) => !covered.includes(finding.id as LetterFindingId)
@@ -34,7 +41,14 @@ export function LetterAdvice({
 
   return (
     <div className="flex flex-col gap-3 border-t border-border-subtle pt-5" data-pane="letter-advice">
-      <h4 className="text-label-caps uppercase text-text-secondary">what to change</h4>
+      <div className="flex items-baseline justify-between gap-4">
+        <h4 className="text-label-caps uppercase text-text-secondary">
+          {ready ? 'worth a second look' : 'what to change'}
+        </h4>
+        {findings.length > 0 && (
+          <span className="text-body-s tabular-nums text-text-muted">{findings.length}</span>
+        )}
+      </div>
       {review.words === 0 ? (
         <p className="text-body-s text-text-muted">
           nothing written yet. this follows the letter as you write it.
@@ -44,22 +58,30 @@ export function LetterAdvice({
           nothing else stands out. it reads like a letter written for one employer.
         </p>
       ) : (
-        <ul className="flex flex-col gap-2">
-          {findings.map((finding) => (
+        /* A NUMBERED LIST ON HAIRLINES, NOT CARDS (redesign, 2026-10-01). The
+           rows were bordered boxes, the one shape this system separates with
+           rules instead; and they are a to-do list, which reads in order. The
+           two-digit index is the sidebar's own vocabulary (01-06). */
+        <ol className="flex flex-col divide-y divide-border-subtle border-y border-border-subtle">
+          {findings.map((finding, index) => (
             <li
               key={finding.id}
               data-finding="letter"
-              className="flex flex-col gap-2 rounded-[4px] border border-border-subtle bg-bg-canvas p-3"
+              className="grid grid-cols-[1.75rem_minmax(0,1fr)] gap-x-2 py-3"
             >
-              <span className="text-label-caps text-text-muted">{finding.label}</span>
-              {/* THE PROBLEM IN THE READING COLOUR AND THE FIX MUTED UNDER IT,
-                  the order the grammar cards use: what is wrong, then what to
-                  do. */}
-              <p className="text-body-m leading-[1.5] text-text-primary">{finding.problem}</p>
-              <p className="text-body-s leading-[1.6] text-text-muted">{finding.fix}</p>
+              <span className="text-body-s tabular-nums text-text-muted" aria-hidden>
+                {String(index + 1).padStart(2, '0')}
+              </span>
+              <div className="flex flex-col gap-1.5">
+                <span className="text-label-caps uppercase text-text-secondary">{finding.label}</span>
+                {/* What is wrong in the reading colour, what to do muted under
+                    it: the order the grammar cards use. */}
+                <p className="text-body-s leading-[1.55] text-text-primary">{finding.problem}</p>
+                <p className="text-body-s leading-[1.55] text-text-muted">{finding.fix}</p>
+              </div>
             </li>
           ))}
-        </ul>
+        </ol>
       )}
     </div>
   )
