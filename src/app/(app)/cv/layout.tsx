@@ -11,7 +11,7 @@ import type { Metadata } from 'next'
  * misconfiguration away from being indexed. Saying it costs one line.
  */
 export const metadata: Metadata = {
-  title: 'CV editor',
+  title: 'Editor',
   description: 'Write a CV in a Word-style editor, with version snapshots.',
   robots: { index: false, follow: false },
 }
