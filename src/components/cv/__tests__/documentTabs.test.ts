@@ -27,11 +27,12 @@ describe('the document tab sets', () => {
     expect(idsOf('word')).toEqual(['grammar', 'tailor'])
   })
 
-  it('gives a cover letter tailoring as well as its letter check', () => {
-    // REVERSED 2026-10-01 (Gabe: "Implement the same logic of CV tailoring to
-    // enhance cover letters"). The letter is tailored against a posting and
-    // scored by `letterFit`, not the ATS ring; the letter check stays.
-    expect(idsOf('cover_letter')).toEqual(['grammar', 'tailor', 'suggestions'])
+  it('gives a cover letter one tab for tailoring and its review together', () => {
+    // Gabe, 2026-10-01: letters are tailored like CVs, then "combine the
+    // tailor to a job and letter check section and rename it with concise
+    // wording". One tab, under the CV tab's id so a remembered tab carries.
+    expect(idsOf('cover_letter')).toEqual(['grammar', 'tailor'])
+    expect(DOCUMENT_TABS.cover_letter[1].label).toBe('tailor & review')
     expect(DOCUMENT_TABS.cover_letter[1].hint).not.toMatch(/score this CV/)
   })
 
@@ -50,18 +51,18 @@ describe('the document tab sets', () => {
     }
   })
 
-  it('marks only the tailor tab as needing an application, on both kinds', () => {
-    // `needsApplication` drives the rail's "needs an application" hint, which
-    // is an instruction -- so only the pane with a picker may carry it.
-    for (const kind of ['word', 'cover_letter'] as const) {
-      expect(DOCUMENT_TABS[kind].filter((tab) => tab.needsApplication).map((tab) => tab.id)).toEqual([
-        'tailor',
-      ])
-    }
+  it('says a tab needs an application only where it is useless without one', () => {
+    // `needsApplication` drives the rail's "needs an application" hint. The
+    // CV's tailor pane is empty without one; the letter's review half reads
+    // the letter alone, so its combined tab carries no such warning.
+    expect(DOCUMENT_TABS.word.filter((tab) => tab.needsApplication).map((tab) => tab.id)).toEqual([
+      'tailor',
+    ])
+    expect(DOCUMENT_TABS.cover_letter.some((tab) => tab.needsApplication)).toBe(false)
   })
 
-  it('resolves a tab by id whichever kind it belongs to', () => {
-    expect(tabById('suggestions').label).toBe('letter check')
+  it('resolves a tab by id', () => {
+    expect(tabById('grammar').label).toBe('grammar check')
     expect(tabById('tailor').needsApplication).toBe(true)
   })
 })
@@ -76,12 +77,11 @@ describe('restoring a remembered tab', () => {
     expect(asDocumentTab('tailor', 'cover_letter')).toBe('tailor')
   })
 
-  it('does not strand a CV on the letter-only suggestions pane either', () => {
-    // The same bug in the other direction, which is the one it is easy to
-    // forget: the coercion is about what the OPEN document has, not about
-    // which tab is newer.
+  it('drops the retired letter check tab, for either kind', () => {
+    // `suggestions` was the letter check's own tab until 2026-10-01, and a
+    // browser that remembered it must not open a rail with nothing selected.
     expect(asDocumentTab('suggestions', 'word')).toBe(DEFAULT_DOCUMENT_TAB)
-    expect(asDocumentTab('suggestions', 'cover_letter')).toBe('suggestions')
+    expect(asDocumentTab('suggestions', 'cover_letter')).toBe(DEFAULT_DOCUMENT_TAB)
   })
 
   it('falls back for anything a previous version of the app wrote', () => {

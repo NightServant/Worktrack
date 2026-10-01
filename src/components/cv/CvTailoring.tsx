@@ -31,6 +31,8 @@ import type { ResumeContent, ResumeMode } from '@/services/resumeService'
 import type { Job } from '@/types'
 import { AlertCircleIcon, CheckIcon } from '@/components/icons'
 import { letterFit, type LetterFit } from './letterFit'
+import { LetterAdvice } from './LetterCheckPane'
+import type { LetterReview } from './letterSuggestions'
 import { ApplicationPicker } from './ApplicationPicker'
 import { applySuggestions, tailoredTitle } from './applyTailoring'
 
@@ -142,6 +144,13 @@ export interface CvTailoringOptions {
    * score here instead of the ATS one.
    */
   kind?: ResumeMode
+  /**
+   * The text of the CV linked to an application, for a letter's rewrite.
+   * Supplied by the route, which has the data layer; the editor stays
+   * renderable with plain props. Absent, or answering null, means no CV is
+   * sent and the letter is tailored from the application alone.
+   */
+  cvTextFor?: (jobId: string) => Promise<string | null>
   /** Every application the account has; the wishlist is taken out of it here. */
   jobs: Job[]
   /**
@@ -461,6 +470,11 @@ export function useCvTailoring(options: CvTailoringOptions): CvTailoringState {
     const doFetch = options.fetchImpl ?? authedFetch
     try {
       let payload: TailoringResult
+      // THE CV THAT WENT WITH THIS APPLICATION, for a letter. A failure here is
+      // not a failure of the run: the letter is tailored from the application
+      // alone, which is what it was before this existed.
+      const writerCv =
+        letter && options.cvTextFor ? await options.cvTextFor(jobId).catch(() => null) : null
       try {
         // Through the app's own route, never straight at the provider: the key
         // lives on the server and must not reach the browser.
@@ -474,8 +488,15 @@ export function useCvTailoring(options: CvTailoringOptions): CvTailoringState {
             role: selectedJob?.role,
             company: selectedJob?.company,
             kind,
+            // THE APPLICATION RECORD, field by field, for a letter (Gabe,
+            // 2026-10-01: "Fetch the information from the application
+            // overview dialog"). A CV's prompt ignores them.
             source: selectedJob?.source ?? undefined,
             location: selectedJob?.location ?? undefined,
+            workMode: selectedJob?.work_mode ?? undefined,
+            techStack: selectedJob?.tech_stack ?? undefined,
+            referral: selectedJob?.is_referral ?? false,
+            writerCv: writerCv ?? undefined,
           }),
         })
         payload = (await response.json()) as TailoringResult
@@ -815,7 +836,14 @@ function LetterFitSection({ fit }: { fit: LetterFit | null }) {
   )
 }
 
-export function TailoringAnalysisRail({ state }: { state: CvTailoringState }) {
+export function TailoringAnalysisRail({
+  state,
+  review,
+}: {
+  state: CvTailoringState
+  /** A cover letter's own check, shown under its fit score. See LetterAdvice. */
+  review?: LetterReview
+}) {
   const { match, result, running, outcome, restored } = state
   const letter = state.kind === 'cover_letter'
   const noun = letter ? 'cover letter' : 'CV'
@@ -829,7 +857,11 @@ export function TailoringAnalysisRail({ state }: { state: CvTailoringState }) {
   return (
     // `border-t-0 pt-0`: it is the first thing in the rail, so the section's
     // own rule would be a line under the tab strip.
-    <PanelSection title="tailor to a job" icon="ShieldCheck" className="border-t-0 pt-0">
+    <PanelSection
+      title={letter ? 'tailor & review' : 'tailor to a job'}
+      icon={letter ? 'Mail' : 'ShieldCheck'}
+      className="border-t-0 pt-0"
+    >
       {/* ONE: WHAT IT IS BEING TAILORED TO. */}
       <div className="flex flex-col gap-3">
         <ApplicationPicker
@@ -970,7 +1002,12 @@ export function TailoringAnalysisRail({ state }: { state: CvTailoringState }) {
           the matched list "for positive reinforcement", and a list of failures
           above a list of wins reverses the point of showing them at all. */}
       {letter ? (
-        <LetterFitSection fit={state.fit} />
+        <>
+          <LetterFitSection fit={state.fit} />
+          {review && (
+            <LetterAdvice review={review} covered={state.fit?.checks.map((check) => check.id) ?? []} />
+          )}
+        </>
       ) : (
       <div className="flex flex-col gap-4 border-t border-border-subtle pt-5">
         {match === null ? (

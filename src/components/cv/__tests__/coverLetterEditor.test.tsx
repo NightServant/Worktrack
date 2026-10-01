@@ -126,14 +126,13 @@ describe('the editor opened as a cover letter', () => {
     expect(tailoringCalls).toHaveBeenCalled()
   })
 
-  it('carries the tailor tab beside the letter check', () => {
+  it('combines tailoring and the letter check into one tab', () => {
     renderEditor('cover_letter')
     // A column tab reads as label + hint in one node, so these are substring
     // checks rather than equality.
-    expect(tabNames()).toHaveLength(3)
+    expect(tabNames()).toHaveLength(2)
     expect(tabNames().some((name) => name.startsWith('grammar check'))).toBe(true)
-    expect(tabNames().some((name) => name.startsWith('tailor to a job'))).toBe(true)
-    expect(tabNames().some((name) => name.startsWith('letter check'))).toBe(true)
+    expect(tabNames().some((name) => name.startsWith('tailor & review'))).toBe(true)
   })
 
   it('leaves the CV rail exactly as it was, with no kind passed', () => {
@@ -148,32 +147,30 @@ describe('the editor opened as a cover letter', () => {
     expect(screen.getByText(/print-ready cover letter/i)).toBeInTheDocument()
   })
 
-  it('does not strand a CV on a tab remembered from a letter', () => {
-    // One storage key serves both editors, so a letter left on its letter
-    // check would otherwise restore a pane the CV rail does not have.
+  it('does not strand itself on the retired letter check tab', () => {
+    // `suggestions` was the letter check's own tab until 2026-10-01; a
+    // browser that remembered it opens on grammar rather than on nothing.
     window.localStorage.setItem('worktrack:document-tab', 'suggestions')
-    renderEditor('word')
+    renderEditor('cover_letter')
     expect(document.querySelector('[data-document-pane]')).toHaveAttribute(
       'data-document-pane',
       'grammar'
     )
-    // And the letter it was remembered from still gets it back -- the
-    // coercion is on read, so opening a CV does not rewrite the preference.
-    cleanup()
-    renderEditor('cover_letter')
-    expect(document.querySelector('[data-document-pane]')).toHaveAttribute(
-      'data-document-pane',
-      'suggestions'
-    )
   })
 
-  it('shows the letter check, with findings drawn from the open document', () => {
-    window.localStorage.setItem('worktrack:document-tab', 'suggestions')
+  it('shows the letter check under the fit score, drawn from the open document', () => {
+    window.localStorage.setItem('worktrack:document-tab', 'tailor')
     renderEditor('cover_letter')
-    expect(document.querySelector('[data-pane="suggestions"]')).toBeInTheDocument()
+    const advice = document.querySelector('[data-pane="letter-advice"]')!
+    expect(advice).toBeInTheDocument()
+    // After the fit section, in the same pane.
+    expect(
+      document.querySelector('[data-letter-fit]')!.compareDocumentPosition(advice) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
     // The fixture opens "To whom it may concern" and "I am writing to apply",
     // so at minimum those two rules have fired -- no button pressed, because
     // there is nothing to fetch.
-    expect(document.querySelectorAll('[data-finding="letter"]').length).toBeGreaterThan(1)
+    expect(advice.querySelectorAll('[data-finding="letter"]').length).toBeGreaterThan(1)
   })
 })

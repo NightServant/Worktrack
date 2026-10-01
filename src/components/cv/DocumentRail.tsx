@@ -58,7 +58,7 @@ import { useRailLayout, type RailLayout } from './railLayout'
 export interface DocumentRailTabsProps {
   /**
    * Which set of tabs this strip is (2026-09-14). A CV gets grammar and
-   * tailoring, a cover letter gets grammar and the letter check; see
+   * tailoring, a cover letter gets grammar and `tailor & review`; see
    * `documentTabs` for why the two lists are data rather than a flag per tab.
    *
    * DEFAULTED TO `word`, unlike `asDocumentTab` next door, and the difference

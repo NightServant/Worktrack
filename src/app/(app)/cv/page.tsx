@@ -19,7 +19,10 @@ import { useCreateDocument } from '@/components/documents/useCreateDocument'
 import type { NoticeKind } from '@/components/documents/DocumentsNotice'
 import { WordResumeEditor } from '@/components/cv/WordResumeEditor'
 import { isRetailorOfSameApplication, tailoredJobIdFor } from '@/components/cv/applyTailoring'
-import type { ResumeContent, ResumeMode } from '@/services/resumeService'
+import { resumeService, type ResumeContent, type ResumeMode } from '@/services/resumeService'
+import { documentLinkService } from '@/services/documentLinkService'
+import { flattenResumeText } from '@/hooks/useCvText'
+import { supabase } from '@/lib/supabase'
 
 const DOCUMENTS = '/documents'
 
@@ -260,6 +263,20 @@ function CvRoute() {
     }
   }
 
+  /**
+   * The text of the CV linked to an application -- what a letter's rewrite
+   * quotes the writer's experience from. Read at the moment of the run rather
+   * than kept warm: it is one request, made only when somebody presses
+   * tailor on a letter.
+   */
+  const cvTextFor = async (jobId: string): Promise<string | null> => {
+    const links = await documentLinkService.listForJob(supabase, jobId)
+    const cv = links.find((link) => link.mode === 'word')
+    if (!cv) return null
+    const draft = await resumeService.get(supabase, cv.resume_id)
+    return draft ? flattenResumeText({ mode: draft.mode, content: draft.content }) || null : null
+  }
+
   const persistDraft = (
     draftId: string,
     title: string,
@@ -385,6 +402,7 @@ function CvRoute() {
         onDelete={(id) => deleteDraft(id)}
         onPersistDraft={persistDraft}
         onTailored={(input) => tailorIntoDraft(input)}
+        cvTextFor={cvTextFor}
       />
       <ConfirmDialog
         open={pendingDeleteId !== null}

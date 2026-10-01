@@ -8,7 +8,6 @@ import {
   type CvTailoringOptions,
   type CvTailoringState,
 } from './CvTailoring'
-import { LetterCheckPane } from './LetterCheckPane'
 import type { DocumentTabId } from './documentTabs'
 import type { LetterReview } from './letterSuggestions'
 import type { ProofreadState } from './useProofread'
@@ -31,13 +30,9 @@ import type { ThesaurusState } from './useThesaurus'
  * `TailoringAnalysisRail`, which is why the tailor branch below is one line:
  * the pane switch should choose a pane, not lay one out.
  *
- * `tailoring` AND `letter` ARE BOTH OPTIONAL BECAUSE A DOCUMENT IS ONE KIND OR
- * THE OTHER (2026-09-14). A CV has the tailor pane and no letter check; a
- * cover letter has the letter check and no tailor pane. `asDocumentTab` makes
- * it impossible to select a tab the open document does not have, so the two
- * guards below are belt-and-braces rather than live branches -- what they
- * actually buy is that a missing prop renders nothing instead of throwing
- * inside a pane that was handed `undefined`.
+ * `letter` IS OPTIONAL BECAUSE ONLY A COVER LETTER HAS ONE (2026-10-01). Both
+ * kinds have the tailor pane now; a letter's review rides inside it, under
+ * the fit score, rather than behind a tab of its own.
  */
 
 export interface DocumentRailPaneProps {
@@ -70,11 +65,11 @@ export function DocumentRailPane({
     >
       {active === 'grammar' && <GrammarCheckPane state={proofread} thesaurus={thesaurus} />}
 
+      {/* A letter's review rides in the same pane as its tailoring
+          (2026-10-01), under the fit score. */}
       {active === 'tailor' && tailoring && (
-        <TailoringAnalysisRail state={tailoring} />
+        <TailoringAnalysisRail state={tailoring} review={letter} />
       )}
-
-      {active === 'suggestions' && letter && <LetterCheckPane review={letter} />}
     </div>
   )
 }

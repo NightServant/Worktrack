@@ -117,6 +117,13 @@ export async function POST(request: Request) {
       kind: body.kind === 'cover_letter' ? 'cover_letter' : 'word',
       source: body.source ? String(body.source).slice(0, 200) : undefined,
       location: body.location ? String(body.location).slice(0, 200) : undefined,
+      workMode: body.workMode ? String(body.workMode).slice(0, 40) : undefined,
+      techStack: Array.isArray(body.techStack)
+        ? body.techStack.slice(0, 50).map((item) => String(item).slice(0, 60))
+        : undefined,
+      referral: body.referral === true,
+      // The same ceiling as the document itself.
+      writerCv: body.writerCv ? String(body.writerCv).slice(0, MAX_CHARS) : undefined,
     },
     { config }
   )

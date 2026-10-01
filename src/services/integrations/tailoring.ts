@@ -42,6 +42,25 @@ export interface TailoringInput {
   source?: string
   /** Where the job is, for a letter's address block. */
   location?: string
+  /**
+   * THE REST OF THE APPLICATION RECORD, for a letter (Gabe, 2026-10-01:
+   * "Fetch the information from the application overview dialog to tailor the
+   * cover letter properly"). Each is a field on that dialog; none is required.
+   */
+  workMode?: string
+  techStack?: string[]
+  /** The application came through a referral -- the letter may say so. */
+  referral?: boolean
+  /**
+   * The text of the CV linked to this application ("cv used"), if any.
+   *
+   * WHAT LETS A LETTER BE TAILORED RATHER THAN MERELY ADDRESSED. The letter
+   * template leaves "[the outcome, with the number attached]" because the
+   * template cannot know it -- but the writer's own CV for this application
+   * often states it. Facts from it are the writer's own claims, so quoting
+   * them is not invention; extending them still is.
+   */
+  writerCv?: string
 }
 
 export interface TailoringSuggestion {
@@ -153,11 +172,15 @@ const LETTER_SUGGESTIONS = 12
 const LETTER_PROMPT = [
   'You revise a cover letter so it answers one job posting.',
   'You must not invent experience, employers, dates, qualifications, achievements or numbers.',
-  'Use only what the letter already says about the writer.',
+  "Use only what the letter and the writer's CV, when one is given, already say about the writer.",
+  'A fact from the CV -- a role, an employer, a result, a number -- may be quoted into the letter',
+  'faithfully, never extended.',
   'The letter may contain placeholders in square brackets, such as [Company] or [role].',
   'Replace a placeholder only when the posting or the application details state the answer:',
-  'the company name, the role title, where it was advertised, where the job is.',
+  'the company name, the role title, where it was advertised, where the job is,',
+  "or the writer's own experience as the CV states it.",
   'Leave every other placeholder exactly as written, brackets included.',
+  'Do not mention salary.',
   "Where the letter describes the writer's experience, rephrase it so it speaks to what the",
   "posting asks for, in the posting's own words, without adding anything the letter does not say.",
   `Give at most ${LETTER_SUGGESTIONS} suggestions.`,
@@ -263,11 +286,16 @@ export async function tailorCv(
             input.role ? `Role: ${input.role}` : '',
             input.source ? `Advertised on: ${input.source}` : '',
             input.location ? `Location: ${input.location}` : '',
+            input.workMode ? `Work mode: ${input.workMode}` : '',
+            input.techStack?.length ? `Tech stack: ${input.techStack.join(', ')}` : '',
+            input.referral ? 'Came through a referral: yes' : '',
           ]
             .filter(Boolean)
             .join('\n'),
           '--- JOB POSTING ---',
           input.jobDescription,
+          input.writerCv?.trim() ? "--- THE WRITER'S CV FOR THIS APPLICATION ---" : '',
+          input.writerCv?.trim() ?? '',
           '--- CURRENT COVER LETTER ---',
           input.cvText,
         ]

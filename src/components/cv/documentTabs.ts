@@ -67,7 +67,7 @@ import type { ResumeMode } from '@/services/resumeService'
  * forget the CV's remembered tab.
  */
 
-export type DocumentTabId = 'grammar' | 'tailor' | 'suggestions'
+export type DocumentTabId = 'grammar' | 'tailor'
 
 export interface DocumentTab {
   id: DocumentTabId
@@ -107,38 +107,33 @@ const TAILOR_TAB: DocumentTab = {
 }
 
 /**
- * The cover letter's replacement for the tailor pane.
+ * The cover letter's one tab for the job: tailoring and the letter check,
+ * together (Gabe, 2026-10-01: "combine the tailor to a job and letter check
+ * section and rename it with concise wording").
  *
- * IT TAKES THE SAME SLOT AND HAS TO EARN IT. `letterSuggestions` documents
- * what it checks and why each threshold is where it is; the short version is
- * that it reads the letter the way the person receiving it would -- who is it
- * addressed to, how does it open, does it show anything, how does it end.
+ * They were two tabs answering halves of one question -- is this letter ready
+ * to send for this job -- and the fit score already read three of the letter
+ * check's rules, so the same finding could appear in both. One pane now:
+ * the application, the rewrite, the fit score, then what is left to change.
+ *
+ * Same id as the CV's, so the remembered tab carries over between kinds.
+ * NOT `needsApplication`: the review half reads the letter alone, so the tab
+ * is useful before an application is picked.
  */
-const SUGGESTIONS_TAB: DocumentTab = {
-  id: 'suggestions',
-  label: 'letter check',
+const LETTER_TAB: DocumentTab = {
+  id: 'tailor',
+  label: 'tailor & review',
   icon: 'Mail',
-  hint: 'addressee, opening, evidence and close',
+  hint: 'fit to a job, then what to fix',
   needsApplication: false,
 }
 
 /** Every tab there is, for lookups that do not know the kind. */
-const ALL_TABS: readonly DocumentTab[] = [GRAMMAR_TAB, TAILOR_TAB, SUGGESTIONS_TAB]
-
-/**
- * The letter's tailor tab: the same pane, its own promise (Gabe, 2026-10-01:
- * "Implement the same logic of CV tailoring to enhance cover letters"). Same
- * id, so the stored tab and `needsApplication` work unchanged; the hint says
- * fit rather than ATS, because a letter is scored by `letterFit`.
- */
-const LETTER_TAILOR_TAB: DocumentTab = {
-  ...TAILOR_TAB,
-  hint: 'check its fit, then rewrite it',
-}
+const ALL_TABS: readonly DocumentTab[] = [GRAMMAR_TAB, TAILOR_TAB]
 
 export const DOCUMENT_TABS: Record<ResumeMode, readonly DocumentTab[]> = {
   word: [GRAMMAR_TAB, TAILOR_TAB],
-  cover_letter: [GRAMMAR_TAB, LETTER_TAILOR_TAB, SUGGESTIONS_TAB],
+  cover_letter: [GRAMMAR_TAB, LETTER_TAB],
 } as const
 
 /**

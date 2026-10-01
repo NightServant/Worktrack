@@ -151,12 +151,10 @@ export interface WordResumeEditorProps {
    * editor but ATS scoring and tailoring will not be included").
    *
    * A cover letter gets the same chrome, the same Tiptap engine, the same
-   * autosave and the same grammar pane. What it does not get is the tailor
-   * pane, and not as a hidden tab: `documentTabs` gives it a different tab
-   * list, `asDocumentTab` refuses to restore a remembered `tailor`, and
-   * `TailoringRailPane` -- the only thing that calls `useCvTailoring` -- is
-   * never mounted. A letter is not scored against a posting because it is not
-   * a keyword surface; it is one argument written for one employer.
+   * autosave and the same grammar pane. Since 2026-10-01 it is tailored too,
+   * under its own tab (`tailor & review`), with the letter's prompt on the
+   * server and `letterFit` in place of the ATS score -- a letter is not a
+   * keyword surface; it is one argument written for one employer.
    *
    * DEFAULTED TO `word` SO EVERY EXISTING CALL SITE IS UNCHANGED. /cv passes
    * `draft.mode` once the documents screen can create a letter; until then the
@@ -179,6 +177,8 @@ export interface WordResumeEditorProps {
    * nothing.
    */
   tailoredForJobId?: string
+  /** The CV linked to an application, for tailoring a letter. See CvTailoringOptions. */
+  cvTextFor?: (jobId: string) => Promise<string | null>
   backHref: string
   onDelete: (draftId: string) => void
   onPersistDraft: (
@@ -506,6 +506,7 @@ export function WordResumeEditor({
   onTailored,
   kind = 'word',
   tailoredForJobId,
+  cvTextFor,
   linkedJobIds,
   polishing = false,
 }: WordResumeEditorProps) {
@@ -850,10 +851,9 @@ export function WordResumeEditor({
    *
    * A plain string in the editor rather than state inside `useCvTailoring`,
    * and `CvTailoringOptions` carries the full reason. The short version: the
-   * hook now lives one component down so a cover letter never calls it, and
-   * this is the one value that still has to be visible to the tab strip in the
-   * other rail slot. Declared unconditionally because it is a string -- it is
-   * not "the tailoring path", and a cover letter simply never writes to it.
+   * hook lives one component down, in `TailoringRailPane`, and this is the one
+   * value that still has to be visible to the tab strip in the other rail
+   * slot.
    */
   const [tailorJobId, setTailorJobId] = useState('')
 
@@ -880,11 +880,9 @@ export function WordResumeEditor({
    * EVERYTHING THE TAILORING HOOK NEEDS, BUT NOT THE HOOK ITSELF.
    *
    * This was a `useCvTailoring(...)` call until cover letters arrived, and it
-   * is an object now because the call moved down into `TailoringRailPane` --
-   * which only mounts for a CV. That is what makes "a cover letter does not
-   * run the tailoring path" literally true rather than a matter of nothing
-   * being drawn: hooks cannot be called conditionally, so the only way to not
-   * call one is to put a component between yourself and it.
+   * is an object because the call lives in `TailoringRailPane`, which both
+   * kinds mount since 2026-10-01; `kind` tells it which prompt and which
+   * score.
    *
    * BUILDING THIS OBJECT COSTS NOTHING ON A COVER LETTER. It is a literal with
    * two closures in it; no request, no filter over the applications, no
@@ -909,6 +907,7 @@ export function WordResumeEditor({
     // title and would then share a cache entry.
     documentId: draft.id,
     tailoredForJobId,
+    cvTextFor,
     // A GETTER, not `editor?.getJSON()` inline. The plain text above is read
     // on every render on purpose; serialising the whole node tree on every
     // keystroke for a button nobody has pressed is not the same trade. This
@@ -1326,11 +1325,12 @@ export function WordResumeEditor({
             grammar: proofread.ran
               ? proofread.grammar.length + proofread.style.length
               : null,
-            // THE LETTER CHECK BADGES ITSELF WITHOUT BEING OPENED, which the
+            // THE LETTER CHECK BADGES ITS TAB WITHOUT BEING OPENED, which the
             // grammar tab cannot: there is no request to make, so the count is
-            // simply true. `null` on a CV rather than 0 -- the tab is not in
-            // that strip at all, and a zero would be a claim about it.
-            suggestions: isLetter ? review.findings.length : null,
+            // simply true. It moved to `tailor` when the two letter panes were
+            // combined (2026-10-01). `null` on a CV, whose tailor tab has no
+            // count to show.
+            tailor: isLetter ? review.findings.length : null,
           }}
         />
       }

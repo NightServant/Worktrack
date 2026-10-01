@@ -295,9 +295,10 @@ describe('/cv?draft=<id> opens the right editor', () => {
     render(<Page />)
 
     const tabs = screen.getAllByRole('tab').map((tab) => tab.textContent?.toLowerCase() ?? '')
-    expect(tabs.some((name) => name.includes('letter check'))).toBe(true)
-    // Letters are tailored too since 2026-10-01, with the letter's own hint.
-    expect(tabs.some((name) => name.includes('tailor'))).toBe(true)
+    // One tab for the job since 2026-10-01: tailoring and the letter check
+    // together, under the letter's own name.
+    expect(tabs.some((name) => name.includes('tailor & review'))).toBe(true)
+    expect(tabs.some((name) => name.includes('letter check'))).toBe(false)
   })
 
   it('autosaves a cover letter AS a cover letter', async () => {
