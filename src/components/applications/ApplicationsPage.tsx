@@ -152,6 +152,9 @@ export interface ApplicationsPageProps {
   letters?: { id: string; title: string }[]
   /** The cover letter already linked to whichever row is open, if any. */
   linkedLetterId?: string | null
+  /** The open row's CV / letter was tailored for it; its field locks. */
+  resumeLocked?: boolean
+  letterLocked?: boolean
   onDelete?: (job: Job) => void
   onImport?: (rows: JobFormData[]) => Promise<boolean>
   onAutofill?: (url: string, html?: string) => Promise<JobAutofillResult>
@@ -200,6 +203,8 @@ export function ApplicationsPage({
   linkedResumeId = null,
   letters = [],
   linkedLetterId = null,
+  resumeLocked = false,
+  letterLocked = false,
   onDelete,
   onImport,
   onAutofill,
@@ -403,6 +408,8 @@ export function ApplicationsPage({
         letters={letters}
         linkedLetterId={linkedLetterId}
         onLinkedLetterChange={setLetterChoice}
+        resumeLocked={resumeLocked}
+        letterLocked={letterLocked}
         onSubmit={submit}
         onDirtyChange={setFormDirty}
       />
@@ -430,8 +437,6 @@ export function ApplicationsPage({
         saving={saving}
         onSubmit={submitNew}
         onLinkedResumeChange={setResumeChoice}
-        letters={letters}
-        onLinkedLetterChange={setLetterChoice}
         onAutofill={onAutofill}
         autofilling={autofilling}
         onDigest={onDigest}

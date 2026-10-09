@@ -20,7 +20,12 @@ import { RouteError } from '@/components/ui/route-states'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useUserPreferences } from '@/hooks/useUserPreferences'
 import { useResumes } from '@/hooks/useResumes'
-import { linksToUnpin } from '@/services/applicationDocuments'
+import {
+  isTailoredFor,
+  linksToUnpin,
+  tailoredCompanyOf,
+  type DocumentLinkSummary,
+} from '@/services/applicationDocuments'
 import type { ResumeMode } from '@/services/resumeService'
 import { usePostingDigest } from '@/hooks/usePostingDigest'
 import {
@@ -274,6 +279,34 @@ function ApplicationsRoute() {
     }
   }
 
+  /**
+   * What each document field offers, and whether it is locked (Gabe,
+   * 2026-10-09).
+   *
+   *   - UNTAILORED DOCUMENTS ONLY. A copy tailored for one company is not a
+   *     candidate for another application.
+   *   - PLUS THE ONE ALREADY LINKED, whatever it is, so the field can show its
+   *     current value rather than a blank.
+   *   - LOCKED when that linked document was tailored for THIS application's
+   *     company: it is the document written for this posting.
+   *
+   * By kind, because each field holds one of each. `openLinks` is newest
+   * first, so `find` reads the latest link of each kind.
+   */
+  const documentOptions = Object.fromEntries(
+    (['word', 'cover_letter'] as const).map((mode) => {
+      const linked = openLinks.find((link) => link.mode === mode) ?? null
+      const docs = resumes
+        .filter((resume) => resume.mode === mode && !tailoredCompanyOf(resume.title))
+        .map((resume) => ({ id: resume.id, title: resume.title }))
+      if (linked && !docs.some((doc) => doc.id === linked.resume_id)) {
+        docs.unshift({ id: linked.resume_id, title: linked.title })
+      }
+      const locked = !!linked && !!liveOpenJob && isTailoredFor(linked.title, liveOpenJob.company)
+      return [mode, { docs, linked, locked }]
+    })
+  ) as Record<ResumeMode, { docs: { id: string; title: string }[]; linked: DocumentLinkSummary | null; locked: boolean }>
+
   const handleDelete = (job: Job) => setPendingDelete(job)
 
   const confirmDelete = async () => {
@@ -306,18 +339,12 @@ function ApplicationsRoute() {
         jobs={jobs}
         defaultCurrency={resolveDefaultCurrency(prefs, country)}
         onDigest={(text) => digest.mutateAsync(text)}
-        /* CVs IN THE CV FIELD, LETTERS IN THE LETTER FIELD. Both lists were
-           one list until 2026-10-01, so a cover letter could be recorded as
-           the CV that was sent. `openLinks` is newest first, so `find` reads
-           the latest of each kind. */
-        resumes={resumes
-          .filter((resume) => resume.mode === 'word')
-          .map((resume) => ({ id: resume.id, title: resume.title }))}
-        linkedResumeId={openLinks.find((link) => link.mode === 'word')?.resume_id ?? null}
-        letters={resumes
-          .filter((resume) => resume.mode === 'cover_letter')
-          .map((resume) => ({ id: resume.id, title: resume.title }))}
-        linkedLetterId={openLinks.find((link) => link.mode === 'cover_letter')?.resume_id ?? null}
+        resumes={documentOptions.word.docs}
+        linkedResumeId={documentOptions.word.linked?.resume_id ?? null}
+        resumeLocked={documentOptions.word.locked}
+        letters={documentOptions.cover_letter.docs}
+        linkedLetterId={documentOptions.cover_letter.linked?.resume_id ?? null}
+        letterLocked={documentOptions.cover_letter.locked}
         onCreate={handleCreate}
         onUpdate={handleUpdate}
         onDelete={handleDelete}

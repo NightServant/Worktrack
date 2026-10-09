@@ -57,3 +57,25 @@ describe('linksToUnpin', () => {
     expect(linksToUnpin([], 'new-cv')).toEqual([])
   })
 })
+
+describe('which documents are tailored', () => {
+  // Read from the name the tailoring flow writes: `<original> — <company>`.
+  it('reads the company off a tailored copy and nothing off a general one', async () => {
+    const { tailoredCompanyOf } = await import('../applicationDocuments')
+    expect(tailoredCompanyOf('Gabe - CV (ATS) — APW Tech')).toBe('APW Tech')
+    expect(tailoredCompanyOf('Standard cover letter — Velocity Made Good International (PH) Inc.')).toBe(
+      'Velocity Made Good International (PH) Inc.'
+    )
+    expect(tailoredCompanyOf('Gabe - CV (ATS)')).toBeNull()
+    // A plain hyphen in a name is not the tailoring separator.
+    expect(tailoredCompanyOf('Elijah_Gabe_Cervantes_VA_CV - 2026')).toBeNull()
+  })
+
+  it('matches a copy to its company, allowing for spacing, and to no other', async () => {
+    const { isTailoredFor } = await import('../applicationDocuments')
+    expect(isTailoredFor('CV — APW  Tech', ' APW Tech ')).toBe(true)
+    expect(isTailoredFor('CV — APW Tech', 'Accenture Inc.')).toBe(false)
+    expect(isTailoredFor('CV', 'APW Tech')).toBe(false)
+    expect(isTailoredFor('CV — APW Tech', '')).toBe(false)
+  })
+})

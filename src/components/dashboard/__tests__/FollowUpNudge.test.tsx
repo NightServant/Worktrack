@@ -49,28 +49,74 @@ describe('FollowUpNudge on the dashboard', () => {
   })
 })
 
+/** The dialog's data rows, header excluded. */
+function dataRows(dialog: HTMLElement): HTMLElement[] {
+  return [...dialog.querySelectorAll<HTMLElement>('[data-follow-up-row]')]
+}
+
+/**
+ * The dialog as a table, five rows a page (Gabe, 2026-10-09: "create a table
+ * within the dialog with proper pagination of 5 rows, table header, and
+ * data").
+ */
 describe('FollowUpNudge dialog', () => {
-  it('opens on the CTA and lists every quiet application', async () => {
-    render(<FollowUpNudge stale={candidates(15)} />)
-    await userEvent.click(trigger())
+  it('is a table with a header, five rows a page, and every application reachable', async () => {
+    const user = userEvent.setup()
+    render(<FollowUpNudge stale={candidates(12)} />)
+    await user.click(trigger())
 
     const dialog = await screen.findByRole('dialog')
-    const rows = within(dialog).getAllByRole('listitem')
-    // ALL of them, not a capped subset -- the dialog scrolls, so there is no
-    // reason to hide any, and a truncated dialog would understate the backlog.
-    expect(rows).toHaveLength(15)
+    expect(within(dialog).getAllByRole('columnheader').map((th) => th.textContent?.trim())).toEqual([
+      'application',
+      'status',
+      'quiet for',
+      'open',
+    ])
+    expect(dataRows(dialog)).toHaveLength(5)
+    expect(within(dialog).getByText(/1.5 of 12/)).toBeInTheDocument()
+
+    // ALL of them, not a capped subset -- the last page holds the remainder,
+    // and a truncated dialog would understate the backlog.
+    await user.click(within(dialog).getByRole('button', { name: '3' }))
+    expect(dataRows(dialog)).toHaveLength(2)
+    expect(within(dialog).getByText(/11.12 of 12/)).toBeInTheDocument()
   })
 
-  it('keeps the most stale ones at the top, where they are worth chasing', async () => {
-    // getStaleApplications returns oldest-first, and that order is the whole
-    // point: the ones that have gone quiet longest are the ones to chase.
-    render(<FollowUpNudge stale={candidates(15)} />)
-    await userEvent.click(trigger())
+  it('keeps the most stale ones first, where they are worth chasing', async () => {
+    // getStaleApplications returns oldest-first, and that order is the point:
+    // the first page is always the five most worth chasing.
+    const user = userEvent.setup()
+    render(<FollowUpNudge stale={candidates(12)} />)
+    await user.click(trigger())
 
     const dialog = await screen.findByRole('dialog')
-    const rows = within(dialog).getAllByRole('listitem')
-    expect(rows[0]).toHaveTextContent('Company 0')
-    expect(rows[14]).toHaveTextContent('Company 14')
+    expect(dataRows(dialog)[0]).toHaveTextContent('Company 0')
+    await user.click(within(dialog).getByRole('button', { name: /next page/i }))
+    expect(dataRows(dialog)[0]).toHaveTextContent('Company 5')
+  })
+
+  it('says how long each has waited in days, already subtracted', async () => {
+    const user = userEvent.setup()
+    const stale: StaleCandidate[] = [
+      {
+        id: 'job-0',
+        company: 'Acme',
+        role: 'Engineer',
+        status: 'interviewing',
+        last_touched_at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+    ]
+    render(<FollowUpNudge stale={stale} />)
+    await user.click(trigger())
+
+    const dialog = await screen.findByRole('dialog')
+    expect(dataRows(dialog)[0]).toHaveTextContent('30 days')
+    // The summary leads with the size of the backlog and the costliest kind.
+    expect(dialog.querySelector('[data-follow-up-summary]')!.textContent).toMatch(
+      /1 application waiting, the longest for 30 days; 1 at the interview stage\./
+    )
+    // One page needs no pager.
+    expect(dialog.querySelector('[data-follow-up-pager]')).toBeNull()
   })
 
   it('links each row to its own application', async () => {
@@ -80,10 +126,9 @@ describe('FollowUpNudge dialog', () => {
     await userEvent.click(trigger())
 
     const dialog = await screen.findByRole('dialog')
-    expect(within(dialog).getByRole('link', { name: /Company 0/ })).toHaveAttribute(
-      'href',
-      '/applications/job-0'
-    )
+    for (const link of within(dialog).getAllByRole('link', { name: /Company 0/ })) {
+      expect(link).toHaveAttribute('href', '/applications/job-0')
+    }
   })
 
   it('keeps those links inside the demo when it is rendered there', async () => {
@@ -98,7 +143,7 @@ describe('FollowUpNudge dialog', () => {
     await userEvent.click(trigger())
 
     const dialog = await screen.findByRole('dialog')
-    expect(within(dialog).getByRole('link', { name: /Company 0/ })).toHaveAttribute(
+    expect(within(dialog).getAllByRole('link', { name: /Company 0/ })[0]).toHaveAttribute(
       'href',
       '/demo/applications/job-0'
     )

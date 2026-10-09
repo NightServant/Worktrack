@@ -93,6 +93,9 @@ export interface ApplicationRecordViewProps {
   letters?: { id: string; title: string }[]
   linkedLetterId?: string | null
   onLinkedLetterChange?: (letterId: string | null) => void
+  /** The linked CV / letter was tailored for this application. See RecordBasics. */
+  resumeLocked?: boolean
+  letterLocked?: boolean
   /**
    * Set by the add wizard: the same frame with no pipeline bar and no ATS
    * match, because neither exists before the application does.
@@ -316,6 +319,8 @@ export function ApplicationRecordView({
   letters = [],
   linkedLetterId = null,
   onLinkedLetterChange,
+  resumeLocked = false,
+  letterLocked = false,
   layout = 'record',
   onReadMore,
   onPostingPasted,
@@ -528,6 +533,11 @@ export function ApplicationRecordView({
           setLetterId(next)
           onLinkedLetterChange?.(next || null)
         }}
+        resumeLocked={resumeLocked}
+        letterLocked={letterLocked}
+        // Not in the wizard: nothing is tailored to an application that does
+        // not exist yet (Gabe, 2026-10-09).
+        showDocuments={layout !== 'review'}
       />
     </>
   )

@@ -589,3 +589,66 @@ describe('narrowing and paging the document list', () => {
     expect(screen.getByText('1–5 of 11')).toBeTruthy()
   })
 })
+
+/**
+ * Finding what was tailored for one company (Gabe, 2026-10-09: "My problem
+ * is that I need to use the pagination and search feature to find it").
+ */
+describe('the application filter', () => {
+  const LIBRARY = [
+    makeDoc({ id: 'base-cv', title: 'Gabe - CV (ATS)' }),
+    makeDoc({ id: 'base-letter', title: 'Standard cover letter', mode: 'cover_letter' }),
+    makeDoc({ id: 'apw-cv', title: 'Gabe - CV (ATS) — APW Tech' }),
+    makeDoc({ id: 'apw-letter', title: 'Standard cover letter — APW Tech', mode: 'cover_letter' }),
+    makeDoc({ id: 'acc-cv', title: 'Gabe - CV (ATS) — Accenture Inc.' }),
+    makeDoc({ id: 'zen-cv', title: 'Gabe - CV (ATS) — Zendesk' }),
+    makeDoc({ id: 'zen-letter', title: 'Standard cover letter — Zendesk', mode: 'cover_letter' }),
+  ]
+  const rows = (container: HTMLElement) =>
+    [...container.querySelectorAll('[data-document-row]')].map((row) => row.textContent ?? '')
+
+  it('offers every company something was tailored for, A to Z, with its count', async () => {
+    const user = userEvent.setup()
+    render(<DocumentsPage docs={LIBRARY} />)
+    await user.click(screen.getByLabelText(/tailored for/i))
+    const options = (await screen.findAllByRole('option')).map((option) => option.textContent?.trim())
+    expect(options).toEqual([
+      'every application',
+      'untailored only',
+      'Accenture Inc. (1)',
+      'APW Tech (2)',
+      'Zendesk (2)',
+    ])
+  })
+
+  it('puts one company’s CV and letter on one page, whatever page they were on', async () => {
+    const user = userEvent.setup()
+    const { container } = render(<DocumentsPage docs={LIBRARY} />)
+    await chooseOption(user, screen.getByLabelText(/tailored for/i), 'Zendesk (2)')
+    const shown = rows(container)
+    expect(shown).toHaveLength(2)
+    expect(shown.every((row) => row.includes('Zendesk'))).toBe(true)
+  })
+
+  it('narrows to the general documents', async () => {
+    const user = userEvent.setup()
+    const { container } = render(<DocumentsPage docs={LIBRARY} />)
+    await chooseOption(user, screen.getByLabelText(/tailored for/i), 'untailored only')
+    expect(rows(container).map((row) => row.includes('—'))).toEqual([false, false])
+  })
+
+  it('says it was the application filter that emptied the list', async () => {
+    const user = userEvent.setup()
+    const { container } = render(<DocumentsPage docs={LIBRARY} />)
+    await chooseOption(user, screen.getByLabelText(/tailored for/i), 'Accenture Inc. (1)')
+    await chooseOption(user, screen.getByLabelText(/filter documents by kind/i), 'cover letters')
+    expect(container.querySelector('[data-documents-filter-empty]')!.textContent).toMatch(
+      /no cover letters tailored for Accenture Inc\./
+    )
+  })
+
+  it('is absent when nothing has been tailored', () => {
+    render(<DocumentsPage docs={[LIBRARY[0], LIBRARY[1]]} />)
+    expect(screen.queryByLabelText(/tailored for/i)).toBeNull()
+  })
+})

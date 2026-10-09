@@ -41,6 +41,10 @@ describe('the add wizard’s review step', () => {
     expect(screen.getByLabelText(/^company/)).toHaveValue('Acme')
     expect(screen.queryByLabelText(/tech stack/i)).toBeNull()
     expect(screen.getByRole('button', { name: /add more details/i })).toBeInTheDocument()
+    // Nor the document fields (2026-10-09): nothing is tailored to an
+    // application that does not exist yet.
+    expect(document.getElementById('resume_id')).toBeNull()
+    expect(document.getElementById('letter_id')).toBeNull()
   })
 
   it('opens the posting in its own view of the dialog, and comes back to the draft', async () => {

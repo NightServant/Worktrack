@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Field } from '@/components/ui/field'
@@ -78,6 +79,86 @@ export interface RecordBasicsProps {
   letters?: { id: string; title: string }[]
   letterId?: string
   onLetterIdChange?: (letterId: string) => void
+  /**
+   * The linked CV / letter was TAILORED FOR THIS APPLICATION, so its field is
+   * shown but locked (Gabe, 2026-10-09: "Dropdown will be inactivated after
+   * the CV/Cover letter is tailored to a specific job description of a
+   * specific company"). A tailored copy belongs to the posting it was written
+   * against; swapping it for something else would record a document that was
+   * never the one sent.
+   */
+  resumeLocked?: boolean
+  letterLocked?: boolean
+  /**
+   * False in the add wizard's review step (Gabe, 2026-10-09: "Do not show the
+   * dropdown for CV and cover letter used in the application wizard review").
+   * A new application has nothing tailored to it yet; the fields appear once
+   * it is saved.
+   */
+  showDocuments?: boolean
+}
+
+/**
+ * One document field: `cv used` or `cover letter used`.
+ *
+ * WHAT IT OFFERS IS DECIDED BY THE CALLER: untailored documents only, plus
+ * whichever one is already linked so the current value can be shown. Locked,
+ * it says why and links to the tailored copy -- the quickest way from an
+ * application to the document written for it.
+ */
+function DocumentField({
+  id,
+  label,
+  icon,
+  noun,
+  docs,
+  value,
+  onChange,
+  locked,
+}: {
+  id: string
+  label: string
+  icon: 'Documents' | 'Mail'
+  noun: string
+  docs: { id: string; title: string }[]
+  value: string
+  onChange?: (next: string) => void
+  locked: boolean
+}) {
+  return (
+    <Field
+      id={id}
+      label={label}
+      hint={
+        locked || docs.length > 0
+          ? undefined
+          : `no untailored ${noun}s yet. write one in Documents and it will appear here.`
+      }
+    >
+      <Select
+        id={id}
+        icon={icon}
+        disabled={locked || docs.length === 0}
+        value={value}
+        onValueChange={(next) => onChange?.(next)}
+        items={[
+          { value: '', label: docs.length ? 'none' : `no ${noun}s yet` },
+          ...docs.map((doc) => ({ value: doc.id, label: doc.title })),
+        ]}
+      />
+      {locked && value && (
+        <p className="text-body-s text-text-muted" data-document-locked={id}>
+          tailored for this application, so it stays with it.{' '}
+          <Link
+            href={`/cv?draft=${value}`}
+            className="text-text-secondary underline underline-offset-2 hover:text-accent-default"
+          >
+            open it
+          </Link>
+        </p>
+      )}
+    </Field>
+  )
 }
 
 /** Today as `YYYY-MM-DD`, locally. `toISOString` is UTC and shifts the day. */
@@ -95,6 +176,9 @@ export function RecordBasics({
   letters = [],
   letterId = '',
   onLetterIdChange,
+  resumeLocked = false,
+  letterLocked = false,
+  showDocuments = true,
 }: RecordBasicsProps) {
   const { draft, set, errorFor, blur } = form
   // THE WIZARD'S REVIEW STEP OBEYS THIS TOO (Gabe, 2026-10-01: "show fields
@@ -309,41 +393,30 @@ export function RecordBasics({
           THE LABEL ONLY. The column is `application_documents`, the prop is
           `resumeId`, and both keep their names -- renaming a database column
           to fix a word on screen is a migration bought with nothing. */}
-      <Field
-        id="resume_id"
-        label="cv used"
-        hint={resumes.length ? undefined : 'no CVs yet — write one in Documents and it will appear here.'}
-      >
-        <Select
-          id="resume_id"
-          icon="Documents"
-          disabled={resumes.length === 0}
-          value={resumeId}
-          onValueChange={(next) => onResumeIdChange?.(next)}
-          items={[
-            { value: '', label: resumes.length ? 'none' : 'no CVs yet' },
-            ...resumes.map((resume) => ({ value: resume.id, label: resume.title })),
-          ]}
-        />
-      </Field>
-
-      <Field
-        id="letter_id"
-        label="cover letter used"
-        hint={letters.length ? undefined : 'no cover letters yet — write one in Documents and it will appear here.'}
-      >
-        <Select
-          id="letter_id"
-          icon="Mail"
-          disabled={letters.length === 0}
-          value={letterId}
-          onValueChange={(next) => onLetterIdChange?.(next)}
-          items={[
-            { value: '', label: letters.length ? 'none' : 'no cover letters yet' },
-            ...letters.map((letter) => ({ value: letter.id, label: letter.title })),
-          ]}
-        />
-      </Field>
+      {showDocuments && (
+        <>
+          <DocumentField
+            id="resume_id"
+            label="cv used"
+            icon="Documents"
+            noun="CV"
+            docs={resumes}
+            value={resumeId}
+            onChange={onResumeIdChange}
+            locked={resumeLocked}
+          />
+          <DocumentField
+            id="letter_id"
+            label="cover letter used"
+            icon="Mail"
+            noun="cover letter"
+            docs={letters}
+            value={letterId}
+            onChange={onLetterIdChange}
+            locked={letterLocked}
+          />
+        </>
+      )}
 
       {/* NO "separated by commas." ON EITHER OF THESE ANY MORE. The
           placeholders are `new-grad, fintech` and `react, postgres`, which

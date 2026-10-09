@@ -221,7 +221,8 @@ describe('Dashboard', () => {
 
     await userEvent.click(within(nudge).getByRole('button', { name: /follow/i }))
     const dialog = await screen.findByRole('dialog')
-    const link = within(dialog).getByRole('link', { name: /Acme/i })
+    // Two links a row now: the application itself, and the open control.
+    const link = within(dialog).getAllByRole('link', { name: /Acme/i })[0]
     expect(link.getAttribute('href')).toBe('/applications/stale-1')
   })
 })

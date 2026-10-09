@@ -99,3 +99,37 @@ export function linksToUnpin(
 ): string[] {
   return links.filter((link) => link.resume_id !== chosen).map((link) => link.resume_id)
 }
+
+/**
+ * WHICH DOCUMENTS ARE TAILORED, read from the name the tailoring flow gives
+ * them (Gabe, 2026-10-09).
+ *
+ * A tailored copy is titled `<original> — <company>` -- see `tailoredTitle`
+ * in components/cv/applyTailoring, which writes exactly that and nothing else
+ * does. Checked against production on 2026-10-09: all 64 tailored documents
+ * carry the suffix and are linked to that company's application, and none of
+ * the 3 untailored ones contain it. One orphan, tailored for an application
+ * since deleted, still carries it, which is right: it was written for one
+ * employer, so it is not offered to another.
+ *
+ * NO COLUMN, deliberately. The name is already the record of what a copy was
+ * tailored for, and a column would be a second record of the same fact that
+ * could disagree with the first the day somebody renames a document. Renaming
+ * a copy to drop the suffix is how somebody says it is general again.
+ */
+const collapse = (value: string) => value.trim().replace(/\s+/g, ' ')
+
+/** The company a document was tailored for, or null for an untailored one. */
+export function tailoredCompanyOf(title: string): string | null {
+  const name = collapse(title)
+  const at = name.lastIndexOf(' — ')
+  if (at === -1) return null
+  const company = name.slice(at + ' — '.length)
+  return company ? company : null
+}
+
+/** Whether a document was tailored for this company. */
+export function isTailoredFor(title: string, company: string): boolean {
+  const wanted = collapse(company)
+  return wanted.length > 0 && collapse(title).endsWith(` — ${wanted}`)
+}

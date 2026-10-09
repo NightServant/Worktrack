@@ -90,9 +90,6 @@ export interface AddApplicationDialogProps {
     interviewAt?: string | null
   ) => void | boolean | Promise<void | boolean>
   onLinkedResumeChange?: (resumeId: string | null) => void
-  /** The cover letters for the review step's "cover letter used" field. */
-  letters?: { id: string; title: string }[]
-  onLinkedLetterChange?: (letterId: string | null) => void
   onAutofill?: (url: string, html?: string) => Promise<JobAutofillResult>
   autofilling?: boolean
   /**
@@ -141,8 +138,6 @@ export function AddApplicationDialog({
   saving = false,
   onSubmit,
   onLinkedResumeChange,
-  letters = [],
-  onLinkedLetterChange,
   onAutofill,
   autofilling = false,
   onDigest,
@@ -166,7 +161,6 @@ export function AddApplicationDialog({
   /** A read that FAILED, which is the only state with anything to offer. */
   const [readError, setReadError] = React.useState('')
   const [resumeId, setResumeId] = React.useState('')
-  const [letterId, setLetterId] = React.useState('')
   /**
    * Whether the model has already restructured this draft's description.
    *
@@ -195,7 +189,6 @@ export function AddApplicationDialog({
     setReadNote('')
     setReadError('')
     setResumeId('')
-    setLetterId('')
     digested.current = false
     setDigesting(false)
     replace({ ...emptyDraft(defaultCurrency) })
@@ -660,12 +653,6 @@ export function AddApplicationDialog({
               onLinkedResumeChange={(next) => {
                 setResumeId(next ?? '')
                 onLinkedResumeChange?.(next)
-              }}
-              letters={letters}
-              linkedLetterId={letterId || null}
-              onLinkedLetterChange={(next) => {
-                setLetterId(next ?? '')
-                onLinkedLetterChange?.(next)
               }}
               submitLabel="Save application"
             />

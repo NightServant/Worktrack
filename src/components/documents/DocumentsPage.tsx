@@ -23,6 +23,7 @@ import { DocumentRow, DOCUMENT_GRID } from './DocumentRow'
 import { TemplateGallery, type TemplateChoice } from './TemplateGallery'
 import { DocumentChooser } from './DocumentChooser'
 import { matchesTerms, searchTerms } from '@/lib/search'
+import { tailoredCompanyOf } from '@/services/applicationDocuments'
 import { useBelowDesktop } from '@/hooks/useBelowDesktop'
 import { buttonVariants } from '@/components/ui/button-variants'
 import { ICON_MOTION_GROUP } from '@/components/icons/motion'
@@ -72,6 +73,26 @@ const DOC_FILTERS = [
 ] as const
 
 type DocFilter = (typeof DOC_FILTERS)[number]['value']
+
+/**
+ * Which application a document was tailored for, as a filter (Gabe,
+ * 2026-10-09: "I can easily find a CV/cover letter tailored to a specific job
+ * for the company. My problem is that I need to use the pagination and search
+ * feature to find it").
+ *
+ * THE COMPANY IS ALREADY IN EVERY TAILORED COPY'S NAME (`<original> —
+ * <company>`; see `tailoredCompanyOf`), so the options come from the list
+ * itself, with no extra read, and only companies something was tailored for
+ * are offered. Picking one puts that company's CV and letter side by side on
+ * one page. `untailored` is the other question people ask of this list:
+ * which are my general documents.
+ *
+ * Values are prefixed so a company called "any" cannot collide with the
+ * reset option.
+ */
+const ANY_APPLICATION = 'any'
+const UNTAILORED = 'untailored'
+const COMPANY = 'company:'
 
 /**
  * Five a page, and only where there is a pager to turn (Gabe, 2026-09-13:
@@ -176,6 +197,7 @@ export function DocumentsPage({
 
   const [newDocOpen, setNewDocOpen] = React.useState(false)
   const [filter, setFilter] = React.useState<DocFilter>('all')
+  const [application, setApplication] = React.useState<string>(ANY_APPLICATION)
   const [query, setQuery] = React.useState('')
   const [page, setPage] = React.useState(1)
 
@@ -191,10 +213,29 @@ export function DocumentsPage({
    * comment before the second box existed.
    */
   const terms = React.useMemo(() => searchTerms(query), [query])
+
+  /** Every company something was tailored for, A to Z, with how many documents. */
+  const companies = React.useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const doc of docs) {
+      const company = tailoredCompanyOf(doc.title)
+      if (company) counts.set(company, (counts.get(company) ?? 0) + 1)
+    }
+    return [...counts.entries()].sort(([a], [b]) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+  }, [docs])
+
+  const selectedCompany = application.startsWith(COMPANY) ? application.slice(COMPANY.length) : null
+
   const filtered = React.useMemo(() => {
     const byKind = filter === 'all' ? docs : docs.filter((doc) => doc.mode === filter)
-    return byKind.filter((doc) => matchesTerms(terms, doc.title))
-  }, [docs, filter, terms])
+    const byApplication =
+      application === UNTAILORED
+        ? byKind.filter((doc) => !tailoredCompanyOf(doc.title))
+        : selectedCompany
+          ? byKind.filter((doc) => tailoredCompanyOf(doc.title) === selectedCompany)
+          : byKind
+    return byApplication.filter((doc) => matchesTerms(terms, doc.title))
+  }, [docs, filter, application, selectedCompany, terms])
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   // CLAMPED, NOT STORED. Deleting the last row of page 3, or narrowing to
   // cover letters when only page 1 has any, would otherwise strand the reader
@@ -209,7 +250,7 @@ export function DocumentsPage({
   // is meaningless afterwards.
   React.useEffect(() => {
     setPage(1)
-  }, [filter, query])
+  }, [filter, application, query])
 
   // ONE CTA, TWO BEHAVIOURS. Below `lg` it is a link to the Templates page;
   // on desktop it opens the document chooser. A link and a button rather than
@@ -383,6 +424,28 @@ export function DocumentsPage({
                   onValueChange: (next) => setFilter(next as DocFilter),
                   items: DOC_FILTERS.map((option) => ({ ...option })),
                 },
+                // Only when something has been tailored: with no tailored
+                // copies the control would offer one option and a reset.
+                ...(companies.length > 0
+                  ? [
+                      {
+                        id: 'document-application',
+                        label: 'Filter documents by the application they were tailored for',
+                        icon: 'Briefcase' as const,
+                        width: 'l' as const,
+                        value: application,
+                        onValueChange: setApplication,
+                        items: [
+                          { value: ANY_APPLICATION, label: 'every application' },
+                          { value: UNTAILORED, label: 'untailored only' },
+                          ...companies.map(([company, count]) => ({
+                            value: `${COMPANY}${company}`,
+                            label: `${company} (${count})`,
+                          })),
+                        ],
+                      },
+                    ]
+                  : []),
               ]}
             />
           )}
@@ -484,7 +547,19 @@ export function DocumentsPage({
                   terms.length > 0 ? (
                     <>
                       nothing matches “{query.trim()}”
-                      {filter === 'all' ? '' : filter === 'word' ? ' in CVs' : ' in cover letters'}.
+                      {filter === 'all' ? '' : filter === 'word' ? ' in CVs' : ' in cover letters'}
+                      {selectedCompany
+                        ? ` tailored for ${selectedCompany}`
+                        : application === UNTAILORED
+                          ? ' that are untailored'
+                          : ''}
+                      .
+                    </>
+                  ) : application !== ANY_APPLICATION ? (
+                    // THE APPLICATION FILTER EMPTIED IT, so it is the one named.
+                    <>
+                      no {filter === 'all' ? 'documents' : filter === 'word' ? 'CVs' : 'cover letters'}{' '}
+                      {selectedCompany ? `tailored for ${selectedCompany}` : 'that are untailored'}.
                     </>
                   ) : (
                     <>

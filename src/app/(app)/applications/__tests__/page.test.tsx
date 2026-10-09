@@ -409,6 +409,35 @@ describe('the cv and cover letter fields', () => {
     expect(await openOptions(user, screen.getByLabelText('cv used'))).not.toContain('Initech letter')
   })
 
+  it('offers only untailored documents, plus the one already linked', async () => {
+    // Gabe, 2026-10-09: "it will show documents ONLY that are not tailored to
+    // a specific company". A copy tailored for Globex is not a candidate here.
+    resumesData.current = [...resumesData.current, doc('cv-globex', 'Old CV — Globex', 'word')]
+    const user = userEvent.setup()
+    render(<Page />)
+    await user.click(screen.getAllByRole('button', { name: /^view/i })[0])
+
+    const options = await openOptions(user, screen.getByLabelText('cv used'))
+    expect(options).toEqual(['none', 'Old CV', 'New CV'])
+  })
+
+  it('locks a field once its document was tailored for this application, and links to it', async () => {
+    // Gabe, 2026-10-09: "Dropdown will be inactivated after the CV/Cover
+    // letter is tailored to a specific job description of a specific company".
+    resumesData.current = [...resumesData.current, doc('cv-initech', 'Old CV — Initech', 'word')]
+    linksData.current = [link('cv-initech', 'word', 'Old CV — Initech'), link('letter-1', 'cover_letter', 'Initech letter')]
+    const user = userEvent.setup()
+    render(<Page />)
+    await user.click(screen.getAllByRole('button', { name: /^view/i })[0])
+
+    const cv = screen.getByLabelText('cv used')
+    expect(selectedLabel(cv)).toBe('Old CV — Initech')
+    expect(cv).toBeDisabled()
+    expect(screen.getByRole('link', { name: 'open it' })).toHaveAttribute('href', '/cv?draft=cv-initech')
+    // The letter is a general one, so its field stays open.
+    expect(screen.getByLabelText('cover letter used')).not.toBeDisabled()
+  })
+
   it('replaces the CV without unpinning the cover letter', async () => {
     const user = userEvent.setup()
     render(<Page />)

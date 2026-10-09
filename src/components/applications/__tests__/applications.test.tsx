@@ -826,8 +826,16 @@ describe('naming the record\'s fields with glyphs', () => {
       'url',
       'tags',
       'tech_stack',
-      'resume_id',
     ]) {
+      expect(glyphFor(id), `${id} has no glyph`).toBeTruthy()
+    }
+  })
+
+  it('names the document fields too, on a saved application where they live', () => {
+    // Not in the wizard's review (2026-10-09): nothing is tailored to an
+    // application that does not exist yet, so the fields wait for the record.
+    render(<ApplicationRecordView job={null} defaultCurrency="PHP" onSubmit={vi.fn()} />)
+    for (const id of ['resume_id', 'letter_id']) {
       expect(glyphFor(id), `${id} has no glyph`).toBeTruthy()
     }
   })

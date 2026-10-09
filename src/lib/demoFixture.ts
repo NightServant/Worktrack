@@ -303,7 +303,7 @@ function buildResumes(now: Date): ResumeSummary[] {
     cv('demo-cv-academic', 'Academic CV', 'word', 29, 3),
     cv('demo-cv-compact', 'Compact one-page CV', 'word', 47, 1),
     cv('demo-cl-speculative', 'Speculative letter — Lumen Studio', 'cover_letter', 52, 1),
-    cv('demo-cv-halcyon', 'Frontend Engineer — Halcyon', 'word', 55, 2),
+    cv('demo-cv-halcyon', 'Frontend Engineer — Halcyon Systems', 'word', 55, 2),
   ]
 }
 

@@ -81,6 +81,9 @@ export interface ApplicationRecordDialogProps {
   letters?: { id: string; title: string }[]
   linkedLetterId?: string | null
   onLinkedLetterChange?: (letterId: string | null) => void
+  /** The linked CV / letter was tailored for this application. See RecordBasics. */
+  resumeLocked?: boolean
+  letterLocked?: boolean
 }
 
 export function ApplicationRecordDialog({
@@ -98,6 +101,8 @@ export function ApplicationRecordDialog({
   letters,
   linkedLetterId,
   onLinkedLetterChange,
+  resumeLocked,
+  letterLocked,
 }: ApplicationRecordDialogProps) {
   const [view, setView] = React.useState<'record' | 'description'>('record')
 
@@ -176,6 +181,8 @@ export function ApplicationRecordDialog({
           letters={letters}
           linkedLetterId={linkedLetterId}
           onLinkedLetterChange={onLinkedLetterChange}
+          resumeLocked={resumeLocked}
+          letterLocked={letterLocked}
           postingOpen={view === 'description'}
           onReadMore={() => setView('description')}
           onBack={() => setView('record')}
