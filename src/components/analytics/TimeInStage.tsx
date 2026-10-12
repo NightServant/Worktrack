@@ -5,6 +5,7 @@ import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis
 import { STATUSES, type Status } from '@/components/ui/status-marker'
 import { STAGE_FILL } from './FunnelChart'
 import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion'
+import { CHART_TOOLTIP } from '@/lib/chartTooltip'
 import type { TimeInStageMetric } from '@/services/analyticsService'
 
 const LABELS: Record<Status, string> = {
@@ -62,12 +63,8 @@ export function TimeInStage({ data }: TimeInStageProps) {
             allowDecimals={false}
           />
           <Tooltip
+            {...CHART_TOOLTIP}
             cursor={{ fill: 'var(--color-bg-inset)' }}
-            contentStyle={{
-              background: 'var(--color-bg-canvas)',
-              border: '1px solid var(--color-border-default)',
-              borderRadius: 4,
-            }}
             // recharts 3 types a Tooltip formatter's first argument as
             // `ValueType | undefined`, so the `(value: number) =>` signature
             // this had under recharts 2 no longer typechecks. The narrowing is

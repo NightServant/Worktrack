@@ -4,6 +4,7 @@ import * as React from 'react'
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 
 import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion'
+import { CHART_TOOLTIP } from '@/lib/chartTooltip'
 import { sourceBreakdown } from '@/lib/overviewSeries'
 import type { Job } from '@/types'
 
@@ -66,12 +67,8 @@ export function SourceBars({ jobs }: { jobs: Job[] }) {
             axisLine={false}
           />
           <Tooltip
+            {...CHART_TOOLTIP}
             cursor={{ fill: 'var(--color-bg-inset)' }}
-            contentStyle={{
-              background: 'var(--color-bg-canvas)',
-              border: '1px solid var(--color-border-default)',
-              borderRadius: 4,
-            }}
             formatter={(value) => [`${Number(value)}`, 'applications']}
           />
           <Bar

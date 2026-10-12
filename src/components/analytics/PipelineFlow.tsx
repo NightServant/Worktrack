@@ -4,6 +4,7 @@ import * as React from 'react'
 import { Sankey, Tooltip, ResponsiveContainer, Layer, Rectangle } from 'recharts'
 import { EmptyState } from '@/components/ui/empty-state'
 import { STATUSES, type Status } from '@/components/ui/status-marker'
+import { CHART_TOOLTIP } from '@/lib/chartTooltip'
 import type { StatusTransition } from '@/services/analyticsService'
 
 const STAGE_FILL: Record<Status, string> = {
@@ -85,25 +86,7 @@ export function PipelineFlow({ transitions }: PipelineFlowProps) {
             link={{ stroke: 'var(--color-border-default)', strokeOpacity: 0.25 }}
             node={<FlowNode />}
           >
-            <Tooltip
-              contentStyle={{
-                background: 'var(--color-popover)',
-                border: '1px solid var(--color-border-subtle)',
-                borderRadius: 4,
-                fontSize: 12,
-                color: 'var(--color-popover-foreground)',
-              }}
-              /*
-                `itemStyle` IS THE ONE THAT MATTERS, and it is not decoration
-                (Gabe, 2026-09-17: "dark mode hover tags are not readable").
-                recharts styles each tooltip ROW as `color: entry.color ||
-                '#000'` -- the series colour, which a bar chart has and a
-                Sankey link does not. So "wishlist - applied : 10" was drawn in
-                literal black on the popover: fine on the light canvas this was
-                written against, invisible on the dark one.
-              */
-              itemStyle={{ color: 'var(--color-popover-foreground)' }}
-            />
+            <Tooltip {...CHART_TOOLTIP} />
           </Sankey>
         </ResponsiveContainer>
       </div>
