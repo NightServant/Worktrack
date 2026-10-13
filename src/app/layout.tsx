@@ -29,10 +29,13 @@ const arimo = Arimo({
  * a fabricated domain. Falls back to localhost for `next dev`/tests, where
  * the var is unset.
  *
- * `icons` is deliberately absent: icon.svg / apple-icon.png / favicon.ico /
+ * `icons` is deliberately absent: icon.svg / apple-icon.png /
  * opengraph-image.png in this directory are Next 15's file-convention names,
  * and Next generates the <link rel="icon"> etc. tags from them on its own --
  * hand-writing `icons` here would just be a second, driftable source of truth.
+ * favicon.ico lives in public/ instead, as a static file, so the Vercel
+ * dashboard can find it (see appIcons.test.ts); browsers request
+ * /favicon.ico by default, so it needs no tag.
  *
  * `description` stays a sentence fragment, lowercase chrome under the item-10
  * rule ("Worktrack" itself is the product's proper noun and keeps its case).

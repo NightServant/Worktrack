@@ -24,16 +24,24 @@ import { metadata } from '../layout'
  * placeholder is exactly the assertion class this project has shipped eight
  * times.
  */
-const ICONS = ['icon.svg', 'apple-icon.png', 'favicon.ico', 'opengraph-image.png']
+const ICONS = ['src/app/icon.svg', 'src/app/apple-icon.png', 'src/app/opengraph-image.png', 'public/favicon.ico']
 
 describe('app icon conventions', () => {
-  for (const file of ICONS) {
-    it(`ships a non-empty src/app/${file}`, () => {
-      const path = `src/app/${file}`
+  for (const path of ICONS) {
+    it(`ships a non-empty ${path}`, () => {
       expect(existsSync(path), `${path} is missing`).toBe(true)
       expect(statSync(path).size, `${path} is empty`).toBeGreaterThan(100)
     })
   }
+
+  // favicon.ico is the one icon NOT under src/app/ (Gabe, 2026-10-13: the
+  // Vercel dashboard card still showed the Vite logo). As a src/app/ file it
+  // builds to a generated route, not a static file, and the dashboard's
+  // favicon lookup only saw the Vite era's static /vite.svg. A static public/
+  // file is what it reads. Both at once is a Next build error.
+  it('serves favicon.ico from public/, not from src/app/', () => {
+    expect(existsSync('src/app/favicon.ico')).toBe(false)
+  })
 
   it('no longer ships the Vite starter logo', () => {
     expect(existsSync('public/vite.svg')).toBe(false)
