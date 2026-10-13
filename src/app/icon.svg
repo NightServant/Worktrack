@@ -22,11 +22,10 @@
        Somebody running a light OS with the app in dark mode has a light tab
        strip and wants the dark mark.
 
-       favicon.ico stays beside this and cannot be theme-aware, which is what
-       an .ico is. Next emits it FIRST with an explicit pixel size and this
-       file SECOND with type="image/svg+xml" and sizes="any", which is the
-       ordering that makes every browser with SVG favicon support prefer this
-       one and leaves the .ico to the ones without it.
+       THERE IS NO favicon.ico BESIDE IT (2026-10-13). An .ico cannot be
+       theme-aware, and whatever picked it, the Vercel dashboard card among
+       them, got the light mark on a dark surface. This file is the only icon
+       now, so everything that shows one shows this.
 
        KEEP EVERY HYPHEN IN THIS COMMENT SINGLE. An XML comment may not contain
        a double hyphen anywhere, and a malformed SVG does not render at all.

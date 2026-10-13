@@ -24,7 +24,7 @@ import { metadata } from '../layout'
  * placeholder is exactly the assertion class this project has shipped eight
  * times.
  */
-const ICONS = ['src/app/icon.svg', 'src/app/apple-icon.png', 'src/app/opengraph-image.png', 'public/favicon.ico']
+const ICONS = ['src/app/icon.svg', 'src/app/apple-icon.png', 'src/app/opengraph-image.png']
 
 describe('app icon conventions', () => {
   for (const path of ICONS) {
@@ -34,13 +34,15 @@ describe('app icon conventions', () => {
     })
   }
 
-  // favicon.ico is the one icon NOT under src/app/ (Gabe, 2026-10-13: the
-  // Vercel dashboard card still showed the Vite logo). As a src/app/ file it
-  // builds to a generated route, not a static file, and the dashboard's
-  // favicon lookup only saw the Vite era's static /vite.svg. A static public/
-  // file is what it reads. Both at once is a Next build error.
-  it('serves favicon.ico from public/, not from src/app/', () => {
+  // NO favicon.ico, ANYWHERE (Gabe, 2026-10-13: the Vercel dashboard card
+  // showed the Vite logo, then "the logo should be theme-aware"). An .ico is a
+  // fixed bitmap, light-theme only, so whatever picks it gets dark cells on a
+  // dark surface. With icon.svg the only icon, the browser tab and the Vercel
+  // card both get the SVG, which switches with prefers-color-scheme.
+  // aero_weather ships app/icon.svg alone and its Vercel card shows it.
+  it('ships no favicon.ico, so the theme-aware SVG is the only icon', () => {
     expect(existsSync('src/app/favicon.ico')).toBe(false)
+    expect(existsSync('public/favicon.ico')).toBe(false)
   })
 
   it('no longer ships the Vite starter logo', () => {
