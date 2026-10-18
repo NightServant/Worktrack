@@ -160,6 +160,13 @@ describe('readTypography', () => {
     expect(readTypography('<w:spacing w:line="480" w:lineRule="auto"/>').lineHeight).toBe(2)
   })
 
+  it('reads unstated line spacing as SINGLE, which is what Word draws', () => {
+    // Gabe's 2026-10-18 CV states no w:line anywhere. null let the editor
+    // inherit the app's own 1.5 leading: five pages where Word draws three.
+    const body = '<w:p><w:r><w:t>body</w:t></w:r></w:p>'
+    expect(readTypography(body).lineHeight).toBe(1)
+  })
+
   it('converts w:after twips into points', () => {
     // 40, 60 and 160 twips are 2, 3 and 8pt; the median is 3.
     expect(readTypography(DOC).paragraphSpacing).toBe(3)

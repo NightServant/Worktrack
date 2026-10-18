@@ -340,7 +340,18 @@ export function readTypography(documentXml: string, stylesXml = ''): DocumentTyp
   return {
     fontFamily: face ? `"${face}", Georgia, serif` : null,
     fontSize: body,
-    lineHeight: lineHeight && lineHeight > 0.5 && lineHeight < 4 ? lineHeight : null,
+    // UNSTATED IS SINGLE, not unknown: OOXML's default line rule is `auto` at
+    // 240, and that is what Word draws. Null let the editor inherit the app's
+    // own 1.5 leading, which set Gabe's 2026-10-18 CV on five pages against
+    // Word's three. A document with no text at all still reads as nothing.
+    lineHeight:
+      line === undefined
+        ? body !== null
+          ? 1
+          : null
+        : lineHeight && lineHeight > 0.5 && lineHeight < 4
+          ? lineHeight
+          : null,
     paragraphSpacing: median(afters),
     titleSize: title,
     sectionSize: section,

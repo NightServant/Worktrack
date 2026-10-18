@@ -42,31 +42,48 @@ export function useNaturalLineHeight(fontFamily: string | null): number {
       return
     }
 
-    const probe = document.createElement('div')
-    probe.textContent = 'Hxg'
-    probe.setAttribute('aria-hidden', 'true')
-    Object.assign(probe.style, {
-      position: 'absolute',
-      visibility: 'hidden',
-      left: '-9999px',
-      top: '0',
-      whiteSpace: 'nowrap',
-      fontFamily,
-      fontSize: `${PROBE_PX}px`,
-      lineHeight: 'normal',
-    })
+    let cancelled = false
+    const measure = () => {
+      const probe = document.createElement('div')
+      probe.textContent = 'Hxg'
+      probe.setAttribute('aria-hidden', 'true')
+      Object.assign(probe.style, {
+        position: 'absolute',
+        visibility: 'hidden',
+        left: '-9999px',
+        top: '0',
+        whiteSpace: 'nowrap',
+        fontFamily,
+        fontSize: `${PROBE_PX}px`,
+        lineHeight: 'normal',
+      })
 
-    document.body.appendChild(probe)
-    const measured = probe.getBoundingClientRect().height / PROBE_PX
-    probe.remove()
+      document.body.appendChild(probe)
+      const measured = probe.getBoundingClientRect().height / PROBE_PX
+      probe.remove()
 
-    // A zero comes back from a browser that never laid the probe out -- a
-    // hidden tab, a print preview -- and must not become the line height.
-    setRatio(
-      Number.isFinite(measured) && measured > 0.5 && measured < 4
-        ? measured
-        : FALLBACK_NATURAL_LINE_HEIGHT
-    )
+      if (cancelled) return
+      setRatio(
+        Number.isFinite(measured) && measured > 0.5 && measured < 4
+          ? measured
+          : FALLBACK_NATURAL_LINE_HEIGHT
+      )
+    }
+
+    measure()
+    // AND AGAIN WHEN THE FACE ARRIVES. The editor's Garamond is an @font-face
+    // (see index.css), and measured on mount it is measured as its fallback:
+    // Georgia's 1.14 kept against the fitted face's 1.125, every line a little
+    // tall and the pages breaking early (Gabe, 2026-10-18). `load` resolves at
+    // once for a face that is already there or is not a web font at all.
+    document.fonts
+      ?.load(`${PROBE_PX}px ${fontFamily}`)
+      .then(() => measure())
+      .catch(() => {})
+
+    return () => {
+      cancelled = true
+    }
   }, [fontFamily])
 
   return ratio

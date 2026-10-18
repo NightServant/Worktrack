@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { breakIndexes, remainingOnPage } from '../pagination'
+import { breakIndexes, pageUnits, remainingOnPage } from '../pagination'
 
 /**
  * The break rule, tested without a browser: the plugin measures and this
@@ -71,5 +71,56 @@ describe('remainingOnPage', () => {
 
   it('never returns a negative height', () => {
     expect(remainingOnPage([2500], 0, PAGE)).toBeGreaterThanOrEqual(0)
+  })
+})
+
+describe('pageUnits (2026-10-18)', () => {
+  // jsdom lays nothing out, so each element is given the numbers a browser
+  // would report. A list of three 20px bullets at the top of the editor,
+  // after a 30px paragraph, with a 6px gap below the list.
+  const box = (el: HTMLElement, offsetTop: number, offsetHeight: number, offsetParent: Element | null) => {
+    Object.defineProperty(el, 'offsetTop', { value: offsetTop })
+    Object.defineProperty(el, 'offsetHeight', { value: offsetHeight })
+    Object.defineProperty(el, 'offsetParent', { value: offsetParent })
+  }
+  const build = (spacerAfterFirst = 0) => {
+    const dom = document.createElement('div')
+    document.body.append(dom)
+    const p = document.createElement('p')
+    const ul = document.createElement('ul')
+    ul.style.marginBottom = '6px'
+    ul.style.paddingLeft = '24px'
+    dom.append(p, ul)
+    box(p, 0, 30, dom)
+    const items = [0, 1, 2].map(() => document.createElement('li'))
+    items.forEach((li, i) => {
+      if (i === 1 && spacerAfterFirst) {
+        const spacer = document.createElement('div')
+        spacer.setAttribute('data-page-spacer', '')
+        box(spacer, 50, spacerAfterFirst, dom)
+        ul.append(spacer)
+      }
+      ul.append(li)
+      box(li, 30 + i * 20 + (i >= 1 ? spacerAfterFirst : 0), 20, dom)
+    })
+    box(ul, 30, 60 + spacerAfterFirst, dom)
+    return { dom, p, items }
+  }
+
+  it('breaks a list into its items, which add up to the list', () => {
+    const { dom, p, items } = build()
+    const units = pageUnits(dom)
+    expect(units.map((u) => u.el)).toEqual([p, ...items])
+    expect(units.map((u) => u.height)).toEqual([30, 20, 20, 26])
+    expect(units[1].inset).toBe(24)
+    dom.remove()
+  })
+
+  it('gives the same heights with a page spacer drawn inside the list', () => {
+    // Otherwise the spacer's own height feeds back into the next pass and the
+    // break never settles.
+    const { dom } = build(400)
+    expect(pageUnits(dom).map((u) => u.height)).toEqual([30, 20, 20, 26])
+    dom.remove()
   })
 })

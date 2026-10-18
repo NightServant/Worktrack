@@ -343,11 +343,27 @@ describe('buildDocument', () => {
 describe('sheetFor line spacing', () => {
   const typography = { ...NO_TYPOGRAPHY, fontSize: 10, lineHeight: 0.98 }
 
+  // "Garamond" is fitted to Word's Monotype face since 2026-10-18: sizes
+  // scaled by 1.0194, single spacing Word's 1.125, and the line height divided
+  // by the scale so the absolute line box stays the document's.
+  const FIT = 1.0194
+
   it('converts the multiple through the drawn family’s own metric', () => {
     const garamond = sheetFor(DEFAULT_GEOMETRY, { ...typography, fontFamily: 'Garamond, serif' })
+    const ebGaramond = sheetFor(DEFAULT_GEOMETRY, { ...typography, fontFamily: '"EB Garamond", serif' })
     const calibri = sheetFor(DEFAULT_GEOMETRY, { ...typography, fontFamily: 'Calibri, sans-serif' })
-    expect(garamond.page.lineHeight).toBeCloseTo(0.98 * 1.305, 3)
+    expect(garamond.page.lineHeight).toBeCloseTo((0.98 * 1.125) / FIT, 3)
+    // A document actually set in EB Garamond is drawn as itself.
+    expect(ebGaramond.page.lineHeight).toBeCloseTo(0.98 * 1.305, 3)
     expect(calibri.page.lineHeight).toBeCloseTo(0.98 * 1.2207, 3)
+  })
+
+  it("draws Word's Garamond at Word's widths, and nothing else scaled", () => {
+    expect(sheetFor(DEFAULT_GEOMETRY, { ...typography, fontFamily: '"Garamond", Georgia, serif' }).page.fontSize).toBeCloseTo(10 * FIT, 4)
+    expect(sheetFor(DEFAULT_GEOMETRY, { ...typography, fontFamily: '"EB Garamond", serif' }).page.fontSize).toBe(10)
+    expect(sheetFor(DEFAULT_GEOMETRY, { ...typography, fontFamily: 'Calibri' }).page.fontSize).toBe(10)
+    // A run's own size scales with the page it is on.
+    expect(styleForMarks([{ type: 'textStyle', attrs: { fontSize: '10pt' } }], false, 'EB Garamond', FIT).fontSize).toBeCloseTo(10 * FIT, 4)
   })
 
   it('prefers what the browser measured, since that is what the preview used', () => {
@@ -355,13 +371,13 @@ describe('sheetFor line spacing', () => {
     // Georgia, say, where the server can only draw Gelasio. Matching the
     // preview beats matching the substitute.
     const sheet = sheetFor(DEFAULT_GEOMETRY, { ...typography, fontFamily: 'Garamond, serif' }, 1.137)
-    expect(sheet.page.lineHeight).toBeCloseTo(0.98 * 1.137, 3)
+    expect(sheet.page.lineHeight).toBeCloseTo((0.98 * 1.137) / FIT, 3)
   })
 
   it('ignores a measurement that cannot be one', () => {
     for (const nonsense of [0, -2, 12, Number.NaN]) {
       const sheet = sheetFor(DEFAULT_GEOMETRY, { ...typography, fontFamily: 'Garamond, serif' }, nonsense)
-      expect(sheet.page.lineHeight, String(nonsense)).toBeCloseTo(0.98 * 1.305, 3)
+      expect(sheet.page.lineHeight, String(nonsense)).toBeCloseTo((0.98 * 1.125) / FIT, 3)
     }
   })
 

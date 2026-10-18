@@ -23,6 +23,73 @@
    Two layers on purpose. Primitives are literal values and are referenced only
    by the semantic layer below; components use semantic names exclusively. That
    indirection is what makes dark mode a mode switch rather than a second design. */
+/*
+  GARAMOND, AS WORD SETS IT (2026-10-18).
+
+  An imported CV names "Garamond", and Word's Garamond is a Monotype face this
+  app cannot ship. The editor used to take whatever the browser found under
+  that name: a 3.6% wider Garamond on Gabe's Mac, Georgia (13.5% wider) on a
+  machine with none. Either way, lines wrapped and pages broke away from
+  Word's three pages.
+
+  So "Garamond" is EB Garamond (OFL; the face the PDF export already draws),
+  fitted to Word's metrics, measured off Word's own GARA.ttf against the CV's
+  text:
+
+  - size-adjust brings roman and bold to Word's advance widths (Word is 1.94%
+    and 1.74% wider). Italics are NOT scaled: Word's italic is 9% narrower, and
+    shrinking ours that far would set the dates and role lines visibly smaller
+    than the text beside them, for lines too short to wrap anyway.
+  - the overrides give every face Word's line box, ascent 1765 and descent 539
+    of 2048 units (1.125 of the size). size-adjust scales overrides as well,
+    so each is divided by that face's factor.
+
+  Shadowing the name is the point: an author @font-face wins over a local
+  font of the same family, so every machine draws the same page.
+*/
+@font-face {
+  font-family: "Garamond";
+  src: url("/fonts/EBGaramond-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  size-adjust: 101.94%;
+  ascent-override: 84.54%;
+  descent-override: 25.82%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: "Garamond";
+  src: url("/fonts/EBGaramond-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  size-adjust: 101.74%;
+  ascent-override: 84.71%;
+  descent-override: 25.87%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: "Garamond";
+  src: url("/fonts/EBGaramond-Italic.ttf") format("truetype");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+  ascent-override: 86.18%;
+  descent-override: 26.32%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: "Garamond";
+  src: url("/fonts/EBGaramond-BoldItalic.ttf") format("truetype");
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+  ascent-override: 86.18%;
+  descent-override: 26.32%;
+  line-gap-override: 0%;
+}
+
 @theme {
   /* Helvetica Neue is licensed and cannot be self-hosted; Mac visitors have it
      and nobody else does. Arimo is metric-compatible with Arial (which is

@@ -100,6 +100,75 @@ export function breakIndexes(
   return breaks
 }
 
+/** One thing the paginator may break before, and the page it consumes. */
+export interface PageUnit {
+  el: HTMLElement
+  height: number
+  /** Left padding of the list it sits in, so the seam can reach the sheet's edge. */
+  inset: number
+}
+
+const px = (value: string | null | undefined) => Number.parseFloat(value || '0') || 0
+
+/**
+ * What the page is made of: top-level blocks, and each ITEM of a list.
+ *
+ * A LIST USED TO BE ONE BLOCK, so a break could only fall before or after all
+ * of it. Gabe's 2026-10-18 CV breaks page one INSIDE a project's bullets, as
+ * Word does; moving the whole list stranded the project's title and links at
+ * the foot of page one above an empty band, with every bullet on page two.
+ *
+ * An item's share is measured from where it starts to where the next one
+ * starts, in LAYOUT pixels (`offsetTop`, not `getBoundingClientRect`, which
+ * the sheet's zoom would scale) and with any spacer already inside the list
+ * taken back out -- so, like the blocks, the answer does not move when the
+ * spacers it produces are drawn. The last item takes what is left of the
+ * list's own height, so the items always add up to the list.
+ */
+export function pageUnits(dom: HTMLElement): PageUnit[] {
+  const units: PageUnit[] = []
+  for (const child of Array.from(dom.children) as HTMLElement[]) {
+    if (child.hasAttribute('data-page-spacer')) continue
+    const style = window.getComputedStyle(child)
+    const outer = child.offsetHeight + px(style.marginTop) + px(style.marginBottom)
+    const tag = child.tagName.toUpperCase()
+    const items = tag === 'UL' || tag === 'OL' ? listUnits(child, outer, px(style.marginTop)) : null
+    if (items) units.push(...items)
+    else units.push({ el: child, height: outer, inset: 0 })
+  }
+  return units
+}
+
+function listUnits(list: HTMLElement, outer: number, marginTop: number): PageUnit[] | null {
+  const items: HTMLElement[] = []
+  const spacersBefore: number[] = []
+  let spacers = 0
+  for (const el of Array.from(list.children) as HTMLElement[]) {
+    if (el.hasAttribute('data-page-spacer')) {
+      spacers += el.offsetHeight
+      continue
+    }
+    if (el.tagName.toUpperCase() !== 'LI') continue
+    items.push(el)
+    spacersBefore.push(spacers)
+  }
+  if (items.length < 2) return null
+
+  // Items measure from their offsetParent; the list's own top is 0 when the
+  // list is that parent, and its offsetTop when it is not.
+  const listTop = (items[0].offsetParent === list ? 0 : list.offsetTop) - marginTop
+  const top = (i: number) => items[i].offsetTop - spacersBefore[i]
+  const inset = px(window.getComputedStyle(list).paddingLeft)
+
+  let used = 0
+  const units = items.map((el, i) => {
+    const height = i < items.length - 1 ? top(i + 1) - (i === 0 ? listTop : top(i)) : outer - spacers - used
+    used += height
+    return { el, height, inset }
+  })
+  return units
+}
+
 /** How much of the page is still empty when the break falls, in pixels. */
 export function remainingOnPage(
   heights: number[],
@@ -146,27 +215,17 @@ export const Pagination = Extension.create<PaginationOptions>({
             const dom = editorView.dom as HTMLElement
             if (!pageHeight || pageHeight <= 0) return
 
-            // Top-level blocks only, and spacers skipped: their height is a
+            // Blocks and list items, spacers skipped: their height is a
             // result of this calculation, so counting them would feed the
-            // answer back into itself.
-            const blocks = Array.from(dom.children).filter(
-              (el) => !el.hasAttribute('data-page-spacer')
-            ) as HTMLElement[]
-            const heights = blocks.map((el) => {
-              const style = window.getComputedStyle(el)
-              // Margins are part of how much page a block consumes, and
-              // `offsetHeight` excludes them.
-              return (
-                el.offsetHeight +
-                Number.parseFloat(style.marginTop || '0') +
-                Number.parseFloat(style.marginBottom || '0')
-              )
-            })
+            // answer back into itself. See `pageUnits`.
+            const units = pageUnits(dom)
+            const heights = units.map((unit) => unit.height)
 
             const indexes = breakIndexes(heights, pageHeight)
             const next = indexes.map((index) => {
               const remaining = remainingOnPage(heights, index, pageHeight)
-              const pos = editorView.posAtDOM(blocks[index], 0)
+              const { el, inset } = units[index]
+              const pos = editorView.posAtDOM(el, 0)
               return Decoration.widget(
                 Math.max(0, pos - 1),
                 () => {
@@ -188,7 +247,9 @@ export const Pagination = Extension.create<PaginationOptions>({
                   const seam = document.createElement('div')
                   seam.style.height = `${gap}px`
                   seam.style.background = 'var(--color-bg-inset)'
-                  seam.style.marginLeft = 'calc(-1 * var(--page-margin-left, 0px))'
+                  // A seam between two bullets starts inside the list's
+                  // indent, so it reaches back across that too.
+                  seam.style.marginLeft = `calc(-1 * var(--page-margin-left, 0px) - ${inset}px)`
                   seam.style.marginRight = 'calc(-1 * var(--page-margin-right, 0px))'
                   spacer.appendChild(seam)
                   return spacer

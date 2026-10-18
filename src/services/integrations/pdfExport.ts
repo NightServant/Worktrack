@@ -357,11 +357,31 @@ export function faceFor(bold: boolean, italic: boolean, family: FamilyName = 'Ti
   return regular
 }
 
+/**
+ * Word's Garamond, as the editor draws it (see the @font-face in index.css).
+ *
+ * A document that names "Garamond" -- every CV Word sets in it -- is drawn in
+ * EB Garamond, whose advances are 1.94% narrower than Word's Monotype face and
+ * whose line box is 1.305 of the size against Word's 1.125. Unfitted, lines
+ * wrapped late and the PDF broke its pages away from Word's (Gabe,
+ * 2026-10-18). So sizes are scaled by `scale` and single spacing is Word's.
+ *
+ * ONLY THE NAME "Garamond", first in the stack: a document actually set in EB
+ * Garamond is drawn as itself.
+ */
+const WORD_GARAMOND = { scale: 1.0194, natural: 1.125 }
+
+export function fitFor(stack: string | null | undefined, family: FamilyName): { scale: number; natural: number } | null {
+  return family === 'EB Garamond' && /^\s*['"]?garamond['"]?\s*(,|$)/i.test(stack ?? '') ? WORD_GARAMOND : null
+}
+
 /** The style one run of text carries, from its marks. */
 export function styleForMarks(
   marks: Mark[] | undefined,
   baseBold = false,
-  baseFamily: FamilyName = 'Times'
+  baseFamily: FamilyName = 'Times',
+  /** The sheet's size fit, so a run's own size is scaled with the rest. */
+  scale = 1
 ): Style {
   const names = new Set((marks ?? []).map((mark) => mark?.type))
   // A run may name its own face; the document's is the default under it.
@@ -387,7 +407,7 @@ export function styleForMarks(
   for (const mark of marks ?? []) {
     if (mark?.type === 'textStyle') {
       const size = toPoints(mark.attrs?.fontSize)
-      if (size) style.fontSize = size
+      if (size) style.fontSize = size * scale
       if (typeof mark.attrs?.color === 'string') style.color = mark.attrs.color
     }
     if (mark?.type === 'highlight') {
@@ -411,6 +431,8 @@ export function styleForMarks(
 export interface Sheet {
   page: Style
   family: FamilyName
+  /** Size multiplier fitting the drawn face to the named one; 1 for most. */
+  scale: number
   heading: (level: number, ruled: boolean) => Style
   paragraph: (inList: boolean) => Style
   /** The rule Word draws under a block, for a paragraph that carries one. */
@@ -450,16 +472,25 @@ export function sheetFor(
    * browser here, so the serif fallback is the measurement. Unstated leaves
    * react-pdf's own default alone.
    */
+  const fit = fitFor(type.fontFamily, family)
+  const scale = fit?.scale ?? 1
   const natural =
     naturalLineHeight && Number.isFinite(naturalLineHeight) && naturalLineHeight > 0.5 && naturalLineHeight < 4
       ? naturalLineHeight
-      : naturalLineHeightOf(family)
-  const lineHeight = cssLineHeight(type.lineHeight, natural) ?? undefined
+      : (fit?.natural ?? naturalLineHeightOf(family))
+  // Divided by the scale: react-pdf multiplies `lineHeight` by the SCALED
+  // size, and the line box has to stay what the document's own face draws.
+  const css = cssLineHeight(type.lineHeight, natural)
+  const lineHeight = css ? css / scale : undefined
 
   const headingSize = (level: number) => {
-    if (level === 1) return type.titleSize ?? body * EDITOR.titleScale
-    if (level === 2) return type.sectionSize ?? body * EDITOR.sectionScale
-    return type.sectionSize ?? body
+    const size =
+      level === 1
+        ? (type.titleSize ?? body * EDITOR.titleScale)
+        : level === 2
+          ? (type.sectionSize ?? body * EDITOR.sectionScale)
+          : (type.sectionSize ?? body)
+    return size * scale
   }
 
   const rule: Style = {
@@ -475,13 +506,20 @@ export function sheetFor(
       paddingBottom: inches(geometry.margin.bottom),
       paddingLeft: inches(geometry.margin.left),
       ...faceFor(false, false, family),
-      fontSize: body,
+      fontSize: body * scale,
       color: INK,
       ...(lineHeight ? { lineHeight } : {}),
     },
     family,
+    scale,
     heading: (level, ruled) => ({
       fontSize: headingSize(level),
+      // ON THE HEADING, NOT ONLY THE PAGE. react-pdf resolves a unitless
+      // line height where it is declared, against THAT element's size, and
+      // hands the result down -- so the page's 10.5pt line box reached the
+      // 18pt name and drew it over the line beneath (Gabe, 2026-10-18). CSS
+      // keeps the multiplier; this restates it where the size is stated.
+      ...(lineHeight ? { lineHeight } : {}),
       ...faceFor(true, false, family),
       // `h1` HAS NO SPACE ABOVE IT even when the document states heading
       // spacing, because the editor's rule is `margin-block: 0 var(...)` for
@@ -500,6 +538,10 @@ export function sheetFor(
       ...(ruled ? rule : {}),
     }),
     rule,
+    // No line height here: a paragraph states no size of its own, and
+    // react-pdf resolves a multiplier against its DEFAULT 18pt where none is
+    // stated -- 19.9pt lines under 10.5pt text. It inherits the page's,
+    // which was resolved at the body size.
     paragraph: (inList) => ({
       marginTop: 0,
       marginBottom:
@@ -564,7 +606,7 @@ function inlines(node: Node, keyPrefix: string, sheet: Sheet, baseBold = false):
         Text,
         {
           key,
-          style: styleForMarks(child.marks, baseBold, sheet.family),
+          style: styleForMarks(child.marks, baseBold, sheet.family, sheet.scale),
         },
         child.text
       ),
