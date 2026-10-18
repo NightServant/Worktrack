@@ -211,6 +211,11 @@ describe('readParagraphFormats', () => {
     expect(keys(split)).toEqual([ruleKey('TECHNICAL SKILLS')])
   })
 
+  it('notes a TOP border separately from the bottom one', () => {
+    const xml = '<w:p><w:pPr><w:pBdr><w:top w:val="single" w:sz="6"/></w:pBdr></w:pPr><w:r><w:t>summary</w:t></w:r></w:p>'
+    expect(readParagraphFormats(xml)[0]).toMatchObject({ ruled: false, ruledAbove: true })
+  })
+
   it('ignores a border that is explicitly none', () => {
     const none = '<w:p><w:pPr><w:pBdr><w:bottom w:val="nil"/></w:pBdr></w:pPr><w:r><w:t>x</w:t></w:r></w:p>'
     expect(keys(none)).toEqual([])
@@ -294,6 +299,26 @@ describe('readParagraphFormats', () => {
       [10, 2],
       [null, 8],
     ])
+  })
+
+  it('notes a right tab stop and the colours worth keeping', () => {
+    // An entry line on Gabe's 2026-10-18 CV: black bold title, then a tab to a
+    // right stop and a #444444 date. #1A1A1A body ink is not a choice anyone
+    // made to be seen, so it is not carried.
+    const xml =
+      '<w:p><w:pPr><w:tabs><w:tab w:val="right" w:pos="10512"/></w:tabs></w:pPr>' +
+      '<w:r><w:rPr><w:b/><w:color w:val="000000"/></w:rPr><w:t>Clover</w:t></w:r>' +
+      '<w:r><w:rPr><w:i/><w:color w:val="444444"/></w:rPr><w:tab/><w:t>Aug 2026</w:t></w:r></w:p>' +
+      '<w:p><w:r><w:rPr><w:color w:val="1A1A1A"/></w:rPr><w:t>body</w:t></w:r></w:p>' +
+      '<w:p><w:pPr><w:tabs><w:tab w:val="left" w:pos="2000"/></w:tabs></w:pPr><w:r><w:t>a</w:t></w:r></w:p>'
+    const [entry, body, left] = readParagraphFormats(xml)
+    expect(entry.rightTab).toBe(true)
+    expect(entry.runs).toEqual([
+      { text: 'Clover', color: null },
+      { text: '\tAug 2026', color: '#444444' },
+    ])
+    expect(body.runs).toBeUndefined()
+    expect(left.rightTab).toBe(false)
   })
 
   it('drops inherited spacing under contextual spacing, so a list stays tight', () => {

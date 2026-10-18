@@ -56,6 +56,13 @@ export function buildOffsetMap(editor: Editor): OffsetMap {
       text += node.text
       return false
     }
+    // A right tab is a separator, as `getText()` renders it: without it the
+    // checker reads "MIS OfficeJune" as one misspelt word. No segment, so an
+    // offset on it is un-addressable like a block separator.
+    if (node.type.name === 'rightTab') {
+      text += '\t'
+      return false
+    }
     // A block that is about to contribute text gets a separator before it,
     // but not before the first one -- matching getText()'s own behaviour,
     // which does not lead with a blank line.

@@ -76,3 +76,40 @@ describe('a paragraph carrying the spacing Word declared', () => {
     expect(html).toContain('margin-bottom: 0pt')
   })
 })
+
+describe('a right-tabbed date and a ruled paragraph in the editor (2026-10-18)', () => {
+  const doc = {
+    type: 'doc',
+    content: [
+      {
+        type: 'paragraph',
+        attrs: { ruled: true },
+        content: [
+          { type: 'text', text: 'Clover' },
+          { type: 'rightTab' },
+          { type: 'text', text: 'Aug 2026' },
+        ],
+      },
+    ],
+  }
+
+  it('renders the tab as the spacer the stylesheet pushes the date with, and the rule', () => {
+    const editor = new Editor({ content: doc, extensions: WORD_EDITOR_EXTENSIONS })
+    const html = editor.getHTML()
+    expect(html).toContain('data-right-tab')
+    expect(html).toContain('data-ruled="true"')
+    editor.destroy()
+  })
+
+  it('reads as a tab in getText, so the score and tailoring see two words, not one', () => {
+    const editor = new Editor({ content: doc, extensions: WORD_EDITOR_EXTENSIONS })
+    expect(editor.getText()).toBe('Clover\tAug 2026')
+    editor.destroy()
+  })
+
+  it('survives a save: the JSON the editor writes back still holds the tab and the rule', () => {
+    const editor = new Editor({ content: doc, extensions: WORD_EDITOR_EXTENSIONS })
+    expect(editor.getJSON()).toMatchObject(doc)
+    editor.destroy()
+  })
+})

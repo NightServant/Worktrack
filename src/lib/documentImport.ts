@@ -224,6 +224,8 @@ export const MAMMOTH_OPTIONS = {
     "p[style-name='Heading 1'] => h1:fresh",
     "p[style-name='Heading 2'] => h2:fresh",
     "p[style-name='Heading 3'] => h3:fresh",
+    // mammoth ignores underline unless asked. Gabe's CV underlines its links.
+    'u => u',
   ],
   convertImage: undefined,
 }
@@ -279,7 +281,7 @@ async function docxToWordContent(file: File): Promise<ResumeContent> {
 
   const { value: html } = await mammoth.convertToHtml({ arrayBuffer }, MAMMOTH_OPTIONS)
 
-  return withSetup(htmlToWordContent(html, setup.formats), setup)
+  return withSetup(htmlToWordContent(html, setup.formats, setup.typography.fontSize), setup)
 }
 
 /**
@@ -338,12 +340,17 @@ function withSetup(
 type TipTapNode = { type: string; attrs?: Record<string, unknown>; content?: TipTapNode[]; marks?: Array<{ type: string; attrs?: Record<string, unknown> }>; text?: string }
 
 /** Exported for tests: the HTML walk, without the file reading around it. */
-export function htmlToWordContent(html: string, formats: ParagraphFormat[] = []): ResumeContent {
+export function htmlToWordContent(
+  html: string,
+  formats: ParagraphFormat[] = [],
+  /** The document's body size in points, which a title has to exceed. */
+  bodySize: number | null = null
+): ResumeContent {
   const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html')
   sectionsFromHeadingOne(doc)
   const blocks: TipTapNode[] = []
   collectBlocks(doc.body, blocks)
-  titleBySize(blocks, applyFormats(blocks, formats), formats)
+  titleBySize(blocks, applyFormats(blocks, formats), formats, bodySize)
 
   return {
     type: 'doc',
@@ -375,21 +382,31 @@ function applyFormats(blocks: TipTapNode[], formats: ParagraphFormat[]): Map<Tip
   const matched = new Map<TipTapNode, ParagraphFormat>()
   if (formats.length === 0) return matched
   let cursor = 0
+  let previous: TipTapNode | null = null
 
   for (const block of textBlocksOf(blocks)) {
     const key = ruleKey(textOf(block))
     if (!key) continue
     const index = formats.findIndex((format, i) => i >= cursor && format.key === key)
-    if (index === -1) continue
+    if (index === -1) {
+      previous = block
+      continue
+    }
     const format = formats[index]
     cursor = index + 1
     matched.set(block, format)
+    // A line ABOVE this paragraph is the same line as one under the paragraph
+    // before it, which the editor and both exports already draw.
+    if (format.ruledAbove && previous) previous.attrs = { ...(previous.attrs ?? {}), ruled: true }
+    previous = block
 
     block.attrs = {
       ...(block.attrs ?? {}),
       spaceBefore: format.spaceBefore ?? 0,
       spaceAfter: format.spaceAfter ?? 0,
-      ...(format.ruled && block.type === 'heading' ? { ruled: true } : {}),
+      // Paragraphs as well as headings since 2026-10-18: the line under the
+      // summary on Gabe's new CV is a border on a plain paragraph.
+      ...(format.ruled ? { ruled: true } : {}),
     }
 
     // Headings already take their size from the document's own heading scale,
@@ -397,8 +414,73 @@ function applyFormats(blocks: TipTapNode[], formats: ParagraphFormat[]): Map<Tip
     if (format.fontSize !== null && block.type === 'paragraph') {
       setFontSize(block.content ?? [], `${format.fontSize}pt`)
     }
+    // After the size, which replaces the textStyle mark the colour joins.
+    if (format.runs) block.content = colorRuns(block.content ?? [], format.runs)
+    if (format.rightTab) block.content = rightTabs(block.content ?? [])
   }
   return matched
+}
+
+/**
+ * The colours mammoth drops, put back on the text they belong to.
+ *
+ * ALIGNED BY TEXT, NOT BY RUN COUNT. mammoth merges and splits runs on its
+ * own terms (a proofing mark splits one, a shared format merges two), so the
+ * n-th run here is not the n-th text node there. Each text node is found in
+ * the paragraph's own text from where the last one ended, and takes the
+ * colour of the characters it covers -- split where that colour changes.
+ * A node that cannot be found keeps its text and no colour.
+ */
+function colorRuns(content: TipTapNode[], runs: { text: string; color: string | null }[]): TipTapNode[] {
+  const text = runs.map((run) => run.text).join('')
+  const colors = runs.flatMap((run) => Array.from(run.text, () => run.color))
+  let cursor = 0
+  return content.flatMap((node) => {
+    if (typeof node.text !== 'string') return [node]
+    const at = text.indexOf(node.text, cursor)
+    if (at === -1) return [node]
+    cursor = at + node.text.length
+    const pieces: TipTapNode[] = []
+    let start = 0
+    for (let i = 1; i <= node.text.length; i++) {
+      if (i < node.text.length && colors[at + i] === colors[at + start]) continue
+      const color = colors[at + start]
+      const piece: TipTapNode = { ...node, text: node.text.slice(start, i) }
+      pieces.push(color ? withTextStyle(piece, { color }) : piece)
+      start = i
+    }
+    return pieces
+  })
+}
+
+/** Merge attributes into a node's textStyle mark, adding one if it has none. */
+function withTextStyle(node: TipTapNode, attrs: Record<string, unknown>): TipTapNode {
+  const marks = node.marks ?? []
+  const existing = marks.find((mark) => mark.type === 'textStyle')
+  return {
+    ...node,
+    marks: [
+      ...marks.filter((mark) => mark !== existing),
+      { type: 'textStyle', attrs: { ...(existing?.attrs ?? {}), ...attrs } },
+    ],
+  }
+}
+
+/**
+ * Each tab in a paragraph with a right tab stop, as a `rightTab` node.
+ *
+ * mammoth writes a tab as a literal `\t` inside the text ("<em>\tJune 2025
+ * </em>"), so the node is cut out of the run it sits in and the run's marks
+ * stay on the text either side.
+ */
+function rightTabs(content: TipTapNode[]): TipTapNode[] {
+  return content.flatMap((node) => {
+    if (typeof node.text !== 'string' || !node.text.includes('\t')) return [node]
+    return node.text.split('\t').flatMap((part, index) => [
+      ...(index > 0 ? [{ type: 'rightTab' }] : []),
+      ...(part ? [{ ...node, text: part }] : []),
+    ])
+  })
 }
 
 /**
@@ -440,12 +522,17 @@ function sectionsFromHeadingOne(doc: Document): void {
 function titleBySize(
   blocks: TipTapNode[],
   matched: Map<TipTapNode, ParagraphFormat>,
-  formats: ParagraphFormat[]
+  formats: ParagraphFormat[],
+  bodySize: number | null
 ): void {
   if (blocks.some((block) => block.type === 'heading' && block.attrs?.level === 1)) return
   const first = blocks[0]
   const size = first ? matched.get(first)?.fontSize : null
   if (!first || !size || (first.type !== 'heading' && first.type !== 'paragraph')) return
+  // LARGER THAN THE BODY, not only the largest stated size: a stated size can
+  // be SMALLER than the default, and a 10pt sender line over an 11pt letter
+  // is the largest size any paragraph states without being anyone's name.
+  if (bodySize === null || size <= bodySize) return
   if (formats.some((format) => (format.fontSize ?? 0) > size)) return
   first.type = 'heading'
   first.attrs = { ...(first.attrs ?? {}), level: 1 }
@@ -615,8 +702,22 @@ function stripMarks(content: TipTapNode[]): TipTapNode[] {
   return content.map(({ marks: _marks, ...node }) => node)
 }
 
-/** Text and the two marks StarterKit renders. Anything else keeps its text. */
-function inlineContent(el: Element, marks: Array<{ type: string }> = []): TipTapNode[] {
+/**
+ * A link's address, only when it is one a reader can safely follow.
+ *
+ * THE FILE IS UPLOADED, SO ITS LINKS ARE UNTRUSTED. A .docx can carry a
+ * `javascript:` hyperlink as easily as an https one, and a link mark renders
+ * as a real anchor in the editor. Web and mail addresses only; anything else
+ * keeps its text and loses the link. In-document anchors (`#bookmark`) point
+ * at nothing once the text is in the editor, so they go too.
+ */
+function safeHref(raw: string | null): string | null {
+  const href = raw?.trim() ?? ''
+  return /^(https?:\/\/|mailto:)/i.test(href) ? href : null
+}
+
+/** Text with the marks StarterKit renders: bold, italic, underline, links. */
+function inlineContent(el: Element, marks: Array<{ type: string; attrs?: Record<string, unknown> }> = []): TipTapNode[] {
   const out: TipTapNode[] = []
   for (const node of Array.from(el.childNodes)) {
     if (node.nodeType === 3) {
@@ -633,12 +734,17 @@ function inlineContent(el: Element, marks: Array<{ type: string }> = []): TipTap
       out.push({ type: 'hardBreak' })
       continue
     }
+    const href = tag === 'A' ? safeHref(child.getAttribute('href')) : null
     const next =
       tag === 'STRONG' || tag === 'B'
         ? [...marks, { type: 'bold' }]
         : tag === 'EM' || tag === 'I'
           ? [...marks, { type: 'italic' }]
-          : marks
+          : tag === 'U'
+            ? [...marks, { type: 'underline' }]
+            : href
+              ? [...marks, { type: 'link', attrs: { href } }]
+              : marks
     out.push(...inlineContent(child, next))
   }
   return out

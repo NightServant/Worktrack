@@ -1,3 +1,4 @@
+import { Node } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import Document from '@tiptap/extension-document'
 import Heading from '@tiptap/extension-heading'
@@ -114,11 +115,50 @@ function sizeFromStyle(value: string | undefined): number | null {
   return value?.endsWith('pt') && Number.isFinite(points) ? points : null
 }
 
+/**
+ * The rule Word draws as a bottom border on a paragraph. Headings carry it
+ * for their section lines; paragraphs carry it too since 2026-10-18, for the
+ * line under the summary on Gabe's new CV.
+ */
+const RULED_ATTRIBUTE = {
+  ruled: {
+    default: false,
+    renderHTML: (attributes: Record<string, unknown>) =>
+      attributes.ruled ? { 'data-ruled': 'true' } : {},
+    parseHTML: (element: HTMLElement) => element.getAttribute('data-ruled') === 'true',
+  },
+}
+
 /** Paragraphs, taught the same. */
 const ParagraphWithSpacing = Paragraph.extend({
   addAttributes() {
-    return { ...this.parent?.(), ...SPACING_ATTRIBUTES }
+    return { ...this.parent?.(), ...SPACING_ATTRIBUTES, ...RULED_ATTRIBUTE }
   },
+})
+
+/**
+ * A tab to a RIGHT tab stop: what follows it sits at the right margin.
+ *
+ * ADDED 2026-10-18 for Gabe's new CV, which sets every entry as
+ * "Title<tab>Date" with a right tab stop at the margin. The editor had no tab
+ * stops, so the date followed its title a tab's width along. One kind of stop
+ * is all a CV uses, so this is not a tab-stop model: the paragraph becomes a
+ * row and this spacer takes the free width (see the editor's stylesheet), the
+ * .docx export writes a real right stop at the text column's edge, and the
+ * PDF lays the two halves out as a row.
+ *
+ * `renderText` is a tab, so `getText()` -- the ATS score, tailoring, word
+ * counts -- reads "Title<tab>Date" rather than two words fused together.
+ */
+const RightTab = Node.create({
+  name: 'rightTab',
+  group: 'inline',
+  inline: true,
+  atom: true,
+  selectable: false,
+  parseHTML: () => [{ tag: 'span[data-right-tab]' }],
+  renderHTML: () => ['span', { 'data-right-tab': '' }],
+  renderText: () => '\t',
 })
 
 /**
@@ -135,12 +175,7 @@ const HeadingWithRule = Heading.extend({
     return {
       ...this.parent?.(),
       ...SPACING_ATTRIBUTES,
-      ruled: {
-        default: false,
-        renderHTML: (attributes) =>
-          attributes.ruled ? { 'data-ruled': 'true' } : {},
-        parseHTML: (element) => element.getAttribute('data-ruled') === 'true',
-      },
+      ...RULED_ATTRIBUTE,
     }
   },
 })
@@ -152,6 +187,7 @@ export const WORD_EDITOR_EXTENSIONS = [
   DocumentWithPage,
   HeadingWithRule,
   ParagraphWithSpacing,
+  RightTab,
   TextStyle,
   FontFamily,
   FontSize,

@@ -437,6 +437,12 @@ export interface ParagraphFormat {
   /** Word drew a bottom border on this paragraph. */
   ruled: boolean
   /**
+   * Word drew a TOP border, which reads as a line under the paragraph before.
+   * Gabe's 2026-10-18 CV draws the line between its contact block and its
+   * summary this way.
+   */
+  ruledAbove?: boolean
+  /**
    * Points, only when every text run in the paragraph agrees on ONE size and
    * it is not the document default.
    *
@@ -448,6 +454,41 @@ export interface ParagraphFormat {
    * the name and the 9.5pt coursework lines: both rendered at body size.
    */
   fontSize: number | null
+  /**
+   * The paragraph sets a RIGHT tab stop, so the text after its tab belongs at
+   * the right margin. Gabe's 2026-10-18 CV puts every entry's date there. A
+   * tab without one (a left stop, or none) stays an ordinary tab character.
+   */
+  rightTab?: boolean
+  /**
+   * Each run's text and colour, in order, for the runs that state a colour
+   * worth keeping. mammoth drops colour entirely; this is what puts the grey
+   * dates and role lines back. `null` is "no colour of its own".
+   */
+  runs?: { text: string; color: string | null }[]
+}
+
+/**
+ * A colour that is ink rather than a choice: "auto", or near enough to black
+ * that nobody picked it to be seen (the CV's body is #1A1A1A). Kept off the
+ * JSON so ordinary text does not carry a colour mark on every run.
+ */
+function chosenColor(raw: string | undefined): string | null {
+  if (!raw || !/^[0-9a-f]{6}$/i.test(raw)) return null
+  const channels = [0, 2, 4].map((i) => Number.parseInt(raw.slice(i, i + 2), 16))
+  return Math.max(...channels) <= 0x2a ? null : `#${raw.toUpperCase()}`
+}
+
+/** A paragraph's runs as text and colour; a run tab is the `\t` mammoth writes. */
+function runColors(paragraph: string): { text: string; color: string | null }[] {
+  return (paragraph.match(/<w:r\b[^>]*>[\s\S]*?<\/w:r>/g) ?? []).flatMap((run) => {
+    const text = decodeXml(
+      [...run.matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>|<w:tab\/>/g)].map((m) => m[1] ?? '\t').join('')
+    )
+    if (!text) return []
+    const rPr = run.match(/<w:rPr>[\s\S]*?<\/w:rPr>/)?.[0] ?? ''
+    return [{ text, color: chosenColor(rPr.match(/<w:color w:val="([^"]+)"/)?.[1]) }]
+  })
 }
 
 /**
@@ -532,6 +573,7 @@ export function readParagraphFormats(documentXml: string, stylesXml = ''): Parag
       (contextual ? undefined : inherited.side(styleId, name))
     const sizes = runSizes(paragraph, fallback)
     const uniform = new Set(sizes).size === 1 ? sizes[0] : null
+    const colors = runColors(paragraph)
 
     formats.push({
       key: ruleKey(text),
@@ -540,7 +582,11 @@ export function readParagraphFormats(documentXml: string, stylesXml = ''): Parag
       // A bottom border specifically: Word also uses `w:pBdr` for boxes and
       // for the line above a footnote separator, and neither is a heading rule.
       ruled: /<w:pBdr>[\s\S]*?<w:bottom\b[^>]*w:val="(?!nil|none)/.test(pPr),
+      ruledAbove: /<w:pBdr>[\s\S]*?<w:top\b[^>]*w:val="(?!nil|none)/.test(pPr),
       fontSize: uniform !== null && uniform !== fallback ? uniform : null,
+      // `end` is the newer spelling of `right` in OOXML; a `clear` stop removes one.
+      rightTab: /<w:tab w:val="(right|end)"/.test(pPr),
+      ...(colors.some((run) => run.color) ? { runs: colors } : {}),
     })
   }
 

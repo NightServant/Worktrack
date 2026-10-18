@@ -199,16 +199,16 @@ describe('htmlToWordContent (the .docx walk)', () => {
     expect(text).toContain('Right column')
   })
 
-  it('carries bold and italic, and nothing StarterKit cannot render', () => {
+  it('carries bold, italic and underline, and nothing StarterKit cannot render', () => {
     const doc = htmlToWordContent(
       '<p>plain <strong>bold</strong> <em>italic</em> <u>underlined</u></p>'
     ) as { content: Array<{ content: Array<{ text: string; marks?: Array<{ type: string }> }> }> }
     const runs = doc.content[0].content
     expect(runs.find((r) => r.text === 'bold')!.marks).toEqual([{ type: 'bold' }])
     expect(runs.find((r) => r.text === 'italic')!.marks).toEqual([{ type: 'italic' }])
-    // Underline survives as text with no mark rather than as a mark the
-    // editor would silently discard.
-    expect(runs.find((r) => r.text === 'underlined')!.marks).toBeUndefined()
+    // StarterKit 3 renders underline (the ribbon's U), so it is kept since
+    // 2026-10-18; Gabe's CV underlines its links.
+    expect(runs.find((r) => r.text === 'underlined')!.marks).toEqual([{ type: 'underline' }])
   })
 
   it('turns lists into list nodes, not run-together paragraphs', () => {
@@ -277,8 +277,8 @@ describe('the levels a Word CV gives its headings (2026-10-18)', () => {
   // section, and Gabe's new CV follows it: its sections came in at the name's
   // 18pt and its unstyled bold name at the sections' 11pt.
   type Block = { type: string; attrs?: Record<string, unknown>; content?: Block[]; text?: string; marks?: unknown[] }
-  const blocks = (html: string, formats: ParagraphFormat[] = []) =>
-    (htmlToWordContent(html, formats) as unknown as { content: Block[] }).content
+  const blocks = (html: string, formats: ParagraphFormat[] = [], bodySize: number | null = 10.5) =>
+    (htmlToWordContent(html, formats, bodySize) as unknown as { content: Block[] }).content
   const format = (key: string, fontSize: number | null = null): ParagraphFormat => ({
     key,
     spaceBefore: null,
@@ -312,6 +312,16 @@ describe('the levels a Word CV gives its headings (2026-10-18)', () => {
     expect(name.content![0].marks).toBeUndefined()
   })
 
+  it('never makes a title of a first line set SMALLER than the body', () => {
+    // A 10pt sender line over an 11pt letter is the largest size any
+    // paragraph states, and it is not a name.
+    const [first] = blocks('<p>Gabe, Bamban, Tarlac</p><p>Dear hiring manager</p>', [
+      format('gabe, bamban, tarlac', 10),
+      format('dear hiring manager'),
+    ], 11)
+    expect(first.type).toBe('paragraph')
+  })
+
   it('leaves a first line alone when something else is larger', () => {
     const [first] = blocks('<p><strong>PROFESSIONAL SUMMARY</strong></p><p>Tagline</p>', [
       format('professional summary', 11),
@@ -340,5 +350,85 @@ describe('a bullet with a bold lead-in (2026-10-18)', () => {
     const item = first('<ul><li>Parent <em>item</em><ul><li>child</li></ul></li></ul>')
     expect(item.content!.map((n) => n.type)).toEqual(['paragraph', 'bulletList'])
     expect(item.content![0].content!.map((n) => n.text)).toEqual(['Parent ', 'item'])
+  })
+})
+
+describe('what else a Word CV carries (2026-10-18)', () => {
+  type Node = { type: string; text?: string; attrs?: Record<string, unknown>; content?: Node[]; marks?: { type: string; attrs?: Record<string, unknown> }[] }
+  const format = (over: Partial<ParagraphFormat> & { key: string }): ParagraphFormat => ({
+    spaceBefore: null,
+    spaceAfter: null,
+    ruled: false,
+    fontSize: null,
+    ...over,
+  })
+  const blocks = (html: string, formats: ParagraphFormat[] = []) =>
+    (htmlToWordContent(html, formats) as unknown as { content: Node[] }).content
+
+  it('keeps a web link as a link, and drops one that could run script', () => {
+    const [p] = blocks(
+      '<p><a href="https://github.com/NightServant">github</a> <a href="javascript:alert(1)">bad</a></p>'
+    )
+    const [good, bad] = p.content!.filter((n) => n.text === 'github' || n.text === 'bad')
+    expect(good.marks).toEqual([{ type: 'link', attrs: { href: 'https://github.com/NightServant' } }])
+    expect(bad.marks).toBeUndefined()
+    expect(bad.text).toBe('bad')
+  })
+
+  it('puts a right-tabbed date after a tab node, marks intact', () => {
+    const [p] = blocks('<p><strong>Clover</strong><em>\tAug 2026</em></p>', [
+      format({ key: 'clover aug 2026', rightTab: true }),
+    ])
+    expect(p.content!.map((n) => n.type)).toEqual(['text', 'rightTab', 'text'])
+    expect(p.content![2]).toMatchObject({ text: 'Aug 2026', marks: [{ type: 'italic' }] })
+  })
+
+  it('leaves a tab alone when the paragraph has no right stop', () => {
+    const [p] = blocks('<p>Skills:\tReact</p>', [format({ key: 'skills: react' })])
+    expect(p.content!.map((n) => n.type)).toEqual(['text'])
+  })
+
+  it('colours the text a run coloured, split where the colour changes', () => {
+    const [p] = blocks('<p><em>GitHub: github.com/x</em></p>', [
+      format({
+        key: 'github: github.com/x',
+        runs: [
+          { text: 'GitHub: ', color: '#444444' },
+          { text: 'github.com/x', color: null },
+        ],
+      }),
+    ])
+    expect(p.content).toEqual([
+      { type: 'text', text: 'GitHub: ', marks: [{ type: 'italic' }, { type: 'textStyle', attrs: { color: '#444444' } }] },
+      { type: 'text', text: 'github.com/x', marks: [{ type: 'italic' }] },
+    ])
+  })
+
+  it('keeps a size and a colour on the same textStyle mark', () => {
+    const [p] = blocks('<p><em>Front-End Intern</em></p>', [
+      format({ key: 'front-end intern', fontSize: 10, runs: [{ text: 'Front-End Intern', color: '#444444' }] }),
+    ])
+    expect(p.content![0].marks).toEqual([
+      { type: 'italic' },
+      { type: 'textStyle', attrs: { fontSize: '10pt', color: '#444444' } },
+    ])
+  })
+
+  it('draws a line Word put ABOVE a paragraph under the one before it', () => {
+    // The CV's summary carries a top border: the line between the contact
+    // block and the summary.
+    const [links, summary] = blocks('<p>github.com/x</p><p>Computer Science graduate</p>', [
+      format({ key: 'github.com/x' }),
+      format({ key: 'computer science graduate', ruledAbove: true }),
+    ])
+    expect(links.attrs).toMatchObject({ ruled: true })
+    expect(summary.attrs?.ruled).toBeUndefined()
+  })
+
+  it('rules a plain paragraph Word drew a border under', () => {
+    const [p] = blocks('<p>Computer Science graduate</p>', [
+      format({ key: 'computer science graduate', ruled: true }),
+    ])
+    expect(p).toMatchObject({ type: 'paragraph', attrs: { ruled: true } })
   })
 })

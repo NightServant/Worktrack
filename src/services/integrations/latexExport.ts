@@ -158,10 +158,15 @@ function runFrom(node: TipTapNode): string {
   return out
 }
 
-/** The inline content of a block, with `hardBreak` as a real line break. */
+/**
+ * The inline content of a block, with `hardBreak` as a real line break and a
+ * `rightTab` as `\hfill`, which pushes what follows to the right margin.
+ */
 function inlineFrom(node: TipTapNode): string {
   return (node.content ?? [])
-    .map((child) => (child.type === 'hardBreak' ? '\\\\\n' : runFrom(child)))
+    .map((child) =>
+      child.type === 'hardBreak' ? '\\\\\n' : child.type === 'rightTab' ? '\\hfill ' : runFrom(child)
+    )
     .join('')
     .trim()
 }

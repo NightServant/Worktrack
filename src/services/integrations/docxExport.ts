@@ -5,6 +5,8 @@ import {
   HeadingLevel,
   Packer,
   Paragraph,
+  Tab,
+  TabStopType,
   TextRun,
   type IStylesOptions,
   type ISectionOptions,
@@ -42,6 +44,9 @@ export interface TipTapNode {
 }
 
 function runsFrom(node: TipTapNode): TextRun[] {
+  // A real tab, which the paragraph's right tab stop (see `tabStopsFrom`)
+  // carries to the margin -- the shape Word wrote the imported CV in.
+  if (node.type === 'rightTab') return [new TextRun({ children: [new Tab()] })]
   if (typeof node.text === 'string') {
     const marks = new Set((node.marks ?? []).map((m) => m.type))
     // A size the import read off the document -- the 11pt sub-title under a
@@ -98,6 +103,28 @@ function textOf(node: TipTapNode): string {
   return (node.content ?? []).map(textOf).join('')
 }
 
+/**
+ * A right tab stop at the text column's edge, for a block holding a
+ * `rightTab`. `position` is twips from the left margin, so the column width
+ * puts the date flush with the right margin as the editor draws it.
+ */
+function tabStopsFrom(
+  node: TipTapNode,
+  column: number
+): { tabStops: { type: (typeof TabStopType)['RIGHT']; position: number }[] } | undefined {
+  return (node.content ?? []).some((child) => child.type === 'rightTab')
+    ? { tabStops: [{ type: TabStopType.RIGHT, position: column }] }
+    : undefined
+}
+
+/** The rule Word draws under a section heading, or under any paragraph. */
+const RULE = {
+  border: {
+    // `size: 6` is eighths of a point, matching what Word wrote.
+    bottom: { style: BorderStyle.SINGLE, size: 6, color: '1A1A1A', space: 2 },
+  },
+}
+
 const HEADING_FOR: Record<number, (typeof HeadingLevel)[keyof typeof HeadingLevel]> = {
   1: HeadingLevel.HEADING_1,
   2: HeadingLevel.HEADING_2,
@@ -134,7 +161,7 @@ function alignmentFrom(node: TipTapNode): { alignment: (typeof AlignmentType)[ke
   }
 }
 
-function paragraphsFrom(node: TipTapNode): Paragraph[] {
+function paragraphsFrom(node: TipTapNode, column: number): Paragraph[] {
   switch (node.type) {
     case 'heading': {
       const level = Number(node.attrs?.level ?? 1)
@@ -150,15 +177,8 @@ function paragraphsFrom(node: TipTapNode): Paragraph[] {
           // again -- so a document imported with eight section rules would
           // come back out with none, which is the page-setup bug repeating on
           // a different property.
-          //
-          // `size: 6` is eighths of a point, matching what Word wrote.
-          ...(node.attrs?.ruled
-            ? {
-                border: {
-                  bottom: { style: BorderStyle.SINGLE, size: 6, color: '1A1A1A', space: 2 },
-                },
-              }
-            : {}),
+          ...(node.attrs?.ruled ? RULE : {}),
+          ...tabStopsFrom(node, column),
         }),
       ]
     }
@@ -170,6 +190,10 @@ function paragraphsFrom(node: TipTapNode): Paragraph[] {
           children: runs.length > 0 ? runs : [new TextRun('')],
           ...spacingFrom(node),
           ...alignmentFrom(node),
+          // A paragraph's rule too, since 2026-10-18 (the line under the
+          // summary on Gabe's new CV).
+          ...(node.attrs?.ruled ? RULE : {}),
+          ...tabStopsFrom(node, column),
         }),
       ]
     }
@@ -186,6 +210,7 @@ function paragraphsFrom(node: TipTapNode): Paragraph[] {
               // A bullet's spacing lives on the paragraph inside the item,
               // which is where the import put it.
               ...spacingFrom(block),
+              ...tabStopsFrom(block, column),
               ...(node.type === 'bulletList'
                 ? { bullet: { level: 0 } }
                 : { numbering: { reference: 'cv-numbering', level: 0 } }),
@@ -195,7 +220,7 @@ function paragraphsFrom(node: TipTapNode): Paragraph[] {
     case 'hardBreak':
       return [new Paragraph({ children: [new TextRun('')] })]
     default: {
-      if (node.content) return node.content.flatMap(paragraphsFrom)
+      if (node.content) return node.content.flatMap((child) => paragraphsFrom(child, column))
       const text = textOf(node)
       return text ? [new Paragraph({ children: [new TextRun(text)] })] : []
     }
@@ -205,7 +230,11 @@ function paragraphsFrom(node: TipTapNode): Paragraph[] {
 /** The document body, exposed so it can be asserted without packing a zip. */
 export function sectionsFrom(doc: unknown): ISectionOptions[] {
   const root = (doc ?? {}) as TipTapNode
-  const children = (root.content ?? []).flatMap(paragraphsFrom)
+  const geometry = normalizeGeometry(root.attrs?.pageGeometry)
+  const twips = (inches: number) => Math.round(inches * TWIPS_PER_INCH)
+  // The text column, where a right tab stop has to sit to reach the margin.
+  const column = twips(geometry.width - geometry.margin.left - geometry.margin.right)
+  const children = (root.content ?? []).flatMap((node) => paragraphsFrom(node, column))
 
   /**
    * THE PAGE THE DOCUMENT CARRIES, not a fixed one.
@@ -221,8 +250,6 @@ export function sectionsFrom(doc: unknown): ISectionOptions[] {
    * for why it has to be an attribute), so by the time a document reaches
    * here it is either the page it was imported at or Word's default.
    */
-  const geometry = normalizeGeometry(root.attrs?.pageGeometry)
-  const twips = (inches: number) => Math.round(inches * TWIPS_PER_INCH)
 
   return [
     {

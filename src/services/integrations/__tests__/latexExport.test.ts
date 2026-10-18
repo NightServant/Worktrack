@@ -223,3 +223,21 @@ describe('the document survives the trip', () => {
     expect(out).not.toContain('NaN')
   })
 })
+
+describe('a right-tabbed date in LaTeX (2026-10-18)', () => {
+  it('pushes the date to the margin with \\hfill', () => {
+    const tex = buildLatex(
+      {
+        type: 'doc',
+        content: [
+          {
+            type: 'paragraph',
+            content: [{ type: 'text', text: 'Clover' }, { type: 'rightTab' }, { type: 'text', text: 'Aug 2026' }],
+          },
+        ],
+      },
+      'CV'
+    )
+    expect(tex).toContain('Clover\\hfill Aug 2026')
+  })
+})

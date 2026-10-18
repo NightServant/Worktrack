@@ -413,6 +413,8 @@ export interface Sheet {
   family: FamilyName
   heading: (level: number, ruled: boolean) => Style
   paragraph: (inList: boolean) => Style
+  /** The rule Word draws under a block, for a paragraph that carries one. */
+  rule: Style
   listRow: Style
   bullet: Style
   listBody: Style
@@ -460,6 +462,12 @@ export function sheetFor(
     return type.sectionSize ?? body
   }
 
+  const rule: Style = {
+    borderBottomWidth: EDITOR.rule,
+    borderBottomColor: INK,
+    paddingBottom: EDITOR.rulePadding,
+  }
+
   return {
     page: {
       paddingTop: inches(geometry.margin.top),
@@ -484,19 +492,14 @@ export function sheetFor(
           ? 0
           : (type.headingSpaceBefore ?? (level === 2 ? EDITOR.h2Before : EDITOR.h3Before)),
       marginBottom: type.headingSpaceAfter ?? EDITOR.headingAfter,
-      ...(ruled
-        ? {
-            // THE RULE UNDER A SECTION HEADING. Word draws it as a border on
-            // the paragraph, the import reads it out of `w:pBdr`, the editor
-            // draws it from `[data-ruled]` and the .docx export writes it back
-            // -- and this dropped it, so every exported PDF lost the eight
-            // lines that make a CV look like a CV.
-            borderBottomWidth: EDITOR.rule,
-            borderBottomColor: INK,
-            paddingBottom: EDITOR.rulePadding,
-          }
-        : {}),
+      // THE RULE UNDER A SECTION HEADING. Word draws it as a border on the
+      // paragraph, the import reads it out of `w:pBdr`, the editor draws it
+      // from `[data-ruled]` and the .docx export writes it back -- and this
+      // dropped it, so every exported PDF lost the eight lines that make a CV
+      // look like a CV.
+      ...(ruled ? rule : {}),
     }),
+    rule,
     paragraph: (inList) => ({
       marginTop: 0,
       marginBottom:
@@ -590,6 +593,37 @@ function spacingOf(node: Node): Style {
 }
 
 /**
+ * A block holding a `rightTab`, as a row: what precedes the tab on the left,
+ * what follows it flush right. The editor draws the same thing with a flex
+ * row, and the .docx export with a right tab stop at the column's edge.
+ *
+ * THE BLOCK'S OWN STYLE GOES ON BOTH. The row takes it for its spacing and
+ * rule; each half takes it again for size and face, with the spacing and rule
+ * zeroed so they are not drawn twice. A second tab in one line has no second
+ * stop to go to, so it reads as a space.
+ */
+function rightTabRow(node: Node, key: string, sheet: Sheet, style: Style[], baseBold = false): ReactElement | null {
+  const content = node.content ?? []
+  const at = content.findIndex((child) => child?.type === 'rightTab')
+  if (at === -1) return null
+  const unspaced: Style = { marginTop: 0, marginBottom: 0, paddingTop: 0, paddingBottom: 0, borderBottomWidth: 0 }
+  const tabsAsSpaces = (nodes: Node[]) =>
+    nodes.map((child) => (child?.type === 'rightTab' ? { type: 'text', text: ' ' } : child))
+  const half = (nodes: Node[], suffix: string, own: Style) =>
+    h(
+      Text,
+      { style: [...style, unspaced, own] },
+      inlines({ ...node, content: tabsAsSpaces(nodes) }, `${key}-${suffix}`, sheet, baseBold)
+    )
+  return h(
+    View,
+    { key, style: [...style, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' }] },
+    half(content.slice(0, at), 'l', { flexShrink: 1 }),
+    half(content.slice(at + 1), 'r', { flexShrink: 0, marginLeft: 6, textAlign: 'right' })
+  )
+}
+
+/**
  * One block of the document. Returns null for anything unmapped.
  *
  * `inList` drops the paragraph's vertical margin: inside a list item that
@@ -609,17 +643,17 @@ function block(node: Node, key: string, sheet: Sheet, inList = false): ReactElem
 
   if (node.type === 'heading') {
     const level = Number(node.attrs?.level ?? 1)
-    return h(
-      Text,
-      { key, style: [sheet.heading(level, node.attrs?.ruled === true), spacing] },
-      inlines(node, key, sheet, true)
-    )
+    const style = [sheet.heading(level, node.attrs?.ruled === true), spacing]
+    return rightTabRow(node, key, sheet, style, true) ?? h(Text, { key, style }, inlines(node, key, sheet, true))
   }
 
   if (node.type === 'paragraph') {
+    const style = [sheet.paragraph(inList), node.attrs?.ruled === true ? sheet.rule : {}, spacing]
+    const row = rightTabRow(node, key, sheet, style)
+    if (row) return row
     // An empty paragraph is the editor's blank line and has to keep its height.
     const runs = inlines(node, key, sheet)
-    return h(Text, { key, style: [sheet.paragraph(inList), spacing] }, runs.length ? runs : ' ')
+    return h(Text, { key, style }, runs.length ? runs : ' ')
   }
 
   if (node.type === 'bulletList' || node.type === 'orderedList') {
@@ -630,7 +664,10 @@ function block(node: Node, key: string, sheet: Sheet, inList = false): ReactElem
       (node.content ?? []).map((item, index) =>
         h(
           View,
-          { key: `${key}-i${index}`, style: sheet.listRow },
+          // `wrap: false` keeps a bullet with its text: a page break could
+          // otherwise leave the "•" alone at the foot of one page and carry
+          // its line to the next, as it did on Gabe's 2026-10-18 CV.
+          { key: `${key}-i${index}`, style: sheet.listRow, wrap: false },
           h(Text, { style: sheet.bullet }, ordered ? `${index + 1}.` : '•'),
           h(
             View,

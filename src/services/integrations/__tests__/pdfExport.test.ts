@@ -371,3 +371,60 @@ describe('sheetFor line spacing', () => {
     expect(sheetFor(DEFAULT_GEOMETRY, NO_TYPOGRAPHY).page.lineHeight).toBeUndefined()
   })
 })
+
+describe('a right-tabbed date in the PDF (2026-10-18)', () => {
+  type Rendered = { type?: unknown; props: { style?: unknown; children?: unknown } }
+  const blocksOf = (doc: unknown) =>
+    ((buildDocument(doc, 'CV') as unknown as { props: { children: Rendered } }).props.children.props
+      .children ?? []) as Rendered[]
+  const styleOf = (element: Rendered): Record<string, unknown> =>
+    Object.assign({}, ...((Array.isArray(element.props.style) ? element.props.style : [element.props.style]) as object[]))
+  const textOf = (element: unknown): string => {
+    if (typeof element === 'string') return element
+    if (Array.isArray(element)) return element.map(textOf).join('')
+    const children = (element as Rendered | null)?.props?.children
+    return children === undefined ? '' : textOf(children)
+  }
+
+  const doc = {
+    type: 'doc',
+    content: [
+      {
+        type: 'paragraph',
+        content: [
+          { type: 'text', text: 'Clover', marks: [{ type: 'bold' }] },
+          { type: 'rightTab' },
+          { type: 'text', text: 'Aug 2026', marks: [{ type: 'italic' }] },
+        ],
+      },
+      { type: 'paragraph', attrs: { ruled: true }, content: [{ type: 'text', text: 'Summary.' }] },
+    ],
+  }
+
+  it('lays the title and the date out as a row, the date flush right', () => {
+    const [entry] = blocksOf(doc)
+    expect(styleOf(entry)).toMatchObject({ flexDirection: 'row', justifyContent: 'space-between' })
+    const [left, right] = entry.props.children as Rendered[]
+    expect(textOf(left)).toBe('Clover')
+    expect(textOf(right)).toBe('Aug 2026')
+    expect(styleOf(right)).toMatchObject({ textAlign: 'right', flexShrink: 0 })
+  })
+
+  it('rules a plain paragraph that carries one', () => {
+    const [, summary] = blocksOf(doc)
+    expect(styleOf(summary)).toMatchObject({ borderBottomWidth: expect.any(Number) })
+  })
+})
+
+describe('a bullet across a page break (2026-10-18)', () => {
+  it('keeps the bullet and its text on one page', () => {
+    // On Gabe's new CV a page break left a "•" alone at the foot of page one.
+    const doc = {
+      type: 'doc',
+      content: [{ type: 'bulletList', content: [{ type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'a bullet' }] }] }] }],
+    }
+    const page = (buildDocument(doc, 'CV') as unknown as { props: { children: { props: { children: { props: { children: { props: { wrap?: boolean } }[] } }[] } } } }).props.children
+    const [row] = page.props.children[0].props.children
+    expect(row.props.wrap).toBe(false)
+  })
+})

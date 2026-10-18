@@ -197,3 +197,44 @@ describe('bold survives the Word export', () => {
     expect(heading1).toContain('<w:b/>')
   })
 })
+
+describe('a right-tabbed date and a ruled paragraph, written back (2026-10-18)', () => {
+  // Gabe's new CV sets each entry as "Title<tab>Date" on a right tab stop at
+  // the margin, and rules the line under its summary. Both come in through
+  // the import; this is the other half of the round trip.
+  async function documentXml(doc: unknown): Promise<string> {
+    const JSZip = (await import('jszip')).default
+    const zip = await JSZip.loadAsync(Buffer.from(await buildDocx(doc, 'CV')))
+    return (await zip.file('word/document.xml')?.async('string')) ?? ''
+  }
+  const doc = {
+    type: 'doc',
+    attrs: { pageGeometry: { width: 8.5, height: 11, margin: { top: 0.5, right: 0.6, bottom: 0.5, left: 0.6 } } },
+    content: [
+      { type: 'paragraph', attrs: { ruled: true }, content: [{ type: 'text', text: 'Summary line.' }] },
+      {
+        type: 'paragraph',
+        content: [
+          { type: 'text', text: 'Clover', marks: [{ type: 'bold' }] },
+          { type: 'rightTab' },
+          { type: 'text', text: 'Aug 2026', marks: [{ type: 'italic' }] },
+        ],
+      },
+    ],
+  }
+
+  it('puts a right tab stop at the text column, and a real tab before the date', async () => {
+    const xml = await documentXml(doc)
+    const entry = (xml.match(/<w:p>[\s\S]*?<\/w:p>/g) ?? []).find((p) => p.includes('Clover'))!
+    // 8.5in less 1.2in of margin is 7.3in: 10512 twips, what Word wrote.
+    expect(entry).toMatch(/<w:tab w:val="right" w:pos="10512"\/>/)
+    expect(entry.indexOf('<w:tab/>')).toBeGreaterThan(entry.indexOf('Clover'))
+    expect(entry.indexOf('<w:tab/>')).toBeLessThan(entry.indexOf('Aug 2026'))
+  })
+
+  it('draws the rule under a plain paragraph', async () => {
+    const xml = await documentXml(doc)
+    const summary = (xml.match(/<w:p>[\s\S]*?<\/w:p>/g) ?? []).find((p) => p.includes('Summary line.'))!
+    expect(summary).toMatch(/<w:pBdr>[\s\S]*<w:bottom w:val="single"/)
+  })
+})
