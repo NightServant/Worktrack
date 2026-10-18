@@ -260,6 +260,52 @@ describe('readParagraphFormats', () => {
     // And a paragraph at the document default gets null: it needs no override.
     expect(readParagraphFormats(plain('body'))[0].fontSize).toBeNull()
   })
+
+  it('reads a tab as a space, so a title-and-date line still pairs', () => {
+    // Gabe's 2026-10-18 CV sets every entry as "Title<tab>Date" on a right tab
+    // stop. The key read "mis officejune 2025" while mammoth's text, which
+    // keeps the tab, read "mis office june 2025", so no entry line got its
+    // spacing. The tab STOP in pPr has attributes and must add nothing.
+    const xml =
+      '<w:p><w:pPr><w:tabs><w:tab w:val="right" w:pos="10512"/></w:tabs></w:pPr>' +
+      '<w:r><w:t>MIS Office</w:t></w:r><w:r><w:tab/><w:t>June 2025</w:t></w:r></w:p>'
+    expect(readParagraphFormats(xml)[0].key).toBe(ruleKey('MIS Office June 2025'))
+  })
+
+  it("falls back to the paragraph style's spacing, as Word does", () => {
+    // The same CV's section headings state no spacing of their own: it lives
+    // on the Heading 1 style (10pt before, 4pt after), so they imported at 0.
+    const styles =
+      '<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:pPr><w:spacing w:after="160"/></w:pPr></w:style>' +
+      '<w:style w:type="paragraph" w:styleId="Heading1"><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:before="200" w:after="80"/></w:pPr></w:style>' +
+      '<w:style w:type="paragraph" w:styleId="Sub"><w:basedOn w:val="Heading1"/><w:pPr><w:spacing w:after="40"/></w:pPr></w:style>'
+    const p = (pPr: string) => `<w:p><w:pPr>${pPr}</w:pPr><w:r><w:t>x</w:t></w:r></w:p>`
+    const xml =
+      p('<w:pStyle w:val="Heading1"/>') +
+      // Its own after wins; before still comes from the style.
+      p('<w:pStyle w:val="Heading1"/><w:spacing w:after="20"/>') +
+      // basedOn is followed for the side the style does not state.
+      p('<w:pStyle w:val="Sub"/>') +
+      // No pStyle is the default paragraph style.
+      p('')
+    expect(readParagraphFormats(xml, styles).map((f) => [f.spaceBefore, f.spaceAfter])).toEqual([
+      [10, 4],
+      [10, 1],
+      [10, 2],
+      [null, 8],
+    ])
+  })
+
+  it('drops inherited spacing under contextual spacing, so a list stays tight', () => {
+    // Word's List Paragraph is based on Normal (8pt after) and turns on
+    // contextualSpacing, which removes that gap between bullets. Inheriting
+    // the 8pt without the rule would space every bullet apart.
+    const styles =
+      '<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:pPr><w:spacing w:after="160"/></w:pPr></w:style>' +
+      '<w:style w:type="paragraph" w:styleId="ListParagraph"><w:basedOn w:val="Normal"/><w:pPr><w:contextualSpacing/></w:pPr></w:style>'
+    const xml = '<w:p><w:pPr><w:pStyle w:val="ListParagraph"/></w:pPr><w:r><w:t>a bullet</w:t></w:r></w:p>'
+    expect(readParagraphFormats(xml, styles).map((f) => [f.spaceBefore, f.spaceAfter])).toEqual([[null, null]])
+  })
 })
 
 describe('cssLineHeight', () => {

@@ -71,11 +71,15 @@ describe.skipIf(!present)('a real .docx from Word', () => {
     expect(t.fontFamily).toBeTruthy()
     expect(t.fontSize).toBeGreaterThan(5)
     expect(t.fontSize).toBeLessThan(30)
-    // Whatever the face is, it must come from the RUNS. On this file
-    // docDefaults says Times New Roman and no run uses it.
+    // Whatever the face is, it must come from the RUNS when they name one. On
+    // the reported file docDefaults says Times New Roman and no run uses it.
+    // A document whose runs name no face (Gabe's 2026-10-18 CV sets Garamond
+    // once, in docDefaults) must take the docDefaults face instead.
     const runFaces = [...documentXml.matchAll(/<w:rFonts\b[^>]*w:ascii="([^"]+)"/g)].map((m) => m[1])
-    expect(runFaces.length).toBeGreaterThan(0)
-    expect(t.fontFamily).toContain(runFaces[0])
+    const defaultFace = stylesXml
+      .match(/<w:rPrDefault>[\s\S]*?<\/w:rPrDefault>/)?.[0]
+      .match(/<w:rFonts\b[^>]*w:ascii="([^"]+)"/)?.[1]
+    expect(t.fontFamily).toContain(runFaces[0] ?? defaultFace)
   })
 
   it('finds the rules Word draws under each section heading', async () => {

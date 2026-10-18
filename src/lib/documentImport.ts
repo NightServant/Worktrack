@@ -218,7 +218,9 @@ export async function importDocument(file: File): Promise<ImportedDocument> {
  */
 export const MAMMOTH_OPTIONS = {
   styleMap: [
-    "p[style-name='Title'] => h1:fresh",
+    // `.doc-title` so a Title-style name is never counted or shifted with the
+    // Heading 1 sections; see `sectionsFromHeadingOne`.
+    "p[style-name='Title'] => h1.doc-title:fresh",
     "p[style-name='Heading 1'] => h1:fresh",
     "p[style-name='Heading 2'] => h2:fresh",
     "p[style-name='Heading 3'] => h3:fresh",
@@ -338,9 +340,10 @@ type TipTapNode = { type: string; attrs?: Record<string, unknown>; content?: Tip
 /** Exported for tests: the HTML walk, without the file reading around it. */
 export function htmlToWordContent(html: string, formats: ParagraphFormat[] = []): ResumeContent {
   const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html')
+  sectionsFromHeadingOne(doc)
   const blocks: TipTapNode[] = []
   collectBlocks(doc.body, blocks)
-  applyFormats(blocks, formats)
+  titleBySize(blocks, applyFormats(blocks, formats), formats)
 
   return {
     type: 'doc',
@@ -368,8 +371,9 @@ export function htmlToWordContent(html: string, formats: ParagraphFormat[] = [])
  * let the editor's own default show through on exactly the paragraphs the
  * document is most specific about.
  */
-function applyFormats(blocks: TipTapNode[], formats: ParagraphFormat[]): void {
-  if (formats.length === 0) return
+function applyFormats(blocks: TipTapNode[], formats: ParagraphFormat[]): Map<TipTapNode, ParagraphFormat> {
+  const matched = new Map<TipTapNode, ParagraphFormat>()
+  if (formats.length === 0) return matched
   let cursor = 0
 
   for (const block of textBlocksOf(blocks)) {
@@ -379,6 +383,7 @@ function applyFormats(blocks: TipTapNode[], formats: ParagraphFormat[]): void {
     if (index === -1) continue
     const format = formats[index]
     cursor = index + 1
+    matched.set(block, format)
 
     block.attrs = {
       ...(block.attrs ?? {}),
@@ -393,6 +398,60 @@ function applyFormats(blocks: TipTapNode[], formats: ParagraphFormat[]): void {
       setFontSize(block.content ?? [], `${format.fontSize}pt`)
     }
   }
+  return matched
+}
+
+/**
+ * Heading 1 read as a SECTION when the document uses it more than once.
+ *
+ * THE EDITOR'S h1 IS THE NAME, drawn at the document's title size, and h2 is
+ * a section (see `--doc-h1-size` / `--doc-h2-size`). Word's own convention is
+ * Title for the name and Heading 1 for each section, and Gabe's 2026-10-18 CV
+ * follows it: mapped one-to-one, its eight sections drew at the name's 18pt.
+ *
+ * COUNTED, NOT ASSUMED, because Worktrack's own export writes the name as
+ * Heading 1 and the sections as Heading 2, and re-importing that must not
+ * shift. A CV has one name, so one Heading 1 is the name and several are
+ * sections. A Title-style paragraph (`.doc-title`) is the name either way and
+ * is left out of both the count and the shift.
+ */
+function sectionsFromHeadingOne(doc: Document): void {
+  if (doc.body.querySelectorAll('h1:not(.doc-title)').length < 2) return
+  for (const heading of Array.from(doc.body.querySelectorAll('h1, h2, h3, h4, h5, h6'))) {
+    if (heading.classList.contains('doc-title')) continue
+    const level = Math.min(Number(heading.tagName.slice(1)) + 1, 6)
+    const shifted = doc.createElement(`h${level}`)
+    shifted.append(...Array.from(heading.childNodes))
+    heading.replaceWith(shifted)
+  }
+}
+
+/**
+ * The first line becomes the title when the document sets it in its largest
+ * size and nothing else is the title already.
+ *
+ * Gabe's new CV, like the VA one before it, types the name as a plain bold
+ * paragraph at 18pt with no Word style, so the bold-caps rule made it a
+ * SECTION and it drew at 11pt. The size is the document saying which line is
+ * the name; the first-line condition stops a large figure further down from
+ * being promoted, and a first line that is merely a section heading is never
+ * the largest size.
+ */
+function titleBySize(
+  blocks: TipTapNode[],
+  matched: Map<TipTapNode, ParagraphFormat>,
+  formats: ParagraphFormat[]
+): void {
+  if (blocks.some((block) => block.type === 'heading' && block.attrs?.level === 1)) return
+  const first = blocks[0]
+  const size = first ? matched.get(first)?.fontSize : null
+  if (!first || !size || (first.type !== 'heading' && first.type !== 'paragraph')) return
+  if (formats.some((format) => (format.fontSize ?? 0) > size)) return
+  first.type = 'heading'
+  first.attrs = { ...(first.attrs ?? {}), level: 1 }
+  // The heading carries the title size and weight; bold or a size mark on its
+  // runs would say the same thing twice.
+  first.content = stripMarks(first.content ?? [])
 }
 
 /**
@@ -466,8 +525,7 @@ function collectBlocks(parent: Element, out: TipTapNode[]): void {
       const items = Array.from(el.children)
         .filter((li) => li.tagName.toUpperCase() === 'LI')
         .map((li) => {
-          const nested: TipTapNode[] = []
-          collectBlocks(li, nested)
+          const nested = listItemBlocks(li)
           return {
             type: 'listItem',
             content: nested.length > 0 ? nested : [{ type: 'paragraph' }],
@@ -483,6 +541,39 @@ function collectBlocks(parent: Element, out: TipTapNode[]): void {
     // import as nothing at all.
     collectBlocks(el, out)
   }
+}
+
+const BLOCK_TAGS = new Set(['P', 'UL', 'OL', 'TABLE', 'DIV', ...Object.keys(HEADINGS)])
+
+/**
+ * A list item's content, with its inline runs kept as ONE paragraph.
+ *
+ * mammoth writes a bullet as `<li><strong>2nd Place</strong>, Tarlac</li>`,
+ * with no `<p>`. Walked as blocks, every inline piece became its own
+ * paragraph, so each certificate on Gabe's 2026-10-18 CV split across two
+ * lines at the end of its bold lead-in. Inline nodes are gathered until a
+ * block (a nested list, most often) and emitted together.
+ */
+function listItemBlocks(li: Element): TipTapNode[] {
+  const out: TipTapNode[] = []
+  let inline = li.ownerDocument.createElement('span')
+  const flush = () => {
+    const content = inlineContent(inline)
+    if (content.length > 0) out.push({ type: 'paragraph', content })
+    inline = li.ownerDocument.createElement('span')
+  }
+  for (const node of Array.from(li.childNodes)) {
+    if (node.nodeType === 1 && BLOCK_TAGS.has((node as Element).tagName.toUpperCase())) {
+      flush()
+      const holder = li.ownerDocument.createElement('div')
+      holder.append(node.cloneNode(true))
+      collectBlocks(holder, out)
+    } else {
+      inline.append(node.cloneNode(true))
+    }
+  }
+  flush()
+  return out
 }
 
 /**

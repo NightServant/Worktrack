@@ -450,13 +450,74 @@ export interface ParagraphFormat {
   fontSize: number | null
 }
 
+/**
+ * Spacing a paragraph inherits from its style, resolved the way Word does:
+ * the named style, then each `w:basedOn` up the chain, then `docDefaults`.
+ * A paragraph with no `w:pStyle` uses the default paragraph style.
+ *
+ * ADDED 2026-10-18. Gabe's new CV puts its section headings' spacing (10pt
+ * before, 4pt after) on the Heading 1 style and none on the paragraphs, so
+ * every section imported at 0 and the page closed up.
+ *
+ * CONTEXTUAL SPACING DROPS WHAT IS INHERITED. Word's List Paragraph is based
+ * on Normal (8pt after in the default template) and sets contextualSpacing,
+ * which removes that gap between consecutive bullets. Inheriting the 8pt
+ * without the rule would space every bullet apart, so a paragraph under it
+ * keeps only what it states itself.
+ */
+const CONTEXTUAL = /<w:contextualSpacing\b(?![^>]*w:val="(0|false)")/
+
+function styleSpacing(stylesXml: string) {
+  type Style = { before?: string; after?: string; contextual: boolean; basedOn?: string }
+  const styles = new Map<string, Style>()
+  let defaultId: string | undefined
+  for (const m of stylesXml.matchAll(/<w:style\b([^>]*)>([\s\S]*?)<\/w:style>/g)) {
+    if (!/w:type="paragraph"/.test(m[1])) continue
+    const id = m[1].match(/w:styleId="([^"]+)"/)?.[1]
+    if (!id) continue
+    if (/w:default="(1|true)"/.test(m[1])) defaultId = id
+    const pPr = m[2].match(/<w:pPr>[\s\S]*?<\/w:pPr>/)?.[0] ?? ''
+    const spacing = pPr.match(/<w:spacing\b[^>]*>/)?.[0] ?? ''
+    styles.set(id, {
+      before: spacing.match(/w:before="(\d+)"/)?.[1],
+      after: spacing.match(/w:after="(\d+)"/)?.[1],
+      contextual: CONTEXTUAL.test(pPr),
+      basedOn: m[2].match(/<w:basedOn w:val="([^"]+)"/)?.[1],
+    })
+  }
+  const defaults =
+    stylesXml.match(/<w:pPrDefault>[\s\S]*?<\/w:pPrDefault>/)?.[0].match(/<w:spacing\b[^>]*>/)?.[0] ?? ''
+
+  /** The style chain, nearest first; `seen` stops a basedOn loop. */
+  const chain = (styleId: string | undefined): Style[] => {
+    const out: Style[] = []
+    const seen = new Set<string>()
+    for (let id = styleId ?? defaultId; id && !seen.has(id) && styles.has(id); id = styles.get(id)!.basedOn) {
+      seen.add(id)
+      out.push(styles.get(id)!)
+    }
+    return out
+  }
+
+  return {
+    contextual: (styleId: string | undefined) => chain(styleId).some((style) => style.contextual),
+    side: (styleId: string | undefined, side: 'before' | 'after'): string | undefined =>
+      chain(styleId).find((style) => style[side] !== undefined)?.[side] ??
+      defaults.match(side === 'before' ? /w:before="(\d+)"/ : /w:after="(\d+)"/)?.[1],
+  }
+}
+
 export function readParagraphFormats(documentXml: string, stylesXml = ''): ParagraphFormat[] {
   const fallback = defaultSizePt(stylesXml)
+  const inherited = styleSpacing(stylesXml)
   const formats: ParagraphFormat[] = []
 
   for (const paragraph of documentXml.match(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g) ?? []) {
+    // A run-level `<w:tab/>` reads as a space, the way mammoth's text does
+    // (it keeps the tab character, which `ruleKey` collapses). The tab STOPS
+    // in pPr carry attributes and never match the bare form.
     const text = decodeXml(
-      [...paragraph.matchAll(/<w:t[^>]*>([^<]*)<\/w:t>/g)].map((m) => m[1]).join('')
+      [...paragraph.matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>|<w:tab\/>/g)].map((m) => m[1] ?? ' ').join('')
     ).trim()
     // A paragraph with no text is Word's spacing; mammoth drops it and there
     // is nothing to match it against.
@@ -464,13 +525,18 @@ export function readParagraphFormats(documentXml: string, stylesXml = ''): Parag
 
     const pPr = paragraph.match(/<w:pPr>([\s\S]*?)<\/w:pPr>/)?.[1] ?? ''
     const spacing = pPr.match(/<w:spacing\b[^>]*>/)?.[0] ?? ''
+    const styleId = pPr.match(/<w:pStyle w:val="([^"]+)"/)?.[1]
+    const contextual = CONTEXTUAL.test(pPr) || inherited.contextual(styleId)
+    const side = (name: 'before' | 'after') =>
+      spacing.match(name === 'before' ? /w:before="(\d+)"/ : /w:after="(\d+)"/)?.[1] ??
+      (contextual ? undefined : inherited.side(styleId, name))
     const sizes = runSizes(paragraph, fallback)
     const uniform = new Set(sizes).size === 1 ? sizes[0] : null
 
     formats.push({
       key: ruleKey(text),
-      spaceBefore: points(spacing.match(/w:before="(\d+)"/)?.[1]),
-      spaceAfter: points(spacing.match(/w:after="(\d+)"/)?.[1]),
+      spaceBefore: points(side('before')),
+      spaceAfter: points(side('after')),
       // A bottom border specifically: Word also uses `w:pBdr` for boxes and
       // for the line above a footnote separator, and neither is a heading rule.
       ruled: /<w:pBdr>[\s\S]*?<w:bottom\b[^>]*w:val="(?!nil|none)/.test(pPr),

@@ -270,3 +270,75 @@ describe('section titles in CVs that use bold instead of Word heading styles', (
     expect(node.type).toBe('paragraph')
   })
 })
+
+describe('the levels a Word CV gives its headings (2026-10-18)', () => {
+  // The editor's h1 is the NAME (drawn at the document's title size) and h2 a
+  // SECTION. Word's convention is Title for the name and Heading 1 for every
+  // section, and Gabe's new CV follows it: its sections came in at the name's
+  // 18pt and its unstyled bold name at the sections' 11pt.
+  type Block = { type: string; attrs?: Record<string, unknown>; content?: Block[]; text?: string; marks?: unknown[] }
+  const blocks = (html: string, formats: ParagraphFormat[] = []) =>
+    (htmlToWordContent(html, formats) as unknown as { content: Block[] }).content
+  const format = (key: string, fontSize: number | null = null): ParagraphFormat => ({
+    key,
+    spaceBefore: null,
+    spaceAfter: null,
+    ruled: false,
+    fontSize,
+  })
+  const levels = (nodes: Block[]) => nodes.filter((n) => n.type === 'heading').map((n) => n.attrs?.level)
+
+  it('reads several Heading 1s as sections, since a CV has one name', () => {
+    expect(levels(blocks('<h1>WORK EXPERIENCE</h1><p>x</p><h1>EDUCATION</h1><h2>Sub</h2>'))).toEqual([2, 2, 3])
+  })
+
+  it("keeps a single Heading 1 as the title, which is Worktrack's own export", () => {
+    expect(levels(blocks('<h1>Your Name</h1><h2>Skills</h2><h2>Education</h2>'))).toEqual([1, 2, 2])
+  })
+
+  it('keeps a Title-style name as the title above Heading 1 sections', () => {
+    const html = '<h1 class="doc-title">Your Name</h1><h1>WORK</h1><h1>EDUCATION</h1>'
+    expect(levels(blocks(html))).toEqual([1, 2, 2])
+  })
+
+  it('makes the first line the title when it is set in the largest size', () => {
+    const [name] = blocks('<p><strong>ELIJAH GABE CERVANTES</strong></p><h1>WORK</h1><h1>EDUCATION</h1>', [
+      format('elijah gabe cervantes', 18),
+      format('work'),
+      format('education'),
+    ])
+    expect(name).toMatchObject({ type: 'heading', attrs: { level: 1 } })
+    // The heading carries the title size and weight; marks would double them.
+    expect(name.content![0].marks).toBeUndefined()
+  })
+
+  it('leaves a first line alone when something else is larger', () => {
+    const [first] = blocks('<p><strong>PROFESSIONAL SUMMARY</strong></p><p>Tagline</p>', [
+      format('professional summary', 11),
+      format('tagline', 16),
+    ])
+    expect(first.attrs?.level).toBe(2)
+  })
+})
+
+describe('a bullet with a bold lead-in (2026-10-18)', () => {
+  // mammoth writes "<li><strong>2nd Place</strong>, Tarlac State</li>" with no
+  // <p>, and each inline piece became its own paragraph: every certificate on
+  // the new CV split across two lines.
+  type Block = { type: string; content?: Block[]; text?: string; marks?: { type: string }[] }
+  const first = (html: string) =>
+    ((htmlToWordContent(html) as unknown as { content: Block[] }).content[0].content ?? [])[0]
+
+  it('keeps the bold part and the rest in one paragraph', () => {
+    const item = first('<ul><li><strong>2nd Place</strong>, Tarlac State University</li></ul>')
+    expect(item.content).toHaveLength(1)
+    expect(item.content![0].content!.map((n) => n.text)).toEqual(['2nd Place', ', Tarlac State University'])
+    expect(item.content![0].content![0].marks).toEqual([{ type: 'bold' }])
+  })
+
+  it('still nests a list under the text that introduces it', () => {
+    const item = first('<ul><li>Parent <em>item</em><ul><li>child</li></ul></li></ul>')
+    expect(item.content!.map((n) => n.type)).toEqual(['paragraph', 'bulletList'])
+    expect(item.content![0].content!.map((n) => n.text)).toEqual(['Parent ', 'item'])
+  })
+})
