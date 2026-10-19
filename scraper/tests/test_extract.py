@@ -1493,6 +1493,26 @@ def test_forks_and_nameless_repositories_are_not_projects():
     assert [item["title"] for item in projects] == ["worktrack", "extractor"]
 
 
+def test_the_profile_readme_repository_is_not_a_project():
+    # Gabe, 2026-10-19: NightServant/NightServant showed up under projects. A
+    # repository named after its owner is GitHub's profile README -- already
+    # read for the summary and skills -- not something the owner built.
+    # Matched case-insensitively, by the owner GitHub reports or the full name.
+    special = {
+        "name": "NightServant",
+        "full_name": "NightServant/NightServant",
+        "owner": {"login": "nightservant"},
+        "description": "My profile.",
+        "stargazers_count": 999,
+        "fork": False,
+    }
+    by_full_name = {**special, "owner": None, "name": "octocat", "full_name": "octocat/octocat"}
+    projects = profile_from_github(
+        GH_USER, [special, by_full_name, *GH_REPOS], "x", None, {"NightServant": REPO_README}
+    )["profile"]["projects"]
+    assert [item["title"] for item in projects] == ["worktrack", "extractor"]
+
+
 def test_a_repository_with_no_blurb_but_a_readme_is_a_project():
     # The description-only filter was right while a project was a title and one
     # line. The dialog reads the README, so the evidence moved.

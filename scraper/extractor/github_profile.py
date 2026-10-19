@@ -329,6 +329,22 @@ def _login(url: str) -> str | None:
     return first
 
 
+def _is_profile_readme(repo: dict[str, Any]) -> bool:
+    """Whether this is GitHub's profile README repository, `<user>/<user>`.
+
+    Gabe, 2026-10-19: it was listed under projects. It is where the owner wrote
+    about themselves -- `readme_profile_facts` already reads it for the summary
+    and the skills -- not something they built. Matched case-insensitively,
+    against the owner GitHub reports or, failing that, the full name.
+    """
+    name = str(repo.get("name") or "").lower()
+    owner = repo.get("owner")
+    login = owner.get("login") if isinstance(owner, dict) else None
+    if not login:
+        login = str(repo.get("full_name") or "").split("/")[0]
+    return bool(name) and name == str(login or "").lower()
+
+
 def projectable(repos: Any) -> list[dict[str, Any]]:
     """The repositories that become projects, best first.
 
@@ -350,7 +366,10 @@ def projectable(repos: Any) -> list[dict[str, Any]]:
     owned = [
         repo
         for repo in repos
-        if isinstance(repo, dict) and not repo.get("fork") and not repo.get("archived")
+        if isinstance(repo, dict)
+        and not repo.get("fork")
+        and not repo.get("archived")
+        and not _is_profile_readme(repo)
     ]
     owned.sort(key=lambda repo: repo.get("stargazers_count") or 0, reverse=True)
     return owned[:MAX_PROJECTS]
