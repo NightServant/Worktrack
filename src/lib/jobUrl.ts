@@ -43,6 +43,49 @@ function isPrivateIpv4(octets: number[]): boolean {
   return false
 }
 
+/**
+ * The eight 16-bit groups of an IPv6 address, or null if it is not one.
+ * Accepts `::` compression and a trailing dotted quad (`::ffff:1.2.3.4`).
+ */
+function ipv6Groups(hostname: string): number[] | null {
+  let text = hostname
+  const quad = /(\d{1,3}(?:\.\d{1,3}){3})$/.exec(text)
+  if (quad) {
+    const octets = parseIpv4(quad[1])
+    if (!octets) return null
+    text = `${text.slice(0, quad.index)}${((octets[0] << 8) | octets[1]).toString(16)}:${((octets[2] << 8) | octets[3]).toString(16)}`
+  }
+  const halves = text.split('::')
+  if (halves.length > 2) return null
+  const parse = (part: string) => (part ? part.split(':') : [])
+  const head = parse(halves[0])
+  const tail = halves.length === 2 ? parse(halves[1]) : []
+  const missing = 8 - head.length - tail.length
+  if ((halves.length === 2 && missing < 1) || (halves.length === 1 && missing !== 0)) return null
+  const groups = [...head, ...Array(halves.length === 2 ? missing : 0).fill('0'), ...tail]
+  if (groups.some((g) => !/^[0-9a-f]{1,4}$/.test(g))) return null
+  return groups.map((g) => Number.parseInt(g, 16))
+}
+
+/**
+ * The IPv4 address an IPv6 one carries, when it carries one.
+ *
+ * ADDED 2026-10-19, after an edge-case test found the bypass: the URL parser
+ * rewrites `[::ffff:127.0.0.1]` to `::ffff:7f00:1`, a hostname with colons that
+ * named no private IPv6 range -- so it passed, and on a dual-stack server it
+ * reaches loopback, the cloud metadata address or the private network. Three
+ * forms embed one: IPv4-mapped (`::ffff:0:0/96`), IPv4-compatible (`::/96`,
+ * deprecated but parsed) and NAT64 (`64:ff9b::/96`).
+ */
+function embeddedIpv4(groups: number[]): number[] | null {
+  const zero = (from: number, to: number) => groups.slice(from, to).every((g) => g === 0)
+  const mapped = zero(0, 5) && groups[5] === 0xffff
+  const compatible = zero(0, 6) && (groups[6] !== 0 || groups[7] > 1)
+  const nat64 = groups[0] === 0x64 && groups[1] === 0xff9b && zero(2, 6)
+  if (!mapped && !compatible && !nat64) return null
+  return [groups[6] >> 8, groups[6] & 0xff, groups[7] >> 8, groups[7] & 0xff]
+}
+
 export function isDisallowedHostname(rawHostname: string): boolean {
   const hostname = normalizeHostname(rawHostname)
   if (!hostname) return true
@@ -57,9 +100,19 @@ export function isDisallowedHostname(rawHostname: string): boolean {
 
   if (hostname.includes(':')) {
     if (hostname === '::' || hostname === '::1') return true
-    if (hostname.startsWith('fe80:')) return true
-    if (hostname.startsWith('fc') || hostname.startsWith('fd')) return true
-    if (hostname.includes('%')) return true
+    const groups = ipv6Groups(hostname)
+    // Not parseable as IPv6 is not a public address either.
+    if (!groups) return true
+    if (groups.every((g) => g === 0) || (groups.slice(0, 7).every((g) => g === 0) && groups[7] === 1)) return true
+    const ipv4 = embeddedIpv4(groups)
+    if (ipv4) return isPrivateIpv4(ipv4)
+    // Ranges, not string prefixes: link-local is fe80::/10, so `febf::1` is
+    // one, and a `startsWith('fe80:')` let it through. Site-local (fec0::/10,
+    // deprecated), unique-local (fc00::/7) and multicast (ff00::/8) too.
+    const first = groups[0]
+    if ((first & 0xffc0) === 0xfe80 || (first & 0xffc0) === 0xfec0) return true
+    if ((first & 0xfe00) === 0xfc00 || (first & 0xff00) === 0xff00) return true
+    // A zone id (`fe80::1%eth0`) does not parse above, so it is refused there.
   }
   return false
 }

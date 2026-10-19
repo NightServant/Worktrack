@@ -32,7 +32,7 @@ from extractor.challenge import (
     looks_like_javascript_shell,
 )
 from extractor.core import extract
-from extractor.net import normalize_target_url, reject_reason
+from extractor.net import BlockedUrl, fetch_public, normalize_target_url, reject_reason
 from extractor.apify_profile import profile_from_apify
 from extractor.github_profile import _login, profile_from_github, projectable
 from extractor.job_board import (
@@ -1034,10 +1034,12 @@ async def _plain_fetch(url: str) -> tuple[str | None, str]:
     for why rendering a page the site serves to browsers is not a disguise.
     """
     try:
-        async with httpx.AsyncClient(
-            follow_redirects=True, timeout=REQUEST_TIMEOUT_S, headers=BROWSER_HEADERS
-        ) as client:
-            response = await client.get(url)
+        # Every hop checked BEFORE it is requested, resolved address included;
+        # see `fetch_public`.
+        async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_S, headers=BROWSER_HEADERS) as client:
+            response = await fetch_public(client, url)
+    except BlockedUrl:
+        return None, "redirected-to-blocked-host"
     except httpx.TimeoutException:
         return None, "timeout"
     except Exception:
@@ -1441,10 +1443,12 @@ async def extract_endpoint(body: ExtractRequest) -> JSONResponse:
         return JSONResponse(extract(url, body.html, 200), status_code=200)
 
     try:
-        async with httpx.AsyncClient(
-            follow_redirects=True, timeout=REQUEST_TIMEOUT_S, headers=BROWSER_HEADERS
-        ) as client:
-            response = await client.get(url)
+        # Every hop checked BEFORE it is requested, resolved address included;
+        # see `fetch_public`.
+        async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_S, headers=BROWSER_HEADERS) as client:
+            response = await fetch_public(client, url)
+    except BlockedUrl:
+        return JSONResponse({"error": "URL redirected to an invalid host"}, status_code=422)
     except httpx.TimeoutException:
         return JSONResponse({"error": "Timed out while fetching job page"}, status_code=504)
     except httpx.HTTPError:
