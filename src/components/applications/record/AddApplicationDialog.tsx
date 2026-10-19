@@ -404,8 +404,14 @@ export function AddApplicationDialog({
     switch (step) {
       case 'link':
         return (
-          <div className="flex max-w-xl flex-col gap-5">
-            <p className="text-body-m text-text-secondary">
+          // THE CONTROLS FILL THE COLUMN; ONLY PROSE IS CAPPED (Gabe,
+          // 2026-10-19: "excessive space at the right side"). `max-w-xl` on
+          // the whole step stopped the field 78px short of the edge the
+          // stepper and the rules above and below it draw, so the step read
+          // as a block left floating in a wider frame. A URL is long, so its
+          // field takes the column; sentences keep a readable measure.
+          <div className="flex flex-col gap-5">
+            <p className="max-w-prose text-body-m text-text-secondary">
               Paste the address of the job posting. Worktrack reads the page and fills the
               application in for you — company, role, salary, location and the description
               itself. You check it before anything is saved.
@@ -436,7 +442,7 @@ export function AddApplicationDialog({
                 "the model does three of them", with nothing for the model to
                 read. Better to stop at the first step, where the fix is
                 obvious, than at the third, where it is not. */}
-            <p className="text-body-s text-text-muted">
+            <p className="max-w-prose text-body-s text-text-muted">
               Everything after this step is built from the page at that address.
             </p>
           </div>
@@ -444,8 +450,8 @@ export function AddApplicationDialog({
 
       case 'status':
         return (
-          <div className="flex max-w-xl flex-col gap-5">
-            <p className="text-body-m text-text-secondary">
+          <div className="flex flex-col gap-5">
+            <p className="max-w-prose text-body-m text-text-secondary">
               Have you sent this one yet, or are you keeping it on the list for now?
             </p>
             <Field id="add-status" label="status">
@@ -674,6 +680,9 @@ export function AddApplicationDialog({
         onOpenChange(next)
       }}
       size={step === 'review' ? 'xl' : 'l'}
+      // Centred, with room either side, for the three short steps; the review
+      // is the record's own wide frame and keeps the gutter.
+      inset={step !== 'review'}
       title={postingOpen ? 'job description' : 'new application'}
       icon={postingOpen ? 'Documents' : 'Briefcase'}
       description={postingOpen ? undefined : 'four steps, and the model does three of them.'}

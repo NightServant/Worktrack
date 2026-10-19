@@ -107,6 +107,13 @@ export interface AppDialogProps {
    */
   size?: 'm' | 'l' | 'xl'
   /**
+   * 16px more side margin than the gutter, header and body alike, so a short
+   * centred task reads as one block in the middle of its frame (Gabe,
+   * 2026-10-19, the add wizard: "increase the left and right margins a little
+   * bit only for center hierarchy"). From `sm` up; a phone keeps the gutter.
+   */
+  inset?: boolean
+  /**
    * Whether the dialog BODY owns the scrolling. Default true.
    *
    * `false` hands it to the child instead, which is what a dialog with fixed
@@ -147,6 +154,8 @@ export interface AppDialogProps {
   children: React.ReactNode
 }
 
+const INSET = 'sm:px-[calc(var(--spacing-gutter)+1rem)]'
+
 const MAX_WIDTH = {
   m: 'sm:max-w-[480px]',
   l: 'sm:max-w-[720px]',
@@ -162,6 +171,7 @@ export function AppDialog({
   eyebrow,
   actions,
   size = 'm',
+  inset = false,
   bodyScroll = true,
   headerSeparator = true,
   finalFocus,
@@ -200,7 +210,7 @@ export function AppDialog({
           MAX_WIDTH[size]
         )}
       >
-        <DialogHeader className="shrink-0 gap-0 p-gutter pb-3">
+        <DialogHeader className={cn('shrink-0 gap-0 p-gutter pb-3', inset && INSET)}>
           {eyebrow && <div className="mb-2 pr-8">{eyebrow}</div>}
           <div className="flex items-start justify-between gap-6">
             <div className="flex min-w-0 items-start gap-2.5">
@@ -249,6 +259,7 @@ export function AppDialog({
         <div
           className={cn(
             'min-h-0 flex-1 overflow-y-auto p-gutter pt-3',
+            inset && INSET,
             // A CHILD THAT OWNS THE SCROLLING OWNS THE BOTTOM EDGE TOO. The
             // record ends in an action bar that runs to the dialog's edge, and
             // 32px of body padding under it is 32px of nothing between the
