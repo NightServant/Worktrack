@@ -1,0 +1,14 @@
+-- The account-wide default currency is gone (Gabe, 2026-10-19: "Default
+-- Currency settings in the Settings Page must be removed. The system must be
+-- able to detect the currency of the particular job application itself").
+-- Each application's currency is detected from the application itself --
+-- src/lib/currencyDetection.ts -- and nothing has read or written this table
+-- since 8cd941f. Its one column was that default.
+--
+-- Its policies (its own and the demo-account guards), its check constraint
+-- and its grants all belong to the table and go with it. Account deletion
+-- never named it: it cascaded from auth.users like every user-owned table.
+--
+-- No CASCADE: nothing should depend on this table, and if something does,
+-- the push should stop and say so rather than drop it silently.
+DROP TABLE IF EXISTS public.user_preferences;

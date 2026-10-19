@@ -363,7 +363,7 @@ language the browser's UI is in, not where the person is — Chrome reports
 show the wrong country's holidays, which is worse than showing none. The
 calendar carries a visible country picker and remembers the choice in
 `localStorage` under `worktrack.holiday-country`. **Per browser, not per
-account**: a second device asks again. `user_preferences` would mean a
+account**: a second device asks again. A settings table would mean a
 migration, a service method and a mutation for a display preference that costs
 one click to re-pick.
 

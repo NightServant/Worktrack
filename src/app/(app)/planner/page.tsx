@@ -40,7 +40,7 @@ import { RouteError } from '@/components/ui/route-states'
  * point, the holidays are context.
  *
  * THE COUNTRY LIVES IN localStorage, NOT IN THE DATABASE, and that is a
- * deliberate limit rather than an oversight. `user_preferences` would mean a
+ * deliberate limit rather than an oversight. A settings table would mean a
  * migration, a service method and a mutation for a display preference that
  * costs one click to re-pick; per-browser is the honest size of the thing.
  * The trade is stated so nobody is surprised: a second device asks again.

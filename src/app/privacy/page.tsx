@@ -84,7 +84,6 @@ const STORED: { table: string; what: string }[] = [
   { table: 'resumes', what: 'CVs you write in the editor, including their content and their section structure.' },
   { table: 'resume_snapshots', what: 'Version snapshots of those CVs, so an earlier draft can be restored.' },
   { table: 'application_documents', what: 'Links between an application and the CV version sent with it.' },
-  { table: 'user_preferences', what: 'A default currency, if you saved one in an earlier version. Nothing reads or writes it any more: each application\'s currency now comes from the application itself.' },
   { table: 'user_profiles', what: 'Your professional profile, if you build one in Settings from your LinkedIn profile address: name, headline, summary, work history, education and whatever else that public page carries. Only the public page is read, only when you ask for it, and it is removable from the same screen.' },
   { table: 'demo_accounts', what: 'The identifiers of the public read-only demo accounts. It holds no data belonging to you.' },
 ]

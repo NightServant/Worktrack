@@ -439,7 +439,6 @@ Twelve tables, RLS enabled on all of them:
 | `application_documents` | Which CV snapshot was sent to which application |
 | `contacts` / `application_contacts` | Recruiters and referrals, linked many-to-many |
 | `user_profiles` | One row per person: the profile merged from their public addresses, plus the phone number and birthday no source can supply |
-| `user_preferences` | Legacy: the default currency older versions saved. Nothing reads or writes it since 2026-10-19 — each application's currency is detected from its own salary text and location ([`src/lib/currencyDetection.ts`](src/lib/currencyDetection.ts)) |
 | `demo_accounts` | Read-only demo users, enforced by RLS |
 
 ### Edge functions — there are none

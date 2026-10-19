@@ -1,4 +1,4 @@
-// Mirrors user_preferences_currency_check and jobs_salary_currency_check.
+// Mirrors jobs_salary_currency_check.
 export const SUPPORTED_CURRENCIES = ['PHP','USD','EUR','GBP','SGD','AUD'] as const
 export type SupportedCurrency = (typeof SUPPORTED_CURRENCIES)[number]
 
