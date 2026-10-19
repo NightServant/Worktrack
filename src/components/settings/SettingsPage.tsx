@@ -5,12 +5,9 @@ import { PageHeader } from '@/components/ui/page-header'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 import { AccountGroup } from './AccountGroup'
-import { PreferencesGroup } from './PreferencesGroup'
 import { DangerZone } from './DangerZone'
 import { ProfileGroup, type ProfileState } from './ProfileGroup'
 import type { ProfileDetails } from './ProfileDetailsDialog'
-import { resolveDefaultCurrency, type SupportedCurrency, type UserPreferences } from '@/services/userPreferences'
-import { useUserCountry } from '@/hooks/useUserCountry'
 
 /**
  * The Settings screen's body, over plain props -- the same split as
@@ -41,11 +38,9 @@ import { useUserCountry } from '@/hooks/useUserCountry'
  * state. No export group either -- `/applications` already owns CSV import and
  * export in its own toolbar.
  *
- * `prefs` is the only required prop: `resolveDefaultCurrency` already knows
- * how to read a `null` row (no preferences saved yet) as PHP, so a caller
- * mid-fetch can pass `null` and get the same fallback the rest of the app
- * uses rather than a loading state blocking the two groups that do not
- * depend on it.
+ * NO PREFERENCES GROUP since 2026-10-19. Its one setting was the default
+ * currency, and Gabe removed it: an application's currency is detected from
+ * the application itself (see lib/currencyDetection), not seeded account-wide.
  */
 export interface SettingsPageProps {
   /**
@@ -53,10 +48,7 @@ export interface SettingsPageProps {
    * is drawn -- see `ProfileGroup`.
    */
   onSaveDetails?: (details: ProfileDetails) => Promise<void> | void
-  prefs: UserPreferences | null
   email?: string | null
-  onDefaultCurrencyChange?: (code: SupportedCurrency) => void
-  savingCurrency?: boolean
   onSignOut?: () => void
   signingOut?: boolean
   onDeleteAccount?: () => void
@@ -76,10 +68,7 @@ export interface SettingsPageProps {
 
 export function SettingsPage({
   onSaveDetails,
-  prefs,
   email = null,
-  onDefaultCurrencyChange,
-  savingCurrency = false,
   onSignOut,
   signingOut = false,
   onDeleteAccount,
@@ -88,14 +77,6 @@ export function SettingsPage({
   profileSource,
   profileSteps,
 }: SettingsPageProps) {
-  /*
-    THE OPENING CURRENCY FOLLOWS THE READER, for anybody who has never set one
-    -- the preferences row is created lazily, so most people have none and
-    every one of them used to get PHP. Detected after mount; see
-    `useUserCountry` for why not during render.
-  */
-  const country = useUserCountry('PH')
-
   return (
     <div className="flex flex-col gap-8">
       <PageHeader
@@ -157,11 +138,6 @@ export function SettingsPage({
 
         <TabsContent value="general" className="flex flex-col gap-8 pt-8">
           <AccountGroup email={email} onSignOut={onSignOut} signingOut={signingOut} />
-          <PreferencesGroup
-            defaultCurrency={resolveDefaultCurrency(prefs, country)}
-            onDefaultCurrencyChange={onDefaultCurrencyChange}
-            saving={savingCurrency}
-          />
           <DangerZone onDeleteAccount={onDeleteAccount} deleting={deletingAccount} />
         </TabsContent>
       </Tabs>

@@ -4,7 +4,6 @@ import userEvent from '@testing-library/user-event'
 import { AddApplicationDialog } from '../record/AddApplicationDialog'
 import { ApplicationRecordView } from '../record/ApplicationRecordView'
 import type { PostingDigestResult } from '../record/digest'
-import { resolveDefaultCurrency } from '@/services/userPreferences'
 import type { Job } from '@/types'
 
 vi.mock('next/navigation', () => ({
@@ -13,7 +12,7 @@ vi.mock('next/navigation', () => ({
 
 afterEach(() => cleanup())
 
-const CURRENCY = resolveDefaultCurrency(null)
+const CURRENCY = 'PHP'
 
 const RESULT = (over: Partial<PostingDigestResult> = {}): PostingDigestResult => ({
   formatted: 'Senior Frontend Engineer at Acme Corp.\n\n- React\n- TypeScript',

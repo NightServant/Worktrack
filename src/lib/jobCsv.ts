@@ -2,6 +2,7 @@ import Papa from 'papaparse'
 import { Job, JobFormData, JobStatus, WorkMode } from '@/types'
 import { isSupportedCurrency, type SupportedCurrency } from '@/services/userPreferences'
 import { escapeCsvCell } from '@/lib/uploadSafety'
+import { detectCurrency } from '@/lib/currencyDetection'
 
 export interface ParsedJobRow {
   rowNumber: number
@@ -272,14 +273,26 @@ export function parseJobsCsvText(csvText: string): ParseJobsCsvResult {
     // An unrecognised currency is dropped rather than passed through: the column
     // has a CHECK constraint, so one bad cell would fail the whole insert. The
     // row still imports, taking the column default.
+    //
+    // A ROW WITHOUT ONE IS DETECTED, not defaulted (2026-10-19): there is no
+    // account currency any more, and a row's location or description says
+    // what it paid in (see lib/currencyDetection). Only a row that says
+    // nothing at all takes the column default.
     const currencyRaw = getFirstValue(row, HEADER_ALIASES.salary_currency).trim().toUpperCase()
-    const salary_currency = isSupportedCurrency(currencyRaw)
-      ? (currencyRaw as SupportedCurrency)
-      : undefined
-    if (currencyRaw && !salary_currency) {
+    const stated = isSupportedCurrency(currencyRaw) ? (currencyRaw as SupportedCurrency) : undefined
+    const salary_currency =
+      stated ??
+      detectCurrency({
+        text: getFirstValue(row, HEADER_ALIASES.description),
+        location: getFirstValue(row, HEADER_ALIASES.location),
+      }) ??
+      undefined
+    if (currencyRaw && !stated) {
       issues.push({
         rowNumber,
-        message: `Unrecognised currency "${currencyRaw}", imported with the default instead`,
+        message: salary_currency
+          ? `Unrecognised currency "${currencyRaw}", imported as ${salary_currency}, read from the row`
+          : `Unrecognised currency "${currencyRaw}", imported with the default instead`,
       })
     }
 

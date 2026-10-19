@@ -220,6 +220,7 @@ The figures above are quoted with the date they were read, because somebody else
 | Routes behind authentication | `find "src/app/(app)" -name page.tsx` |
 | CV templates, per mode | [`src/services/resumeTemplateService.ts`](src/services/resumeTemplateService.ts) |
 | Supported currencies | [`src/services/userPreferences.ts`](src/services/userPreferences.ts) |
+| How an application's currency is detected | [`src/lib/currencyDetection.ts`](src/lib/currencyDetection.ts) |
 
 This is the same rule the landing page follows and `src/lib/__tests__/attribution.test.ts` enforces: a claim nothing recomputes is a claim that rots, and this README shipped a stale test count once already.
 
@@ -438,7 +439,7 @@ Twelve tables, RLS enabled on all of them:
 | `application_documents` | Which CV snapshot was sent to which application |
 | `contacts` / `application_contacts` | Recruiters and referrals, linked many-to-many |
 | `user_profiles` | One row per person: the profile merged from their public addresses, plus the phone number and birthday no source can supply |
-| `user_preferences` | Per-user settings; default currency for new applications |
+| `user_preferences` | Legacy: the default currency older versions saved. Nothing reads or writes it since 2026-10-19 — each application's currency is detected from its own salary text and location ([`src/lib/currencyDetection.ts`](src/lib/currencyDetection.ts)) |
 | `demo_accounts` | Read-only demo users, enforced by RLS |
 
 ### Edge functions — there are none

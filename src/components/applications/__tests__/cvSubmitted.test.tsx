@@ -2,7 +2,6 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ApplicationRecordView } from '../record/ApplicationRecordView'
-import { resolveDefaultCurrency } from '@/services/userPreferences'
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ replace: vi.fn(), push: vi.fn(), refresh: vi.fn() }),
@@ -10,7 +9,7 @@ vi.mock('next/navigation', () => ({
 
 afterEach(() => cleanup())
 
-const CURRENCY = resolveDefaultCurrency(null)
+const CURRENCY = 'PHP'
 const RESUMES = [
   { id: 'r1', title: 'frontend cv' },
   { id: 'r2', title: 'backend cv' },

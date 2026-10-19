@@ -4,7 +4,6 @@ import userEvent from '@testing-library/user-event'
 import { AddApplicationDialog } from '../record/AddApplicationDialog'
 import { ApplicationRecordView } from '../record/ApplicationRecordView'
 import { fixBeforeSaving } from '../record/useRecordDraft'
-import { resolveDefaultCurrency } from '@/services/userPreferences'
 import { chooseOption } from '@/test/select'
 
 afterEach(() => cleanup())
@@ -21,7 +20,7 @@ async function reachReview(values: Record<string, unknown>) {
     <AddApplicationDialog
       open
       onOpenChange={vi.fn()}
-      defaultCurrency={resolveDefaultCurrency(null)}
+      defaultCurrency={'PHP'}
       onSubmit={vi.fn()}
       onAutofill={onAutofill}
     />
@@ -90,7 +89,7 @@ describe('applied requires a date', () => {
       <AddApplicationDialog
         open
         onOpenChange={vi.fn()}
-        defaultCurrency={resolveDefaultCurrency(null)}
+        defaultCurrency={'PHP'}
         onSubmit={vi.fn()}
         onAutofill={onAutofill}
       />

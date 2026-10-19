@@ -11,7 +11,7 @@ import { normalizeProfile, type UserProfile } from './profile'
  * worked once is worth keeping -- without this the panel would be empty on
  * every visit where LinkedIn happened to say no.
  *
- * `get` never filters on `user_id`, matching userPreferencesService and
+ * `get` never filters on `user_id`, matching
  * eventService: the table is behind owner-only RLS, so a redundant filter
  * would hide a broken policy instead of surfacing it.
  */

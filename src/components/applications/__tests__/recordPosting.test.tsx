@@ -3,7 +3,6 @@ import { render, screen, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ApplicationRecordDialog } from '../record/ApplicationRecordDialog'
 import { makeJob } from '@/test/fixtures'
-import { resolveDefaultCurrency } from '@/services/userPreferences'
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ replace: vi.fn(), push: vi.fn(), refresh: vi.fn() }),
@@ -11,7 +10,7 @@ vi.mock('next/navigation', () => ({
 
 afterEach(() => cleanup())
 
-const CURRENCY = resolveDefaultCurrency(null)
+const CURRENCY = 'PHP'
 
 /**
  * The control that opens the posting's own view.

@@ -12,7 +12,7 @@ const useJobsMock = vi.hoisted(() => vi.fn())
 const useCreateJobMock = vi.hoisted(() => vi.fn())
 const useUpdateJobMock = vi.hoisted(() => vi.fn())
 const useCreateJobsBulkMock = vi.hoisted(() => vi.fn())
-const useUserPreferencesMock = vi.hoisted(() => vi.fn())
+const useUserCountryMock = vi.hoisted(() => vi.fn(() => 'PH'))
 const deleteJobMutate = vi.hoisted(() => vi.fn())
 const idleMutation = vi.hoisted(() => () => ({ mutateAsync: vi.fn(), isPending: false }))
 
@@ -30,13 +30,11 @@ vi.mock('@/hooks/useJobs', () => ({
   useJobStatusHistory: () => ({ data: [], isLoading: false, error: null }),
 }))
 
-// The currency seam this route used to leave open: resolveDefaultCurrency
-// was always called with a hardcoded null, so a stored preference could
-// never reach the form. Mocking the read half of that seam lets the tests
-// below prove a stored preference actually gets there now.
-vi.mock('@/hooks/useUserPreferences', () => ({
-  useUserPreferences: useUserPreferencesMock,
-}))
+// THE READER'S COUNTRY IS MOCKED, not read off the machine. It is where a
+// new application's currency starts before the application says anything,
+// and reading the real one made two tests pass in the Philippines and fail on
+// a UTC, en-US CI runner (PHP against USD) for as long as they existed.
+vi.mock('@/hooks/useUserCountry', () => ({ useUserCountry: useUserCountryMock }))
 
 vi.mock('@/contexts/ToastContext', () => ({
   useToast: () => ({ success: vi.fn(), error: vi.fn(), info: vi.fn() }),
@@ -132,7 +130,7 @@ beforeEach(() => {
   useCreateJobMock.mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
   useUpdateJobMock.mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
   useCreateJobsBulkMock.mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
-  useUserPreferencesMock.mockReturnValue({ data: null, isLoading: false, error: null })
+  useUserCountryMock.mockReturnValue('PH')
   deleteJobMutate.mockReset().mockResolvedValue(undefined)
   searchParamMock.mockImplementation(() => null)
   linksData.current = []
@@ -296,14 +294,11 @@ describe('Applications route wrapper', () => {
     expect(screen.getByText(/jobs\.csv/i)).toBeTruthy()
   })
 
-  // Task 9's whole point: this route used to call
-  // resolveDefaultCurrency(null) unconditionally, so a stored preference
-  // could never reach the form -- a user could set USD in Settings and every
-  // new application still opened at PHP. These two tests prove the read half
-  // of that seam is actually wired, not just that resolveDefaultCurrency
-  // itself works in isolation.
-  it('defaults a new application to PHP when the user has no stored preference', async () => {
-    useUserPreferencesMock.mockReturnValue({ data: null, isLoading: false, error: null })
+  // No account default since 2026-10-19: a new application starts in the
+  // reader's own country's currency and then follows what the application
+  // says (see useRecordDraft and lib/currencyDetection).
+  it("starts a new application in the reader's country's currency", async () => {
+    useUserCountryMock.mockReturnValue('PH')
     useJobsMock.mockReturnValue({ data: [], isLoading: false, error: null })
     const user = userEvent.setup()
     render(<Page />)
@@ -317,19 +312,17 @@ describe('Applications route wrapper', () => {
     expect(selectedLabel(screen.getByLabelText(/^currency/))).toBe('PHP')
   })
 
-  it('defaults a new application to the stored preference instead of PHP', async () => {
-    useUserPreferencesMock.mockReturnValue({
-      data: { user_id: 'user-1', default_currency: 'USD', created_at: 'x', updated_at: 'x' },
-      isLoading: false,
-      error: null,
-    })
+  it('starts in USD for a reader in the US, and PHP when the country is unknown', async () => {
     useJobsMock.mockReturnValue({ data: [], isLoading: false, error: null })
-    const user = userEvent.setup()
-    render(<Page />)
-
-    await addUpToReview(user)
-    await user.click(screen.getByRole('button', { name: /add more details/i }))
-    expect(selectedLabel(screen.getByLabelText(/^currency/))).toBe('USD')
+    for (const [country, expected] of [['US', 'USD'], [null, 'PHP']] as const) {
+      useUserCountryMock.mockReturnValue(country as unknown as string)
+      const user = userEvent.setup()
+      const { unmount } = render(<Page />)
+      await addUpToReview(user)
+      await user.click(screen.getByRole('button', { name: /add more details/i }))
+      expect(selectedLabel(screen.getByLabelText(/^currency/)), String(country)).toBe(expected)
+      unmount()
+    }
   })
 
   // Item 2's second half: window.confirm is the same defect class as the

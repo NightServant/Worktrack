@@ -28,7 +28,7 @@ import { AddApplicationDialog } from './record/AddApplicationDialog'
 import type { ApplicationRecordData } from './record/recordData'
 import type { PostingDigestResult } from './record/digest'
 import { buildJobsCsvText } from '@/lib/jobCsv'
-import { resolveDefaultCurrency, type SupportedCurrency } from '@/services/userPreferences'
+import type { SupportedCurrency } from '@/services/userPreferences'
 import type { Job, JobAutofillResult, JobFormData } from '@/types'
 
 
@@ -195,7 +195,7 @@ export interface ApplicationsPageProps {
 
 export function ApplicationsPage({
   jobs,
-  defaultCurrency = resolveDefaultCurrency(null),
+  defaultCurrency = 'PHP',
   onCreate,
   onUpdate,
   onDigest,

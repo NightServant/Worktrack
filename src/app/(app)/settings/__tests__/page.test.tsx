@@ -2,14 +2,12 @@ import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
-// This route reads through useAuth (email, signOut) and useUserPreferences,
-// and writes through useSetDefaultCurrency plus a direct RPC for account
-// deletion. Mocking all four drives every state without standing up
-// AuthProvider or QueryClientProvider -- the same technique every other
-// (app) route test in this milestone uses.
+// This route reads through useAuth (email, signOut) and the profile hooks, and
+// writes through a direct RPC for account deletion. Mocking them drives every
+// state without standing up AuthProvider or QueryClientProvider -- the same
+// technique every other (app) route test in this milestone uses. (The default
+// currency and its two hooks were removed on 2026-10-19.)
 const useAuthMock = vi.hoisted(() => vi.fn())
-const useUserPreferencesMock = vi.hoisted(() => vi.fn())
-const useSetDefaultCurrencyMock = vi.hoisted(() => vi.fn())
 const useUserProfileMock = vi.hoisted(() => vi.fn())
 const rpcMock = vi.hoisted(() => vi.fn())
 const showErrorMock = vi.hoisted(() => vi.fn())
@@ -27,13 +25,9 @@ vi.mock('next/navigation', () => ({
   // about the account group, and an unmocked hook throws before they get to it.
   useSearchParams: () => new URLSearchParams(),
 }))
-vi.mock('@/hooks/useUserPreferences', () => ({
-  useUserPreferences: useUserPreferencesMock,
-  useSetDefaultCurrency: useSetDefaultCurrencyMock,
-}))
 // The Profile tab reads and writes through its own hooks. Mocked for the same
-// reason the preferences ones are: this suite drives the route's own logic --
-// sign-out, deletion, the currency write -- without standing up a
+// reason as the auth one: this suite drives the route's own logic -- sign-out
+// and deletion -- without standing up a
 // QueryClientProvider, and an unmocked useQuery throws before any of it runs.
 vi.mock('@/hooks/useUserProfile', () => ({
   useUserProfile: useUserProfileMock,
@@ -90,22 +84,18 @@ async function confirmDeleteAccount() {
 
 function setup({
   email = 'gabe@example.com',
-  prefs = null as { user_id: string; default_currency: string; created_at: string; updated_at: string } | null,
   // Resolves a result now, not undefined: signOut reports whether the
   // server revoke succeeded, because a failed one no longer aborts the
   // sign-out.
   signOut = vi.fn().mockResolvedValue({ revokedEverywhere: true }),
-  mutateAsync = vi.fn().mockResolvedValue(undefined),
 } = {}) {
   useAuthMock.mockReturnValue({ user: { id: 'u1', email }, signOut })
-  useUserPreferencesMock.mockReturnValue({ data: prefs, isLoading: false, error: null })
-  useSetDefaultCurrencyMock.mockReturnValue({ mutateAsync, isPending: false })
   // Resolved and empty -- the state a fresh account is actually in.
   useUserProfileMock.mockReturnValue({
     data: { profile: null, fetchedAt: null },
     isPending: false,
   })
-  return { signOut, mutateAsync }
+  return { signOut }
 }
 
 /**
@@ -115,7 +105,7 @@ function setup({
  * and `TabsContent` UNMOUNTS the panel that is not showing -- which is the
  * behaviour worth having, since a `hidden` panel would leave a second copy of
  * every control in the accessibility tree. Everything this suite asserts on --
- * the email, the currency segments, sign-out, the danger zone -- lives in
+ * the email, sign-out, the danger zone -- lives in
  * `general`, so it has to be opened first.
  */
 async function renderGeneral() {
@@ -133,25 +123,13 @@ describe('Settings route wrapper', () => {
     expect(screen.getByDisplayValue('gabe@example.com')).toBeTruthy()
   })
 
-  // The whole point of this task: applications/page.tsx used to hardcode
-  // resolveDefaultCurrency(null), so a stored preference never reached the
-  // form. This proves the seam from the settings side -- a stored USD
-  // preference has to reach this screen's currency control, not just exist
-  // in the database.
-  it('selects the stored default currency rather than always falling back to PHP', async () => {
-    setup({
-      prefs: { user_id: 'u1', default_currency: 'USD', created_at: 'x', updated_at: 'x' },
-    })
+  it('offers no default currency: each application detects its own', async () => {
+    // Gabe, 2026-10-19. Asserted through the route as well as the screen,
+    // since the route was what wrote the old preference.
+    setup()
     await renderGeneral()
-    expect(screen.getByRole('radio', { name: 'USD' }).getAttribute('aria-checked')).toBe('true')
-    expect(screen.getByRole('radio', { name: 'PHP' }).getAttribute('aria-checked')).toBe('false')
-  })
-
-  it('writes a new default currency through useSetDefaultCurrency, not a raw service call', async () => {
-    const { mutateAsync } = setup()
-    await renderGeneral()
-    fireEvent.click(screen.getByRole('radio', { name: 'EUR' }))
-    expect(mutateAsync).toHaveBeenCalledWith('EUR')
+    expect(screen.queryByText(/default currency/i)).toBeNull()
+    expect(screen.queryAllByRole('radio')).toHaveLength(0)
   })
 
   it('signs out through useAuth when the account group\'s sign-out button is clicked', async () => {

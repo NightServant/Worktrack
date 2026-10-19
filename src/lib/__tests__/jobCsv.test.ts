@@ -112,3 +112,30 @@ describe('parseStatus via parseJobsCsvText', () => {
     ])
   })
 })
+
+describe("a CSV row's currency (2026-10-19)", () => {
+  // No account default any more: a row that states no currency is read for
+  // one, and only a row that says nothing takes the column default.
+  const parse = (body: string) => parseJobsCsvText(`company,title,status,location,currency\n${body}`)
+
+  it('reads a row with no currency from its location', () => {
+    const { rows, issues } = parse('Acme,Engineer,wishlist,Singapore,')
+    expect(rows[0]?.data.salary_currency).toBe('SGD')
+    expect(issues).toHaveLength(0)
+  })
+
+  it('keeps a currency the row states over its location', () => {
+    expect(parse('Acme,Engineer,wishlist,Singapore,usd').rows[0]?.data.salary_currency).toBe('USD')
+  })
+
+  it('detects past a currency it cannot store, and says so', () => {
+    const { rows, issues } = parse('Acme,Engineer,wishlist,"London, England",JPY')
+    expect(rows[0]?.data.salary_currency).toBe('GBP')
+    expect(issues[0]?.message).toMatch(/JPY.*imported as GBP/)
+  })
+
+  it('leaves the column default to a row that says nothing', () => {
+    const { rows } = parse('Acme,Engineer,wishlist,Remote,')
+    expect(rows[0]?.data).not.toHaveProperty('salary_currency')
+  })
+})

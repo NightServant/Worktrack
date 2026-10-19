@@ -7,7 +7,6 @@ import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/contexts/ToastContext'
-import { useUserPreferences, useSetDefaultCurrency } from '@/hooks/useUserPreferences'
 import { SettingsPage } from '@/components/settings/SettingsPage'
 import { ProfileSources, ProfileSourceSteps } from '@/components/settings/ProfileImport'
 import type { ProfileState } from '@/components/settings/ProfileGroup'
@@ -21,20 +20,11 @@ import {
 import { useBookmarkletImport } from '@/components/applications/useBookmarkletImport'
 import { RouteSkeleton } from '@/components/ui/loading-skeletons'
 import { toError } from '@/services/supabaseHelpers'
-import type { SupportedCurrency } from '@/services/userPreferences'
 
 /**
  * Thin route wrapper, the same split as every other `(app)` route: the
  * screen takes plain props so it renders without Next routing, AuthProvider
  * or react-query, and this file owns every read and write.
- *
- * `prefs` flows from `useUserPreferences`, the same hook `/applications`
- * now reads to close the seam it left open on purpose. Before this task
- * nothing read the stored `user_preferences` row, so every new application
- * defaulted to PHP regardless of what a user chose here. Both routes go
- * through the hook rather than calling `userPreferencesService` directly so
- * a write from either one invalidates the single
- * `['user-preferences', user?.id]` cache entry the other reads.
  *
  * Account deletion has no self-service call on the client SDK --
  * `auth.admin.deleteUser` needs the service role key, which must never reach
@@ -47,7 +37,6 @@ import type { SupportedCurrency } from '@/services/userPreferences'
  */
 function SettingsRoute() {
   const { user, signOut } = useAuth()
-  const { data: prefs = null } = useUserPreferences()
   const { data: stored, isPending: profileLoading } = useUserProfile()
   const fetchProfile = useImportProfileFromUrl()
   const clearProfile = useClearUserProfile()
@@ -69,20 +58,7 @@ function SettingsRoute() {
     params.get('import') === 'bookmarklet' && !!captureUrl,
     'profile'
   )
-  const setDefaultCurrency = useSetDefaultCurrency()
   const { success, error: showError } = useToast()
-
-  const handleDefaultCurrencyChange = async (code: SupportedCurrency) => {
-    try {
-      await setDefaultCurrency.mutateAsync(code)
-      success('Default currency updated')
-    } catch (err) {
-      showError(
-        'Could not update default currency',
-        err instanceof Error ? err.message : 'Unknown error'
-      )
-    }
-  }
 
   const handleSignOut = async () => {
     try {
@@ -129,7 +105,7 @@ function SettingsRoute() {
       // supabase.rpc() resolves { error } as a plain Postgrest error shape
       // ({message, details, hint, code}), not an Error instance -- that only
       // happens when .throwOnError() is chained, which this call does not
-      // do. toError() normalizes it the same way userPreferencesService and
+      // do. toError() normalizes it the same way the other services and
       // every other M2 service already do, so the real message (e.g. "The
       // demo account cannot be deleted") reaches the toast instead of
       // silently falling through to "Unknown error".
@@ -238,7 +214,6 @@ function SettingsRoute() {
 
   return (
     <SettingsPage
-      prefs={prefs}
       profile={profileState}
       profileSource={
         <ProfileSources
@@ -253,8 +228,6 @@ function SettingsRoute() {
       profileSteps={<ProfileSourceSteps />}
       onSaveDetails={handleSaveDetails}
       email={user?.email ?? null}
-      onDefaultCurrencyChange={(code) => void handleDefaultCurrencyChange(code)}
-      savingCurrency={setDefaultCurrency.isPending}
       onSignOut={() => void handleSignOut()}
       onDeleteAccount={() => void handleDeleteAccount()}
     />

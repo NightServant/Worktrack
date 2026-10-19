@@ -18,7 +18,6 @@ import { useApplicationRecord } from '@/hooks/useApplicationRecord'
 import { RouteSkeleton } from '@/components/ui/loading-skeletons'
 import { RouteError } from '@/components/ui/route-states'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
-import { useUserPreferences } from '@/hooks/useUserPreferences'
 import { useResumes } from '@/hooks/useResumes'
 import {
   isTailoredFor,
@@ -34,7 +33,7 @@ import {
   useUnpinDocumentLink,
 } from '@/hooks/useDocumentLinks'
 import { useScheduleInterview } from '@/hooks/useJobEvents'
-import { resolveDefaultCurrency } from '@/services/userPreferences'
+import { currencyForCountry } from '@/services/userPreferences'
 import { useUserCountry } from '@/hooks/useUserCountry'
 import type { Job, JobFormData } from '@/types'
 
@@ -56,22 +55,14 @@ function message(err: unknown, fallback: string): string {
  * move the dashboard's KPI numbers too, and it does so by invalidating one key
  * rather than by anyone re-fetching.
  *
- * Default currency comes from `useUserPreferences`, the read half of the
- * seam Task 4 deliberately left open: `resolveDefaultCurrency` already knows
- * how to turn "no row yet" into PHP, so passing `prefsQuery.data ?? null`
- * straight through covers both the loading state and a genuine first-time
- * user without this route needing to gate the whole board on a preferences
- * fetch the way it already gates on the jobs fetch below.
+ * THERE IS NO ACCOUNT CURRENCY (Gabe, 2026-10-19). A new application's
+ * currency is detected from the application itself -- its salary text and its
+ * location (see lib/currencyDetection) -- and `defaultCurrency` is only where
+ * one starts before it says anything: the reader's own country, then PHP.
  */
 function ApplicationsRoute() {
   const { data: jobs = [], isLoading, error } = useJobs()
-  const { data: prefs = null } = useUserPreferences()
-  /*
-    THE OPENING CURRENCY FOLLOWS THE READER when they have never set one. The
-    preferences row is created lazily on first write, so most people have none
-    and every one of them used to start a new application in PHP. Detected
-    after mount -- see `useUserCountry`.
-  */
+  // Detected after mount -- see `useUserCountry`.
   const country = useUserCountry('PH')
   const createJob = useCreateJob()
   const createJobsBulk = useCreateJobsBulk()
@@ -337,7 +328,7 @@ function ApplicationsRoute() {
     <>
       <ApplicationsPage
         jobs={jobs}
-        defaultCurrency={resolveDefaultCurrency(prefs, country)}
+        defaultCurrency={currencyForCountry(country) ?? 'PHP'}
         onDigest={(text) => digest.mutateAsync(text)}
         resumes={documentOptions.word.docs}
         linkedResumeId={documentOptions.word.linked?.resume_id ?? null}

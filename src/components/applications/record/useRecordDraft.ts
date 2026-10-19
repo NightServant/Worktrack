@@ -3,6 +3,7 @@
 import * as React from 'react'
 import { jobValidation } from '@/services/jobValidation'
 import { isSupportedCurrency, type SupportedCurrency } from '@/services/userPreferences'
+import { detectCurrency } from '@/lib/currencyDetection'
 import type { Job, JobFormData, JobStatus, WorkMode } from '@/types'
 
 /**
@@ -193,15 +194,29 @@ export function useRecordDraft(
     toBaseline(draftFromJob(job, defaultCurrency, interviewAt))
   )
 
+  /**
+   * Whether somebody -- the reader, or the posting reader -- has said what
+   * currency this application is in. Until then a NEW application's currency
+   * is DETECTED from what it says (Gabe, 2026-10-19: no account default any
+   * more), and follows its location and description as they are filled. Once
+   * it is chosen, detection never overrides it.
+   */
+  const currencyChosen = React.useRef(false)
+  const noteCurrency = (next: Partial<RecordDraft>) => {
+    if (next.currency) currencyChosen.current = true
+  }
+
   const set = React.useCallback(
-    <K extends DraftField>(field: K, value: RecordDraft[K]) =>
-      setDraft((prev) => ({ ...prev, [field]: value })),
+    <K extends DraftField>(field: K, value: RecordDraft[K]) => {
+      if (field === 'currency') currencyChosen.current = true
+      setDraft((prev) => ({ ...prev, [field]: value }))
+    },
     []
   )
-  const replace = React.useCallback(
-    (next: Partial<RecordDraft>) => setDraft((prev) => ({ ...prev, ...next })),
-    []
-  )
+  const replace = React.useCallback((next: Partial<RecordDraft>) => {
+    noteCurrency(next)
+    setDraft((prev) => ({ ...prev, ...next }))
+  }, [])
   const fillEmpty = React.useCallback(
     (next: Partial<RecordDraft>) =>
       setDraft((prev) => {
@@ -259,6 +274,15 @@ export function useRecordDraft(
     // user's own typing makes it true is the one thing this must not do.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [incoming])
+
+  // A SAVED application keeps the currency its figures were stored in:
+  // relabelling them because its location was edited would change a number's
+  // meaning without converting it.
+  React.useEffect(() => {
+    if (job !== null || currencyChosen.current) return
+    const detected = detectCurrency({ text: draft.description, location: draft.location })
+    if (detected) setDraft((prev) => (prev.currency === detected ? prev : { ...prev, currency: detected }))
+  }, [job, draft.description, draft.location])
 
   React.useEffect(() => {
     onDirtyChange?.(dirty)

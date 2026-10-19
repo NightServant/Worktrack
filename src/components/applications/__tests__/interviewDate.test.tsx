@@ -2,7 +2,6 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ApplicationRecordView } from '../record/ApplicationRecordView'
-import { resolveDefaultCurrency } from '@/services/userPreferences'
 import { toLocalDateTimeInput } from '@/services/date'
 import { makeJob } from '@/test/fixtures'
 import type { CalendarEvent } from '@/services/events'
@@ -14,7 +13,7 @@ vi.mock('next/navigation', () => ({
 
 afterEach(() => cleanup())
 
-const CURRENCY = resolveDefaultCurrency(null)
+const CURRENCY = 'PHP'
 
 const INTERVIEWING = makeJob({ id: 'job-1', status: 'interviewing', company: 'Acme' })
 

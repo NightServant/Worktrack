@@ -154,7 +154,7 @@ describe('SettingsPage', () => {
     // several hundred pixels of work history under it -- a screen, not a
     // group. Profile leads because it is the one a settings link is most
     // often clicked to reach.
-    render(<SettingsPage prefs={null} />)
+    render(<SettingsPage />)
     const tabs = screen.getAllByRole('tab').map((t) => t.textContent)
     expect(tabs).toEqual(['profile', 'general'])
     // The panel's own heading is inside its card now (2026-09-10), and it is
@@ -168,16 +168,16 @@ describe('SettingsPage', () => {
     // of every control in the tree for a screen reader to walk past and for a
     // `getByRole` to trip over.
     const user = userEvent.setup({ delay: null })
-    render(<SettingsPage prefs={null} />)
+    render(<SettingsPage />)
     expect(screen.queryByRole('heading', { name: 'account' })).toBeNull()
     await user.click(screen.getByRole('tab', { name: 'general' }))
     expect(await screen.findByRole('heading', { name: 'danger zone' })).toBeTruthy()
   })
 
   it('keeps the danger zone last among the general tab’s groups', async () => {
-    const { container } = await renderGeneral({ prefs: null })
+    const { container } = await renderGeneral({})
     const groups = container.querySelectorAll('[data-settings-group]')
-    expect(groups).toHaveLength(3)
+    expect(groups).toHaveLength(2)
     expect(groups[groups.length - 1].getAttribute('data-settings-group')).toBe('danger')
   })
 
@@ -185,55 +185,36 @@ describe('SettingsPage', () => {
     // A second control over the same next-themes state would be a second
     // source of truth for one value. Paired with a positive assertion: this
     // must not pass merely because the page rendered nothing at all.
-    await renderGeneral({ prefs: null })
+    await renderGeneral({})
     expect(screen.queryByText(/appearance/i)).toBeNull()
     expect(screen.queryByRole('button', { name: /theme/i })).toBeNull()
     expect(screen.getByRole('heading', { name: 'account' })).toBeTruthy()
   })
 
   it('has no export control -- /applications owns CSV', async () => {
-    await renderGeneral({ prefs: null })
+    await renderGeneral({})
     expect(screen.queryByRole('button', { name: /export/i })).toBeNull()
-    expect(screen.getByRole('heading', { name: 'preferences' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'account' })).toBeTruthy()
   })
 
-  it('offers the six currencies from the CHECK constraint, PHP selected when there is no stored preference', async () => {
-    await renderGeneral({ prefs: null })
-    const segments = screen.getAllByRole('radio')
-    expect(segments.map((s) => s.getAttribute('value'))).toEqual([
-      'PHP',
-      'USD',
-      'EUR',
-      'GBP',
-      'SGD',
-      'AUD',
-    ])
-    expect(screen.getByRole('radio', { name: 'PHP' }).getAttribute('aria-checked')).toBe('true')
-  })
-
-  it('selects the stored preference instead of PHP once one exists', async () => {
-    await renderGeneral({
-      prefs: { user_id: 'u1', default_currency: 'USD', created_at: 'x', updated_at: 'x' },
-    })
-    expect(screen.getByRole('radio', { name: 'USD' }).getAttribute('aria-checked')).toBe('true')
-    expect(screen.getByRole('radio', { name: 'PHP' }).getAttribute('aria-checked')).toBe('false')
-  })
-
-  it('calls onDefaultCurrencyChange when a different currency segment is picked', async () => {
-    const onDefaultCurrencyChange = vi.fn()
-    await renderGeneral({ prefs: null, onDefaultCurrencyChange })
-    fireEvent.click(screen.getByRole('radio', { name: 'EUR' }))
-    expect(onDefaultCurrencyChange).toHaveBeenCalledWith('EUR')
+  it('has no default currency -- each application detects its own', async () => {
+    // Gabe, 2026-10-19: the setting was removed. A currency is read off the
+    // application's salary and location (lib/currencyDetection). Paired with a
+    // positive assertion so it cannot pass on an empty render.
+    await renderGeneral({})
+    expect(screen.queryByText(/default currency/i)).toBeNull()
+    expect(screen.queryAllByRole('radio')).toHaveLength(0)
+    expect(screen.getByRole('heading', { name: 'account' })).toBeTruthy()
   })
 
   it('shows the signed-in email as a read-only value in the account group', async () => {
-    await renderGeneral({ prefs: null, email: 'gabe@example.com' })
+    await renderGeneral({ email: 'gabe@example.com' })
     expect(screen.getByDisplayValue('gabe@example.com')).toBeTruthy()
   })
 
   it('calls onSignOut from the account group', async () => {
     const onSignOut = vi.fn()
-    await renderGeneral({ prefs: null, onSignOut })
+    await renderGeneral({ onSignOut })
     fireEvent.click(screen.getByRole('button', { name: /^sign out$/i }))
     expect(onSignOut).toHaveBeenCalledTimes(1)
   })
@@ -244,7 +225,7 @@ describe('SettingsPage', () => {
     // stubbing a global -- so this guard is now a ConfirmDialog instead.
     const onDeleteAccount = vi.fn()
     const user = userEvent.setup()
-    await renderGeneral({ prefs: null, onDeleteAccount })
+    await renderGeneral({ onDeleteAccount })
     await user.click(screen.getByRole('button', { name: /delete account/i }))
     expect(screen.getByRole('alertdialog', { name: /delete your account/i })).toBeTruthy()
     await user.click(screen.getByRole('button', { name: 'cancel' }))
@@ -254,7 +235,7 @@ describe('SettingsPage', () => {
   it('calls onDeleteAccount once the confirmation is accepted', async () => {
     const onDeleteAccount = vi.fn()
     const user = userEvent.setup()
-    await renderGeneral({ prefs: null, onDeleteAccount })
+    await renderGeneral({ onDeleteAccount })
     await user.click(screen.getByRole('button', { name: /delete account/i }))
     await user.click(screen.getByRole('button', { name: 'delete account' }))
     expect(onDeleteAccount).toHaveBeenCalledTimes(1)
@@ -266,24 +247,10 @@ describe('SettingsPage', () => {
     // overruled, for settings and the overview both. The rest of the grammar
     // is untouched and still worth pinning: no shadow anywhere, and the 4px
     // radius cap that `shadcnHouseRules` enforces on `ui/card` itself.
-    const { container } = await renderGeneral({ prefs: null })
+    const { container } = await renderGeneral({})
     for (const group of container.querySelectorAll('[data-settings-group]')) {
       expect(group.innerHTML).not.toMatch(/shadow/)
     }
-  })
-
-  // Regression for the concurrent-write bug the review round caught: a
-  // CSS-only "disabled" look (pointer-events-none + aria-disabled) still let
-  // a focused option fire onChange on an arrow key, because pointer-events
-  // only blocks pointer hit-testing, not keyboard activation. This exercises
-  // the guard through the composed screen, not just the SegmentedControl
-  // primitive in isolation.
-  it('does not fire a second currency change from the keyboard while a write is already in flight', async () => {
-    const onDefaultCurrencyChange = vi.fn()
-    await renderGeneral({ prefs: null, savingCurrency: true, onDefaultCurrencyChange })
-    const selected = screen.getByRole('radio', { name: 'PHP' })
-    fireEvent.keyDown(selected, { key: 'ArrowRight' })
-    expect(onDefaultCurrencyChange).not.toHaveBeenCalled()
   })
 })
 
@@ -293,12 +260,12 @@ describe('the profile panel', () => {
   it('explains itself when there is no profile, in the caller\'s own words', () => {
     // The reason is always source-specific, so it is a message rather than a
     // fixed string -- a generic "unavailable" tells nobody what to do next.
-    render(<SettingsPage prefs={null} profile={{ status: 'empty', message: 'Nothing imported yet.' }} />)
+    render(<SettingsPage profile={{ status: 'empty', message: 'Nothing imported yet.' }} />)
     expect(screen.getByText('Nothing imported yet.')).toBeTruthy()
   })
 
   it('renders every part of a filled-in profile', () => {
-    render(<SettingsPage prefs={null} profile={{ status: 'ready', profile: FILLED }} />)
+    render(<SettingsPage profile={{ status: 'ready', profile: FILLED }} />)
     expect(screen.getByText('Elijah Gabe Cervantes')).toBeTruthy()
     expect(screen.getByText('Front-end developer')).toBeTruthy()
     // Location leads the line under the headline, industry follows. That
@@ -321,7 +288,6 @@ describe('the profile panel', () => {
     // with one tab is chrome that decides nothing.
     const { container } = render(
       <SettingsPage
-        prefs={null}
         profile={{
           status: 'ready',
           profile: {
@@ -348,7 +314,6 @@ describe('the profile panel', () => {
     // Every source is partial. A profile with only a name is still a profile.
     const { container } = render(
       <SettingsPage
-        prefs={null}
         profile={{
           status: 'ready',
           profile: { ...FILLED, headline: null, summary: null, experiences: [], skills: [] },
@@ -366,13 +331,13 @@ describe('the profile panel', () => {
   })
 
   it('shows a skeleton while it is loading, and no profile copy', () => {
-    const { container } = render(<SettingsPage prefs={null} profile={{ status: 'loading' }} />)
+    const { container } = render(<SettingsPage profile={{ status: 'loading' }} />)
     expect(container.querySelector('[data-profile-state="loading"]')).toBeTruthy()
     expect(screen.queryByText('Elijah Gabe Cervantes')).toBeNull()
   })
 
   it('defaults to the empty state rather than a spinner that never resolves', () => {
-    const { container } = render(<SettingsPage prefs={null} />)
+    const { container } = render(<SettingsPage />)
     expect(container.querySelector('[data-profile-state="empty"]')).toBeTruthy()
   })
 })
@@ -392,7 +357,7 @@ describe('the profile panel', () => {
 describe('the profile panel’s layout', () => {
   it('opens with a cover band and an overlapping avatar, as a profile does', () => {
     const { container } = render(
-      <SettingsPage prefs={null} profile={{ status: 'ready', profile: FILLED }} />
+      <SettingsPage profile={{ status: 'ready', profile: FILLED }} />
     )
     const banner = container.querySelector('[data-profile-banner]')!
     expect(banner).toBeTruthy()
@@ -414,7 +379,7 @@ describe('the profile panel’s layout', () => {
     // The docblock here used to say "NO PHOTO -- the export is CSVs and
     // carries no image", which stopped being true when the Apify route landed
     // and started returning `profilePicture`.
-    render(<SettingsPage prefs={null} profile={{ status: 'ready', profile: FILLED }} />)
+    render(<SettingsPage profile={{ status: 'ready', profile: FILLED }} />)
     expect(screen.getByText('EG')).toBeTruthy()
   })
 
@@ -431,7 +396,7 @@ describe('the profile panel’s layout', () => {
       ],
     }
     const { container } = render(
-      <SettingsPage prefs={null} profile={{ status: 'ready', profile: twoRoles }} />
+      <SettingsPage profile={{ status: 'ready', profile: twoRoles }} />
     )
     openSection('experience')
     const experience = container.querySelector('[data-profile-section="experience"]')!
@@ -470,7 +435,7 @@ describe('the profile panel’s layout', () => {
       projects: [project('Worktrack', 'A tracker.', 'https://example.dev')],
     }
     const { container } = render(
-      <SettingsPage prefs={null} profile={{ status: 'ready', profile: withBoth }} />
+      <SettingsPage profile={{ status: 'ready', profile: withBoth }} />
     )
     openSection('credentials')
     const bullets = [...container.querySelectorAll('[data-profile-bullet]')]
@@ -489,7 +454,7 @@ describe('the profile panel’s layout', () => {
       )
     )
     const { container } = render(
-      <SettingsPage prefs={null} profile={{ status: 'ready', profile: { ...FILLED, projects: many } }} />
+      <SettingsPage profile={{ status: 'ready', profile: { ...FILLED, projects: many } }} />
     )
     openSection('projects')
     expect(container.querySelectorAll('[data-profile-project]')).toHaveLength(10)
@@ -521,7 +486,7 @@ describe('the profile panel’s layout', () => {
         },
       ],
     }
-    render(<SettingsPage prefs={null} profile={{ status: 'ready', profile: withReadme }} />)
+    render(<SettingsPage profile={{ status: 'ready', profile: withReadme }} />)
     openSection('projects')
     await user.click(screen.getByRole('button', { name: /Worktrack/ }))
     const dialog = await screen.findByRole('dialog')
@@ -537,7 +502,6 @@ describe('the profile panel’s layout', () => {
   it('renders every section at once, with no tab strip of its own', () => {
     const { container } = render(
       <SettingsPage
-        prefs={null}
         profile={{
           status: 'ready',
           profile: {
@@ -576,7 +540,6 @@ describe('the profile panel’s layout', () => {
     const user = userEvent.setup()
     const { container } = render(
       <SettingsPage
-        prefs={null}
         profile={{
           status: 'ready',
           profile: {
@@ -605,7 +568,6 @@ describe('the profile panel’s layout', () => {
     // of what is already on screen.
     const { container } = render(
       <SettingsPage
-        prefs={null}
         profile={{
           status: 'ready',
           profile: { ...FILLED, experiences: [role('Engineer', 'Only')] },
@@ -821,7 +783,6 @@ describe('importing a LinkedIn export', () => {
   it('offers the import, and the steps, when there is no profile', () => {
     render(
       <SettingsPage
-        prefs={null}
         profileSource={<ProfileImport onImport={vi.fn()} />}
         profileSteps={<ProfileImportSteps />}
       />
@@ -863,14 +824,14 @@ describe('importing a LinkedIn export', () => {
   it('shows the imported bullet text, keeping its line breaks', () => {
     // The field the whole import exists for: a scrape gives up titles and
     // dates, and this is what a CV is actually written from.
-    render(<SettingsPage prefs={null} profile={{ status: 'ready', profile: FILLED }} />)
+    render(<SettingsPage profile={{ status: 'ready', profile: FILLED }} />)
     openSection('experience')
     const body = screen.getByText(/Built the tracker/)
     expect(body.className).toContain('whitespace-pre-line')
   })
 
   it('renders the fields the export carries beyond a scrape', () => {
-    render(<SettingsPage prefs={null} profile={{ status: 'ready', profile: FILLED }} />)
+    render(<SettingsPage profile={{ status: 'ready', profile: FILLED }} />)
     expect(screen.getByText(/Software Development/)).toBeTruthy()
     expect(screen.getByText('Filipino (Native)')).toBeTruthy()
     // THE LINK IS INTACT, the label is not the whole URL: a website list is
@@ -886,7 +847,7 @@ describe('importing a LinkedIn export', () => {
     // a `personal details` heading, which is the layout every reference
     // profile uses for a field and its name.
     const { container } = render(
-      <SettingsPage prefs={null} profile={{ status: 'ready', profile: FILLED }} />
+      <SettingsPage profile={{ status: 'ready', profile: FILLED }} />
     )
     expect(container.querySelector('[data-profile-detail="address"]')).toBeTruthy()
     expect(container.querySelector('[data-profile-detail="born"]')).toBeTruthy()
@@ -903,7 +864,7 @@ describe('importing a LinkedIn export', () => {
     // A merged profile's most important fact is where it came from, and the
     // sources card is at the foot of a long page.
     const { container } = render(
-      <SettingsPage prefs={null} profile={{ status: 'ready', profile: FILLED }} />
+      <SettingsPage profile={{ status: 'ready', profile: FILLED }} />
     )
     const banner = container.querySelector('[data-profile-banner]') as HTMLElement
     expect(within(banner).getByText('LinkedIn')).toBeTruthy()
@@ -916,7 +877,7 @@ describe('importing a LinkedIn export', () => {
     // the name, the address in the sources form -- so the column was the same
     // facts said twice across half the banner's width.
     const { container } = render(
-      <SettingsPage prefs={null} profile={{ status: 'ready', profile: FILLED }} />
+      <SettingsPage profile={{ status: 'ready', profile: FILLED }} />
     )
     const banner = container.querySelector('[data-profile-banner]') as HTMLElement
     expect(banner.querySelector('[data-profile-detail]')).toBeNull()
@@ -938,7 +899,6 @@ describe('importing a LinkedIn export', () => {
     // a form under a career you have to scroll past is one nobody finds twice.
     const { container } = render(
       <SettingsPage
-        prefs={null}
         profile={{ status: 'ready', profile: FILLED }}
         profileSource={<ProfileSources onFetch={() => {}} hasProfile />}
       />

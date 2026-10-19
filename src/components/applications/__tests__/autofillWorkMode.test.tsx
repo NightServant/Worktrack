@@ -2,7 +2,6 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AddApplicationDialog } from '../record/AddApplicationDialog'
-import { resolveDefaultCurrency } from '@/services/userPreferences'
 
 afterEach(() => cleanup())
 
@@ -38,7 +37,7 @@ async function autofillWith(values: Record<string, unknown>) {
     <AddApplicationDialog
       open
       onOpenChange={vi.fn()}
-      defaultCurrency={resolveDefaultCurrency(null)}
+      defaultCurrency={'PHP'}
       onSubmit={vi.fn()}
       onAutofill={onAutofill}
     />
@@ -166,7 +165,7 @@ async function failTheRead(onAutofill: ReturnType<typeof vi.fn>) {
     <AddApplicationDialog
       open
       onOpenChange={vi.fn()}
-      defaultCurrency={resolveDefaultCurrency(null)}
+      defaultCurrency={'PHP'}
       onSubmit={vi.fn()}
       onAutofill={onAutofill}
     />
@@ -252,7 +251,7 @@ describe('when the posting cannot be read at all', () => {
       <AddApplicationDialog
         open
         onOpenChange={vi.fn()}
-        defaultCurrency={resolveDefaultCurrency(null)}
+        defaultCurrency={'PHP'}
         onSubmit={vi.fn()}
         onAutofill={onAutofill}
       />
@@ -277,7 +276,7 @@ describe('when the posting cannot be read at all', () => {
       <AddApplicationDialog
         open
         onOpenChange={vi.fn()}
-        defaultCurrency={resolveDefaultCurrency(null)}
+        defaultCurrency={'PHP'}
         onSubmit={vi.fn()}
         onAutofill={onAutofill}
       />

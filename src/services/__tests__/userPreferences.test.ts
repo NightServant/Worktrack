@@ -1,50 +1,40 @@
 import { describe, it, expect } from 'vitest'
-import { resolveDefaultCurrency, isSupportedCurrency, currencyForCountry } from '../userPreferences'
+import { isSupportedCurrency, currencyForCountry } from '../userPreferences'
 
-describe('resolveDefaultCurrency', () => {
-  it('returns the stored preference when one exists', () => {
-    expect(resolveDefaultCurrency({ default_currency: 'SGD' })).toBe('SGD')
-  })
-
-  it('falls back to PHP when the user has no preferences row', () => {
-    expect(resolveDefaultCurrency(null)).toBe('PHP')
-  })
-
-  it('falls back to PHP when the stored code is not supported', () => {
-    expect(resolveDefaultCurrency({ default_currency: 'XYZ' })).toBe('PHP')
-  })
-})
+// The account-wide default currency, and the resolver that read it, were
+// removed on 2026-10-19: each application's currency is detected from the
+// application (lib/currencyDetection). What is left here is the vocabulary.
 
 describe('isSupportedCurrency', () => {
   it('accepts every code the database CHECK allows', () => {
-    for (const c of ['PHP','USD','EUR','GBP','SGD','AUD']) {
+    for (const c of ['PHP', 'USD', 'EUR', 'GBP', 'SGD', 'AUD']) {
       expect(isSupportedCurrency(c)).toBe(true)
     }
   })
+
+  it('refuses everything else, lowercase included', () => {
+    for (const c of ['JPY', 'php', '', ' PHP', 'PHPX']) expect(isSupportedCurrency(c)).toBe(false)
+  })
 })
 
-describe('the currency a new account starts in', () => {
-  it('follows the reader when they have never chosen one', () => {
-    // The preferences row is created lazily on first write, so most people
-    // have none -- and every one of them used to get PHP, which is this app
-    // author's currency and nobody else's.
-    expect(resolveDefaultCurrency(null, 'US')).toBe('USD')
-    expect(resolveDefaultCurrency(null, 'GB')).toBe('GBP')
-    expect(resolveDefaultCurrency(null, 'SG')).toBe('SGD')
-    expect(resolveDefaultCurrency(null, 'DE')).toBe('EUR')
+describe('currencyForCountry', () => {
+  it('maps the five single-country currencies and the whole eurozone', () => {
+    expect(currencyForCountry('PH')).toBe('PHP')
+    expect(currencyForCountry('US')).toBe('USD')
+    expect(currencyForCountry('GB')).toBe('GBP')
+    expect(currencyForCountry('SG')).toBe('SGD')
+    expect(currencyForCountry('AU')).toBe('AUD')
+    for (const c of ['DE', 'FR', 'IE', 'HR', 'MT']) expect(currencyForCountry(c)).toBe('EUR')
   })
 
-  it('never overrides a currency somebody actually chose', () => {
-    // A stored preference is the one value here that was picked on purpose.
-    expect(resolveDefaultCurrency({ default_currency: 'PHP' }, 'US')).toBe('PHP')
-    expect(resolveDefaultCurrency({ default_currency: 'AUD' }, 'GB')).toBe('AUD')
+  it('is case-insensitive', () => {
+    expect(currencyForCountry('ph')).toBe('PHP')
   })
 
-  it('falls back rather than offering a currency nothing can be saved in', () => {
-    // The column has a CHECK constraint and these six are it. A reader in
-    // Japan gets the fallback, not JPY.
+  it('returns null rather than a currency nothing can be saved in', () => {
+    // The column has a CHECK constraint and these six are it.
     expect(currencyForCountry('JP')).toBeNull()
-    expect(resolveDefaultCurrency(null, 'JP')).toBe('PHP')
-    expect(resolveDefaultCurrency(null, null)).toBe('PHP')
+    expect(currencyForCountry(null)).toBeNull()
+    expect(currencyForCountry('')).toBeNull()
   })
 })
