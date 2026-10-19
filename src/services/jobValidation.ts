@@ -199,15 +199,19 @@ export const jobValidation = {
       return { field: 'date_applied', message: 'Date must be in YYYY-MM-DD format' }
     }
 
-    const date = new Date(value + 'T00:00:00Z')
-    if (Number.isNaN(date.getTime())) {
+    // A REAL DAY, not one Date rolls over: 2026-02-30 became 2 March.
+    const [y, m, d] = value.split('-').map(Number)
+    const date = new Date(Date.UTC(y, m - 1, d))
+    if (Number.isNaN(date.getTime()) || date.getUTCMonth() !== m - 1 || date.getUTCDate() !== d) {
       return { field: 'date_applied', message: 'Invalid date' }
     }
 
-    // Check that date is not in the future (allow today)
-    const today = new Date()
-    today.setUTCHours(0, 0, 0, 0)
-    if (date > today) {
+    // Not in the future, against the READER'S today (2026-10-19 edge case):
+    // UTC's today refused this morning's application for the first eight
+    // hours of every Philippine day. Day keys compare as strings.
+    const now = new Date()
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+    if (value > today) {
       return { field: 'date_applied', message: 'Date applied cannot be in the future' }
     }
 
@@ -248,7 +252,14 @@ export const jobValidation = {
     }
 
     const trimmed = value.trim()
-    if (!trimmed.includes('linkedin.com')) {
+    // THE HOST, not the text: `includes` passed `evil.example/?linkedin.com`.
+    let host = ''
+    try {
+      host = new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`).hostname.toLowerCase()
+    } catch {
+      host = ''
+    }
+    if (host !== 'linkedin.com' && !host.endsWith('.linkedin.com')) {
       return { field: 'contact_linkedin', message: 'URL must be a LinkedIn profile or company URL' }
     }
 

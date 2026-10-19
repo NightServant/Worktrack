@@ -130,6 +130,7 @@ export function tailoredCompanyOf(title: string): string | null {
 
 /** Whether a document was tailored for this company. */
 export function isTailoredFor(title: string, company: string): boolean {
-  const wanted = collapse(company)
-  return wanted.length > 0 && collapse(title).endsWith(` — ${wanted}`)
+  // Case-insensitive: retyping "acme corp" as "Acme Corp" must not unlock it.
+  const wanted = collapse(company).toLowerCase()
+  return wanted.length > 0 && collapse(title).toLowerCase().endsWith(` — ${wanted}`)
 }

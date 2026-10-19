@@ -33,13 +33,16 @@
  */
 
 /** The typed query, split into the terms every match must contain. */
+/** Lower case with accents removed, so "telefonica" finds "Telefónica". */
+const fold = (text: string) => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
+
 export function searchTerms(query: string): string[] {
-  return query.toLowerCase().split(/\s+/).filter(Boolean)
+  return fold(query).split(/\s+/).filter(Boolean)
 }
 
 /** True when every term appears in the given fields. No terms matches everything. */
 export function matchesTerms(terms: string[], ...fields: (string | null | undefined)[]): boolean {
   if (terms.length === 0) return true
-  const haystack = fields.filter(Boolean).join(' ').toLowerCase()
+  const haystack = fold(fields.filter(Boolean).join(' '))
   return terms.every((term) => haystack.includes(term))
 }
