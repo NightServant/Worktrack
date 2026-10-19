@@ -131,3 +131,90 @@ describe('the letter’s one pane', () => {
     expect(advice.textContent).toMatch(/paragraph shape/i)
   })
 })
+
+describe('filled from the application before the model is asked (2026-10-19)', () => {
+  // Gabe: "replace the prompt brackets with real information immediately
+  // because I keep hitting the free tier limit."
+  const DOC = {
+    type: 'doc',
+    content: [
+      { type: 'paragraph', content: [{ type: 'text', text: 'September 2, 2026' }] },
+      { type: 'paragraph', content: [{ type: 'text', text: 'Dear [hiring manager name], I want [role] at [Company].' }] },
+    ],
+  }
+  const TEXT = 'September 2, 2026\n\nDear [hiring manager name], I want [role] at [Company].'
+
+  function Filling({ fetchImpl, onTailored }: { fetchImpl: typeof fetch; onTailored: ReturnType<typeof vi.fn> }) {
+    const [jobId, setJobId] = React.useState('w1')
+    const state = useCvTailoring({
+      kind: 'cover_letter',
+      cvText: TEXT,
+      jobs: [JOB],
+      jobId,
+      onJobId: setJobId,
+      fetchImpl,
+      getContent: () => DOC as never,
+      onTailored: onTailored as never,
+      title: 'Cover letter',
+    })
+    return <TailoringAnalysisRail state={state} review={letterReview(TEXT)} />
+  }
+
+  it('sends the model the filled letter, so what it quotes is what the document holds', async () => {
+    const fetchImpl = okReply()
+    render(<Filling fetchImpl={fetchImpl} onTailored={vi.fn().mockResolvedValue('updated')} />)
+    await tailor()
+    const sent = bodyOf(fetchImpl).cvText as string
+    expect(sent).toContain('I want Frontend Engineer at Initech.')
+    expect(sent).toContain('Dear Hiring Manager,')
+    expect(sent).not.toMatch(/\[Company\]|\[role\]/)
+    expect(sent).not.toContain('September 2, 2026')
+  })
+
+  it('saves the filled letter even when the model has nothing to add', async () => {
+    const onTailored = vi.fn().mockResolvedValue('updated')
+    render(<Filling fetchImpl={okReply()} onTailored={onTailored} />)
+    await tailor()
+    expect(onTailored).toHaveBeenCalledTimes(1)
+    expect(JSON.stringify(onTailored.mock.calls[0][0].content)).toContain('I want Frontend Engineer at Initech.')
+  })
+
+  it('saves the fill when the model refuses -- the free tier limit -- and says so', async () => {
+    const onTailored = vi.fn().mockResolvedValue('updated')
+    const refused = vi.fn().mockResolvedValue({
+      json: async () => ({ ok: false, reason: 'rate_limited', message: 'The free tier limit was reached.' }),
+    }) as unknown as typeof fetch
+    render(<Filling fetchImpl={refused} onTailored={onTailored} />)
+    await tailor()
+    await act(async () => {})
+    expect(onTailored).toHaveBeenCalledTimes(1)
+    const saved = JSON.stringify(onTailored.mock.calls[0][0].content)
+    expect(saved).toContain('Initech')
+    expect(saved).not.toContain('[Company]')
+    expect(screen.getByText(/filled in from the application and dated today/i)).toBeTruthy()
+  })
+
+  it('saves nothing on a refusal when there was nothing to fill', async () => {
+    const onTailored = vi.fn()
+    const refused = vi.fn().mockResolvedValue({
+      json: async () => ({ ok: false, reason: 'rate_limited', message: 'limit' }),
+    }) as unknown as typeof fetch
+    function Plain() {
+      const [jobId, setJobId] = React.useState('w1')
+      const state = useCvTailoring({
+        kind: 'cover_letter',
+        cvText: 'Hello.',
+        jobs: [JOB],
+        jobId,
+        onJobId: setJobId,
+        fetchImpl: refused,
+        getContent: () => ({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Hello.' }] }] }) as never,
+        onTailored: onTailored as never,
+      })
+      return <TailoringAnalysisRail state={state} review={letterReview('Hello.')} />
+    }
+    render(<Plain />)
+    await tailor()
+    expect(onTailored).not.toHaveBeenCalled()
+  })
+})

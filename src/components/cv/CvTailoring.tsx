@@ -35,6 +35,7 @@ import { LetterAdvice } from './LetterCheckPane'
 import type { LetterReview } from './letterSuggestions'
 import { ApplicationPicker } from './ApplicationPicker'
 import { applySuggestions, tailoredTitle } from './applyTailoring'
+import { fillLetter, fillLetterText } from './fillLetter'
 
 /**
  * AI CV tailoring: one section, from the posting to the tailored document.
@@ -83,6 +84,13 @@ export type TailoringOutcome =
    * request still ran, so say what it produced rather than silently doing nothing.
    */
   | { kind: 'unsaved'; count: number }
+  /**
+   * The model could not run -- the free tier's limit, most often -- but the
+   * letter's placeholders were filled from the application and the date moved
+   * to today, and that was saved (Gabe, 2026-10-19). `where` is whether it
+   * became a new document or rewrote this one.
+   */
+  | { kind: 'filled'; where: 'created' | 'updated' }
 
 export interface CvTailoringState {
   jobId: string
@@ -468,6 +476,49 @@ export function useCvTailoring(options: CvTailoringOptions): CvTailoringState {
     // authedFetch, not fetch: the route is authenticated because tailoring
     // spends a metered LLM allowance.
     const doFetch = options.fetchImpl ?? authedFetch
+
+    /**
+     * A LETTER IS FILLED FROM ITS APPLICATION FIRST, locally (Gabe,
+     * 2026-10-19: "replace the prompt brackets with real information
+     * immediately because I keep hitting the free tier limit"). `[Company]`,
+     * `[role]`, the greeting and the date come from the record, so the model is
+     * asked only for what it alone can write -- and is SENT the filled text, so
+     * the passages it quotes are the ones the document now holds.
+     */
+    const current = options.getContent?.() ?? null
+    const fill = letter && selectedJob ? { job: selectedJob, today: new Date() } : null
+    const filled = fill && current ? fillLetter(current, fill) : current
+    const cvText = fill ? fillLetterText(options.cvText, fill) : options.cvText
+
+    /** Hands a document to the route; true when it stays on this page. */
+    const save = async (content: unknown): Promise<boolean> => {
+      const wrote = await options.onTailored!({
+        title: tailoredTitle(options.title ?? '', selectedJob?.company),
+        content: content as Parameters<NonNullable<typeof options.onTailored>>[0]['content'],
+        jobId,
+      })
+      // `updated` stays on this page, so the rail is still mounted to show it;
+      // `created` navigates, and `handedOff` keeps the button disabled through
+      // the unmount rather than flickering back to life first.
+      handedOff = wrote !== 'updated'
+      if (wrote === 'updated') {
+        runningRef.current = false
+        setRunning(false)
+      }
+      return wrote === 'updated'
+    }
+
+    /** The fill alone, for a run the model could not answer. */
+    const saveFillOnly = async () => {
+      if (!filled || filled === current || !options.onTailored) return
+      try {
+        const stayed = await save(filled)
+        setOutcome({ kind: 'filled', where: stayed ? 'updated' : 'created' })
+      } catch {
+        // The model's failure is already on screen and is the one to act on.
+      }
+    }
+
     try {
       let payload: TailoringResult
       // THE CV THAT WENT WITH THIS APPLICATION, for a letter. A failure here is
@@ -482,7 +533,7 @@ export function useCvTailoring(options: CvTailoringOptions): CvTailoringState {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            cvText: options.cvText,
+            cvText,
             jobDescription: description,
             missingKeywords: match?.missing ?? [],
             role: selectedJob?.role,
@@ -506,19 +557,22 @@ export function useCvTailoring(options: CvTailoringOptions): CvTailoringState {
           reason: 'network',
           message: 'Could not reach the tailoring service.',
         })
+        await saveFillOnly()
         return
       }
 
       setResult(payload)
-      if (!payload.ok) return
+      if (!payload.ok) {
+        await saveFillOnly()
+        return
+      }
       // REMEMBERED HERE, not after the document is written. This is the half
       // that cost a model call; whether the route could then save a file is a
       // different failure, and re-running the model to retry a save would
       // spend the allowance to fix something the allowance did not break.
       if (documentId && jobId) writeCachedRun(documentId, jobId, payload)
 
-      const current = options.getContent?.() ?? null
-      if (!current || !options.onTailored) {
+      if (!current || !filled || !options.onTailored) {
         setOutcome({ kind: 'unsaved', count: payload.suggestions.length })
         return
       }
@@ -526,28 +580,18 @@ export function useCvTailoring(options: CvTailoringOptions): CvTailoringState {
       // A COPY. `applySuggestions` returns the input by reference when nothing
       // matched, which is how a run that changed nothing is told apart from
       // one that changed everything -- without that, a model answering "no
-      // notes" would file a byte-identical second CV under a new name.
-      const content = applySuggestions(current, payload.suggestions)
+      // notes" would file a byte-identical second CV under a new name. Applied
+      // to the FILLED letter, so a run whose only change is the fill still
+      // counts as a change.
+      const content = applySuggestions(filled, payload.suggestions)
       if (content === current) {
         setOutcome({ kind: 'unchanged' })
         return
       }
 
       try {
-        const wrote = await options.onTailored({
-          title: tailoredTitle(options.title ?? '', selectedJob?.company),
-          content,
-          jobId,
-        })
-        // `updated` stays on this page, so the rail is still mounted to show
-        // it; `created` navigates, and `handedOff` keeps the button disabled
-        // through the unmount rather than flickering back to life first.
-        handedOff = wrote !== 'updated'
-        setOutcome({ kind: wrote === 'updated' ? 'updated' : 'created' })
-        if (wrote === 'updated') {
-          runningRef.current = false
-          setRunning(false)
-        }
+        const stayed = await save(content)
+        setOutcome({ kind: stayed ? 'updated' : 'created' })
       } catch (err) {
         // The rewrite is not the part that failed, and saying "tailoring
         // failed" would send someone to re-run a request that costs allowance.
@@ -941,6 +985,15 @@ export function TailoringAnalysisRail({
           // reader the run landed -- there is no navigation to notice.
           <p role="status" className="text-body-s text-text-muted">
             tailored — this document was rewritten for the same application.
+          </p>
+        )}
+
+        {outcome?.kind === 'filled' && (
+          <p role="status" className="text-body-s text-text-muted">
+            {outcome.where === 'created'
+              ? 'filled in from the application and dated today — opening the new letter. '
+              : 'filled in from the application and dated today. '}
+            the model could not run, so nothing else was rewritten.
           </p>
         )}
 
