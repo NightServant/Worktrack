@@ -64,7 +64,7 @@ describe('every demo route renders its screen from the fixture', () => {
     render(<DemoDashboard />)
     // A company from the fixture, so this is about the data and not just that
     // a component mounted.
-    expect(screen.getAllByText(/Northwind Pay/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/Meridian Labs/).length).toBeGreaterThan(0)
   })
 
   it('renders the applications list', () => {
@@ -194,7 +194,7 @@ describe('the demo shows a populated product, not an empty one', () => {
     expect(overview.container.querySelectorAll('[data-empty-state]')).toHaveLength(0)
     // Positive companion: the overview really rendered its panels, so the
     // absence above is meaningful rather than a blank page.
-    expect(overview.getAllByText(/Northwind Pay/).length).toBeGreaterThan(0)
+    expect(overview.getAllByText(/Meridian Labs/).length).toBeGreaterThan(0)
     overview.unmount()
 
     const analytics = render(<DemoAnalytics />)

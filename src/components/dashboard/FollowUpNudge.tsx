@@ -4,20 +4,11 @@ import * as React from 'react'
 import Link from 'next/link'
 import { AppDialog } from '@/components/ui/app-dialog'
 import { Button } from '@/components/ui/button'
-import {
-  Pagination,
-  PaginationContent,
-  PaginationEllipsis,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from '@/components/ui/pagination'
+import { PageNav } from '@/components/ui/pagination'
 import { StatusMarker, type Status } from '@/components/ui/status-marker'
 import { ArrowRightIcon, ClockIcon } from '@/components/icons'
 import { iconMotion } from '@/components/icons/motion'
 import { useAppHref } from '@/components/shell/routeBase'
-import { pageWindow } from '@/lib/pageWindow'
 import { formatTouchedDate } from '@/services/date'
 import type { StaleCandidate } from '@/services/followUp'
 
@@ -251,56 +242,11 @@ function FollowUpTable({
           the left, the way through on the right. */}
       {pageCount > 1 && (
         <div className="flex flex-wrap items-center justify-between gap-3" data-follow-up-pager>
-          <p className="text-body-s tabular-nums text-text-muted">
+          <p className="whitespace-nowrap text-body-s tabular-nums text-text-muted">
             {(current - 1) * PAGE_SIZE + 1}&ndash;{Math.min(current * PAGE_SIZE, stale.length)} of{' '}
             {stale.length}
           </p>
-          <Pagination className="mx-0 w-auto justify-end">
-            <PaginationContent>
-              <PaginationItem>
-                <PaginationPrevious
-                  href="#"
-                  aria-disabled={current === 1}
-                  className={current === 1 ? 'pointer-events-none opacity-40' : undefined}
-                  onClick={(event) => {
-                    event.preventDefault()
-                    setPage(Math.max(1, current - 1))
-                  }}
-                />
-              </PaginationItem>
-              {pageWindow(current, pageCount).map((number, index) =>
-                number === null ? (
-                  <PaginationItem key={`gap-${index}`}>
-                    <PaginationEllipsis />
-                  </PaginationItem>
-                ) : (
-                  <PaginationItem key={number}>
-                    <PaginationLink
-                      href="#"
-                      isActive={number === current}
-                      onClick={(event) => {
-                        event.preventDefault()
-                        setPage(number)
-                      }}
-                    >
-                      {number}
-                    </PaginationLink>
-                  </PaginationItem>
-                )
-              )}
-              <PaginationItem>
-                <PaginationNext
-                  href="#"
-                  aria-disabled={current === pageCount}
-                  className={current === pageCount ? 'pointer-events-none opacity-40' : undefined}
-                  onClick={(event) => {
-                    event.preventDefault()
-                    setPage(Math.min(pageCount, current + 1))
-                  }}
-                />
-              </PaginationItem>
-            </PaginationContent>
-          </Pagination>
+          <PageNav current={current} pageCount={pageCount} onPageChange={setPage} />
         </div>
       )}
     </div>

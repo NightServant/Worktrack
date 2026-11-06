@@ -11,14 +11,7 @@ import { ApplicationsInsights } from './ApplicationsInsights'
 import { ApplicationsTable } from './ApplicationsTable'
 import { Card, CardContent } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/empty-state'
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from '@/components/ui/pagination'
+import { PageNav } from '@/components/ui/pagination'
 import { StatusTabs } from './StatusTabs'
 import { useApplicationsFilter, PAGE_SIZE } from './useApplicationsFilter'
 import { useDeepLinkedApplication } from './useDeepLinkedApplication'
@@ -578,53 +571,11 @@ export function ApplicationsPage({
 
           {listed.length > 0 && (
             <div className="flex items-center justify-between gap-4">
-              <p className="text-body-s text-text-muted">
+              <p className="whitespace-nowrap text-body-s tabular-nums text-text-muted">
                 {(current - 1) * PAGE_SIZE + 1}&ndash;
                 {Math.min(current * PAGE_SIZE, listed.length)} of {listed.length}
               </p>
-              <Pagination className="mx-0 w-auto justify-end">
-                <PaginationContent>
-                  <PaginationItem>
-                    <PaginationPrevious
-                      href="#"
-                      aria-disabled={current === 1}
-                      className={current === 1 ? 'pointer-events-none opacity-50' : undefined}
-                      onClick={(e) => {
-                        e.preventDefault()
-                        setPage((p) => Math.max(1, p - 1))
-                      }}
-                    />
-                  </PaginationItem>
-                  {pageCount > 1 &&
-                    Array.from({ length: pageCount }, (_, i) => i + 1).map((n) => (
-                      <PaginationItem key={n}>
-                        <PaginationLink
-                        href="#"
-                        isActive={n === current}
-                        onClick={(e) => {
-                          e.preventDefault()
-                          setPage(n)
-                        }}
-                      >
-                        {n}
-                      </PaginationLink>
-                      </PaginationItem>
-                    ))}
-                  <PaginationItem>
-                    <PaginationNext
-                      href="#"
-                      aria-disabled={current === pageCount}
-                      className={
-                        current === pageCount ? 'pointer-events-none opacity-50' : undefined
-                      }
-                      onClick={(e) => {
-                        e.preventDefault()
-                        setPage((p) => Math.min(pageCount, p + 1))
-                      }}
-                    />
-                  </PaginationItem>
-                </PaginationContent>
-              </Pagination>
+              <PageNav current={current} pageCount={pageCount} onPageChange={setPage} />
             </div>
           )}
         </>

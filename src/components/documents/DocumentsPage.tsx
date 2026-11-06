@@ -11,14 +11,7 @@ import { IconButton } from '@/components/ui/icon-button'
 import { PlusIcon, TrashIcon, UploadIcon } from '@/components/icons'
 import { iconMotion } from '@/components/icons/motion'
 import { EmptyState } from '@/components/ui/empty-state'
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from '@/components/ui/pagination'
+import { PageNav } from '@/components/ui/pagination'
 import { DocumentRow, DOCUMENT_GRID } from './DocumentRow'
 import { TemplateGallery, type TemplateChoice } from './TemplateGallery'
 import { DocumentChooser } from './DocumentChooser'
@@ -592,7 +585,7 @@ export function DocumentsPage({
                     is which slice you are looking at; scrolling, there is no
                     slice -- so it states the total rather than pretending to
                     describe a window that does not exist. */}
-                <p className="text-body-s text-text-muted" data-documents-count>
+                <p className="whitespace-nowrap text-body-s tabular-nums text-text-muted" data-documents-count>
                   {compact ? (
                     <>
                       {filtered.length} {filtered.length === 1 ? 'document' : 'documents'}
@@ -607,49 +600,7 @@ export function DocumentsPage({
                 {/* NO PAGER BELOW `lg`. See PAGE_SIZE: the list is whole there
                     and a phone scrolls it. */}
                 {!compact && (
-                <Pagination className="mx-0 w-auto justify-end">
-                  <PaginationContent>
-                    <PaginationItem>
-                      <PaginationPrevious
-                        href="#"
-                        aria-disabled={current === 1}
-                        className={current === 1 ? 'pointer-events-none opacity-50' : undefined}
-                        onClick={(event) => {
-                          event.preventDefault()
-                          setPage((value) => Math.max(1, value - 1))
-                        }}
-                      />
-                    </PaginationItem>
-                    {pageCount > 1 &&
-                      Array.from({ length: pageCount }, (_, index) => index + 1).map((number) => (
-                        <PaginationItem key={number}>
-                          <PaginationLink
-                            href="#"
-                            isActive={number === current}
-                            onClick={(event) => {
-                              event.preventDefault()
-                              setPage(number)
-                            }}
-                          >
-                            {number}
-                          </PaginationLink>
-                        </PaginationItem>
-                      ))}
-                    <PaginationItem>
-                      <PaginationNext
-                        href="#"
-                        aria-disabled={current === pageCount}
-                        className={
-                          current === pageCount ? 'pointer-events-none opacity-50' : undefined
-                        }
-                        onClick={(event) => {
-                          event.preventDefault()
-                          setPage((value) => Math.min(pageCount, value + 1))
-                        }}
-                      />
-                    </PaginationItem>
-                  </PaginationContent>
-                </Pagination>
+                <PageNav current={current} pageCount={pageCount} onPageChange={setPage} />
                 )}
               </div>
             )}

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/shadcn-button"
 import { ChevronLeftIcon } from "@/components/icons/chevron-left"
 import { ChevronRightIcon } from "@/components/icons/chevron-right"
 import { EllipsisIcon } from "@/components/icons/ellipsis"
+import { pageWindow } from "@/lib/pageWindow"
 
 function Pagination({ className, ...props }: React.ComponentProps<"nav">) {
   return (
@@ -124,7 +125,118 @@ function PaginationEllipsis({
   )
 }
 
+type PageNavProps = {
+  /** The page on screen, 1-based. */
+  current: number
+  pageCount: number
+  onPageChange: (page: number) => void
+  className?: string
+}
+
+const pageButton =
+  "inline-flex h-8 min-w-8 items-center justify-center gap-1 rounded-[4px] px-2 text-body-s tabular-nums text-text-muted transition-colors duration-(--duration-fast) hover:bg-bg-surface hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-default disabled:pointer-events-none disabled:opacity-40"
+
+/**
+ * THE PAGER, one component for every paged list in the app.
+ *
+ * Three screens each hand-rolled their own, and two of them printed EVERY page
+ * number: 38 pages of applications became a 38-button row that ran off the
+ * screen, squeezed the "1–10 of 380" count beside it into a four-line column,
+ * and pushed `next` out of reach on a phone. The fix is structural, not
+ * cosmetic:
+ *
+ * - The numbers come from `pageWindow`, which holds the strip at a FIXED seven
+ *   slots (first, last, the current page and its neighbours, an ellipsis for
+ *   each gap). Its width no longer depends on how much data there is, and it
+ *   does not change as you page, so next/previous stay under the pointer.
+ * - Below `sm` the numbers give way to "3 / 38": a phone cannot hold seven
+ *   targets plus two arrows at a usable size, and position is what matters.
+ * - Real `<button>`s. These page in place; the old `href="#"` anchors claimed
+ *   to be links, put `#` in the status bar, and needed `preventDefault`.
+ * - The current page is the one filled slot, in the accent, and carries
+ *   `aria-current="page"` -- position is stated, not just coloured.
+ */
+function PageNav({ current, pageCount, onPageChange, className }: PageNavProps) {
+  const count = Math.max(1, pageCount)
+  const page = Math.min(Math.max(1, current), count)
+  const go = (target: number) => {
+    const next = Math.min(Math.max(1, target), count)
+    if (next !== page) onPageChange(next)
+  }
+
+  return (
+    <Pagination className={cn("mx-0 w-auto shrink-0 justify-end", className)}>
+      <PaginationContent className="gap-1">
+        <PaginationItem>
+          <button
+            type="button"
+            aria-label="Go to previous page"
+            aria-disabled={page === 1}
+            disabled={page === 1}
+            onClick={() => go(page - 1)}
+            className={cn(pageButton, "pl-1.5")}
+          >
+            <ChevronLeftIcon size={16} aria-hidden />
+            <span className="hidden sm:inline">Previous</span>
+          </button>
+        </PaginationItem>
+
+        {/* Phone: position only. */}
+        <PaginationItem className="sm:hidden">
+          <span
+            data-page-position
+            className="inline-flex h-8 items-center px-2 text-body-s tabular-nums text-text-muted"
+          >
+            <span className="text-text-primary">{page}</span>
+            <span aria-hidden className="px-1">/</span>
+            <span className="sr-only">of</span>
+            {count}
+          </span>
+        </PaginationItem>
+
+        {pageWindow(page, count).map((number, index) =>
+          number === null ? (
+            <PaginationItem key={`gap-${index}`} className="max-sm:hidden">
+              <PaginationEllipsis className="text-text-muted" />
+            </PaginationItem>
+          ) : (
+            <PaginationItem key={number} className="max-sm:hidden">
+              <button
+                type="button"
+                aria-current={number === page ? "page" : undefined}
+                onClick={() => go(number)}
+                className={cn(
+                  pageButton,
+                  number === page &&
+                    "bg-accent-default/15 text-accent-default ring-1 ring-inset ring-accent-default/40 hover:bg-accent-default/15 hover:text-accent-default"
+                )}
+              >
+                {number}
+              </button>
+            </PaginationItem>
+          )
+        )}
+
+        <PaginationItem>
+          <button
+            type="button"
+            aria-label="Go to next page"
+            aria-disabled={page === count}
+            disabled={page === count}
+            onClick={() => go(page + 1)}
+            className={cn(pageButton, "pr-1.5")}
+          >
+            <span className="hidden sm:inline">Next</span>
+            <ChevronRightIcon size={16} aria-hidden />
+          </button>
+        </PaginationItem>
+      </PaginationContent>
+    </Pagination>
+  )
+}
+
 export {
+  PageNav,
   Pagination,
   PaginationContent,
   PaginationEllipsis,

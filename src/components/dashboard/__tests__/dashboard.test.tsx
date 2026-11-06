@@ -536,26 +536,38 @@ describe('the upcoming events panel', () => {
     notes: null,
   }))
 
-  it('shows four events, not three', async () => {
-    // Four because the panel shares a row height with `by source`, and three
-    // rows left it visibly short of its neighbour once the footer link came
-    // out. The fourth row is information in that space rather than air.
+  it('lists the next three and shows the fortnight under them', async () => {
+    // Three rows plus the two-week strip fit the row height `by source` sets;
+    // four rows on top of the strip made this card the taller of the pair.
     const { container } = await renderDashboard(<Dashboard jobs={FRESH_FIXTURE} events={EVENTS} />)
-    expect(container.querySelectorAll('[data-event-row]')).toHaveLength(4)
-    expect(screen.getByText('Event 4')).toBeInTheDocument()
-    // Positive companion for the cut-off: the fifth really is withheld rather
-    // than the list having simply run out.
-    expect(screen.queryByText('Event 5')).toBeNull()
+    expect(container.querySelectorAll('[data-event-row]')).toHaveLength(3)
+    expect(screen.getByText('Event 3')).toBeInTheDocument()
+    expect(screen.queryByText('Event 4')).toBeNull()
+    // The strip still counts what the list withholds: events 1-6 all fall in
+    // the next fourteen days.
+    const strip = container.querySelector('[data-events-fortnight]')!
+    expect(strip.textContent).toContain('6 events')
+    expect(strip.querySelectorAll('li')).toHaveLength(14)
+    expect(strip.querySelectorAll('li[data-booked]')).toHaveLength(6)
   })
 
-  it('lets its rows share the panel height instead of one row taking it', async () => {
-    // jsdom has no layout, so this pins the contract: rows grow between a
-    // floor and a ceiling. Unbounded `flex-1` turned four events into four
-    // slabs with the dividers a screen apart.
+  it('never lists a past event as upcoming', async () => {
+    // useEvents reads from sixty days back for the planner; slicing the head
+    // of that list put last month's interviews in this panel.
+    const past = { ...EVENTS[0], id: 'past', title: 'Old interview', starts_at: at(-10) }
+    const { container } = await renderDashboard(
+      <Dashboard jobs={FRESH_FIXTURE} events={[past, ...EVENTS]} />
+    )
+    expect(screen.queryByText('Old interview')).toBeNull()
+    expect(container.querySelectorAll('[data-event-row]')[0]).toHaveTextContent('Event 1')
+  })
+
+  it('marks the next event and says how far off each one is', async () => {
     const { container } = await renderDashboard(<Dashboard jobs={FRESH_FIXTURE} events={EVENTS} />)
-    const row = container.querySelector('[data-event-row]')!
-    expect(row.className).toContain('flex-1')
-    expect(row.className).toContain('min-h-16')
-    expect(row.className).toContain('max-h-24')
+    const rows = container.querySelectorAll('[data-event-row]')
+    expect(rows[0].hasAttribute('data-next')).toBe(true)
+    expect(rows[1].hasAttribute('data-next')).toBe(false)
+    expect(rows[0].querySelector('[data-event-countdown]')!.textContent).toBe('tomorrow')
+    expect(rows[1].querySelector('[data-event-countdown]')!.textContent).toBe('in 2 days')
   })
 })
